@@ -62,7 +62,7 @@ neo4j/all_beauty_import.cypher
 
 ```text
 NEO4J_URI=neo4j+s://your-database-id.databases.neo4j.io
-NEO4J_USER=neo4j
+NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_neo4j_password_here
 ```
 
@@ -73,6 +73,18 @@ python3 scripts/import_kg_to_neo4j.py
 ```
 
 这个方式不需要把 CSV 上传到公开 GitHub 仓库，适合导入当前 `kg_output/all_beauty/` 下的基础图谱。
+
+如果 Aura 当前套餐有 200k 节点限制，建议先构建小型图谱：
+
+```bash
+python3 scripts/build_kg_csv.py \
+  --max-reviews 30000 \
+  --max-meta 20000 \
+  --max-features-per-product 10 \
+  --output-dir kg_output/all_beauty_aura_small
+
+python3 scripts/import_kg_to_neo4j.py --input-dir kg_output/all_beauty_aura_small
+```
 
 ## 使用 Neo4j Aura Import UI 导入
 

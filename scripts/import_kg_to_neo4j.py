@@ -70,9 +70,17 @@ def read_csv_batches(
             yield batch
 
 
-def run_batches(driver: Any, label: str, path: Path, batch_size: int, query: str, transform: Callable[[dict[str, str]], dict[str, Any]]) -> int:
+def run_batches(
+    driver: Any,
+    database: str | None,
+    label: str,
+    path: Path,
+    batch_size: int,
+    query: str,
+    transform: Callable[[dict[str, str]], dict[str, Any]],
+) -> int:
     total = 0
-    with driver.session() as session:
+    with driver.session(database=database) as session:
         for batch in read_csv_batches(path, batch_size, transform):
             session.execute_write(lambda tx, rows: tx.run(query, rows=rows).consume(), batch)
             total += len(batch)
@@ -80,7 +88,7 @@ def run_batches(driver: Any, label: str, path: Path, batch_size: int, query: str
     return total
 
 
-def create_constraints(driver: Any) -> None:
+def create_constraints(driver: Any, database: str | None) -> None:
     statements = [
         "CREATE CONSTRAINT user_id IF NOT EXISTS FOR (u:User) REQUIRE u.user_id IS UNIQUE",
         "CREATE CONSTRAINT product_id IF NOT EXISTS FOR (p:Product) REQUIRE p.product_id IS UNIQUE",
@@ -89,12 +97,12 @@ def create_constraints(driver: Any) -> None:
         "CREATE CONSTRAINT store_id IF NOT EXISTS FOR (s:Store) REQUIRE s.store_id IS UNIQUE",
         "CREATE CONSTRAINT feature_id IF NOT EXISTS FOR (f:Feature) REQUIRE f.feature_id IS UNIQUE",
     ]
-    with driver.session() as session:
+    with driver.session(database=database) as session:
         for statement in statements:
             session.run(statement).consume()
 
 
-def import_graph(driver: Any, input_dir: Path, batch_size: int) -> dict[str, int]:
+def import_graph(driver: Any, database: str | None, input_dir: Path, batch_size: int) -> dict[str, int]:
     counts: dict[str, int] = {}
 
     node_jobs = [
@@ -255,13 +263,13 @@ def import_graph(driver: Any, input_dir: Path, batch_size: int) -> dict[str, int
         if not path.exists():
             print(f"Skipping missing file: {path}")
             continue
-        counts[label] = run_batches(driver, label, path, batch_size, query, transform)
+        counts[label] = run_batches(driver, database, label, path, batch_size, query, transform)
 
     return counts
 
 
-def print_counts(driver: Any) -> None:
-    with driver.session() as session:
+def print_counts(driver: Any, database: str | None) -> None:
+    with driver.session(database=database) as session:
         print("\nNode counts")
         for record in session.run("MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY labels"):
             print(f"{record['labels']}: {record['count']:,}")
@@ -276,8 +284,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import local KG CSV files into Neo4j or Neo4j Aura over Bolt.")
     parser.add_argument("--input-dir", type=Path, default=Path("kg_output/all_beauty"))
     parser.add_argument("--uri", default=os.environ.get("NEO4J_URI"))
-    parser.add_argument("--user", default=os.environ.get("NEO4J_USER", "neo4j"))
+    parser.add_argument("--user", default=os.environ.get("NEO4J_USER") or os.environ.get("NEO4J_USERNAME", "neo4j"))
     parser.add_argument("--password", default=os.environ.get("NEO4J_PASSWORD"))
+    parser.add_argument("--database", default=os.environ.get("NEO4J_DATABASE"))
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument("--skip-import", action="store_true", help="Only print current database counts.")
     return parser.parse_args()
@@ -299,9 +308,9 @@ def main() -> None:
     try:
         driver.verify_connectivity()
         if not args.skip_import:
-            create_constraints(driver)
-            import_graph(driver, args.input_dir, args.batch_size)
-        print_counts(driver)
+            create_constraints(driver, args.database)
+            import_graph(driver, args.database, args.input_dir, args.batch_size)
+        print_counts(driver, args.database)
     finally:
         driver.close()
 

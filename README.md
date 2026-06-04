@@ -84,8 +84,20 @@ Then import the generated `nodes_attributes.csv` and `rel_product_attribute.csv`
 Import the base graph directly into Neo4j Aura over Bolt:
 
 ```bash
-# Put NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD in .env first.
+# Put NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD in .env first.
 python3 scripts/import_kg_to_neo4j.py
+```
+
+For Aura instances with a 200k node limit, build and import a smaller graph first:
+
+```bash
+python3 scripts/build_kg_csv.py \
+  --max-reviews 30000 \
+  --max-meta 20000 \
+  --max-features-per-product 10 \
+  --output-dir kg_output/all_beauty_aura_small
+
+python3 scripts/import_kg_to_neo4j.py --input-dir kg_output/all_beauty_aura_small
 ```
 
 If you use Neo4j Aura and want Aura to read CSV files through GitHub raw URLs, generate smaller CSV chunks:
