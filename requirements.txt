@@ -2,3 +2,4 @@ pandas
 numpy
 matplotlib
 openai
+neo4j

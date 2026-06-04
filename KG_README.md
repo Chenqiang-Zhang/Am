@@ -56,6 +56,24 @@ $NEO4J_HOME/import/all_beauty/
 neo4j/all_beauty_import.cypher
 ```
 
+## 直接导入 Neo4j Aura
+
+如果你使用 Neo4j Aura，最省事的方式是通过 Bolt 连接把本地 CSV 批量写入云端数据库。先在本地 `.env` 里设置：
+
+```text
+NEO4J_URI=neo4j+s://your-database-id.databases.neo4j.io
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_neo4j_password_here
+```
+
+然后运行：
+
+```bash
+python3 scripts/import_kg_to_neo4j.py
+```
+
+这个方式不需要把 CSV 上传到公开 GitHub 仓库，适合导入当前 `kg_output/all_beauty/` 下的基础图谱。
+
 ## 使用 Neo4j Aura Import UI 导入
 
 如果你使用的是 Neo4j Aura 网页版 Import 工具，有两种导入方式：

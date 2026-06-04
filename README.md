@@ -81,6 +81,13 @@ python3 scripts/attributes_to_kg_csv.py
 
 Then import the generated `nodes_attributes.csv` and `rel_product_attribute.csv` with `neo4j/import_openai_attributes.cypher`.
 
+Import the base graph directly into Neo4j Aura over Bolt:
+
+```bash
+# Put NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD in .env first.
+python3 scripts/import_kg_to_neo4j.py
+```
+
 If you use Neo4j Aura and want Aura to read CSV files through GitHub raw URLs, generate smaller CSV chunks:
 
 ```bash
