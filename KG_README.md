@@ -232,8 +232,14 @@ LIMIT 5;
 
 ```bash
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY.
-python3 scripts/extract_product_attributes_openai.py --limit 20
+# Edit .env and set OPENAI_API_KEY or DEEPSEEK_API_KEY.
+python3 scripts/extract_product_attributes_openai.py \
+  --provider deepseek \
+  --limit 20 \
+  --resume \
+  --compact-input \
+  --skip-sparse \
+  --batch-size 5
 ```
 
 默认输出：

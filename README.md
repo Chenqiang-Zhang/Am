@@ -67,11 +67,17 @@ Extract product attributes with the OpenAI API:
 
 ```bash
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY.
-python3 scripts/extract_product_attributes_openai.py --limit 20
+# Edit .env and set OPENAI_API_KEY or DEEPSEEK_API_KEY.
+python3 scripts/extract_product_attributes_openai.py \
+  --provider deepseek \
+  --limit 20 \
+  --resume \
+  --compact-input \
+  --skip-sparse \
+  --batch-size 5
 ```
 
-The extractor reads `OPENAI_API_KEY` from the environment or a local `.env` file, then writes JSONL output to `kg_output/attributes/product_attributes_openai.jsonl`. Start with a small `--limit`, inspect the result quality, then scale up with `--resume`.
+The extractor reads credentials from the environment or a local `.env` file, then writes JSONL output to `kg_output/attributes/product_attributes_openai.jsonl`. Start with a small `--limit`, inspect the result quality, then scale up with `--resume`.
 
 Convert extracted attributes into Neo4j CSV files:
 
