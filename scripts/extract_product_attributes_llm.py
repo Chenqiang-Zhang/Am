@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import gzip
 import json
 import os
@@ -201,6 +202,7 @@ def rule_attributes(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def product_payload(row: dict[str, Any], max_input_chars: int, compact_input: bool) -> dict[str, Any]:
+    text_budget = max(120, max_input_chars // 4)
     if compact_input:
         details = row.get("details") if isinstance(row.get("details"), dict) else {}
         detail_payload = {
@@ -210,10 +212,10 @@ def product_payload(row: dict[str, Any], max_input_chars: int, compact_input: bo
         }
         payload = {
             "id": row.get("parent_asin"),
-            "title": clean_text(row.get("title")),
+            "title": clean_text(row.get("title"))[:text_budget],
             "store": clean_text(row.get("store")),
-            "features": [clean_text(x) for x in as_list(row.get("features"))[:5] if clean_text(x)],
-            "description": [clean_text(x) for x in as_list(row.get("description"))[:3] if clean_text(x)],
+            "features": [clean_text(x)[:text_budget] for x in as_list(row.get("features"))[:5] if clean_text(x)],
+            "description": [clean_text(x)[:text_budget] for x in as_list(row.get("description"))[:3] if clean_text(x)],
             "details": detail_payload,
         }
     else:
@@ -229,7 +231,7 @@ def product_payload(row: dict[str, Any], max_input_chars: int, compact_input: bo
         ]
         payload = {key: row.get(key) for key in keys if key in row}
 
-    return json.loads(compact_text(payload, max_input_chars))
+    return payload
 
 
 def is_sparse(product: dict[str, Any]) -> bool:
@@ -284,7 +286,14 @@ def parse_json_text(text: str) -> dict[str, Any]:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?", "", text).strip()
         text = re.sub(r"```$", "", text).strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
 
 
 def load_done_ids(output_path: Path) -> set[str]:
@@ -404,11 +413,39 @@ def extract_batch_chat_json(
     raise RuntimeError(f"Chat JSON extraction failed: {last_error}") from last_error
 
 
+def extract_chat_with_fallback(
+    client: Any,
+    model: str,
+    products: list[dict[str, Any]],
+    max_output_tokens: int,
+    retries: int,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    try:
+        return extract_batch_chat_json(client, model, products, max_output_tokens, retries)
+    except Exception as batch_error:
+        if len(products) <= 1:
+            raise
+
+        print(f"Batch JSON failed; retrying {len(products)} products one by one: {batch_error}", file=sys.stderr)
+        merged: dict[str, list[dict[str, Any]]] = {}
+        total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        for product in products:
+            try:
+                one_map, one_usage = extract_batch_chat_json(client, model, [product], max_output_tokens, retries)
+                merged.update(one_map)
+                for key in total_usage:
+                    total_usage[key] += int(one_usage.get(key) or 0)
+            except Exception as exc:
+                print(f"Single-product JSON failed; using rules only for {product.get('product_id')}: {exc}", file=sys.stderr)
+                merged[str(product.get("product_id", ""))] = []
+        return merged, total_usage
+
+
 def parse_args() -> argparse.Namespace:
     load_env_file()
     parser = argparse.ArgumentParser(description="Extract product attributes with OpenAI or DeepSeek-compatible APIs.")
     parser.add_argument("--meta-path", type=Path, default=Path("data/meta_All_Beauty.jsonl.gz"))
-    parser.add_argument("--output-path", type=Path, default=Path("kg_output/attributes/product_attributes_openai.jsonl"))
+    parser.add_argument("--output-path", type=Path, default=Path("kg_output/attributes/product_attributes_llm.jsonl"))
     parser.add_argument("--provider", choices=["openai", "deepseek"], default=os.environ.get("LLM_PROVIDER", "openai"))
     parser.add_argument("--model", default=None)
     parser.add_argument("--limit", type=int, default=20, help="Number of products to process. Use -1 for all rows.")
@@ -421,6 +458,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--compact-input", action="store_true", help="Send only high-value compact fields to the LLM.")
     parser.add_argument("--skip-sparse", action="store_true", help="Use rule-only attributes for sparse products instead of calling the LLM.")
     parser.add_argument("--batch-size", type=int, default=1, help="Products per LLM request. Use 5-10 for cheaper bulk extraction.")
+    parser.add_argument("--workers", type=int, default=1, help="Concurrent LLM batches. Start with 3-5 to avoid rate limits.")
     parser.add_argument("--rule-only", action="store_true", help="Do not call an LLM; only use deterministic metadata rules.")
     return parser.parse_args()
 
@@ -467,6 +505,9 @@ def main() -> None:
     if args.batch_size < 1:
         print("--batch-size must be >= 1", file=sys.stderr)
         sys.exit(2)
+    if args.workers < 1:
+        print("--workers must be >= 1", file=sys.stderr)
+        sys.exit(2)
 
     client, model, _base_url = build_client(args)
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -475,24 +516,21 @@ def main() -> None:
     processed = 0
     seen = 0
     pending: list[dict[str, Any]] = []
+    futures: set[Future[list[dict[str, Any]]]] = set()
 
-    def flush_pending(out: Any) -> None:
-        nonlocal processed, pending
-        if not pending:
-            return
-
-        products = [item["payload"] for item in pending]
+    def process_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        products = [item["payload"] for item in batch]
         if args.rule_only:
             llm_map: dict[str, list[dict[str, Any]]] = {}
             usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         elif args.provider == "deepseek":
-            llm_map, usage = extract_batch_chat_json(client, model, products, args.max_output_tokens, args.retries)
+            llm_map, usage = extract_chat_with_fallback(client, model, products, args.max_output_tokens, args.retries)
         else:
             llm_map, usage = extract_batch_openai_responses(client, model, products, args.max_output_tokens, args.retries)
 
         records: list[dict[str, Any]] = []
-        per_record_usage = split_usage(usage, len(pending))
-        for item in pending:
+        per_record_usage = split_usage(usage, len(batch))
+        for item in batch:
             product_id = item["product_id"]
             attributes = merge_attributes(item["rule_attributes"], llm_map.get(product_id, []))
             records.append(
@@ -504,60 +542,93 @@ def main() -> None:
                     "attributes": attributes,
                     "usage": per_record_usage,
                     "batch_usage": usage,
-                    "batch_size": len(pending),
+                    "batch_size": len(batch),
                 }
             )
-            processed += 1
-            print(f"{processed}: {product_id} attributes={len(attributes)}")
+        return records
 
+    def write_completed(out: Any, records: list[dict[str, Any]]) -> None:
         write_records(out, records)
+        for record in records:
+            print(f"saved: {record['product_id']} attributes={len(record['attributes'])}")
+
+    def drain_futures(out: Any, block: bool) -> None:
+        nonlocal futures
+        if not futures:
+            return
+        if block:
+            done, futures = wait(futures)
+        else:
+            done, futures = wait(futures, return_when=FIRST_COMPLETED)
+        for future in done:
+            write_completed(out, future.result())
+
+    def flush_pending(out: Any, executor: ThreadPoolExecutor | None) -> None:
+        nonlocal processed, pending, futures
+        if not pending:
+            return
+
+        batch = pending
         pending = []
+        processed += len(batch)
+        if executor is None:
+            write_completed(out, process_batch(batch))
+        else:
+            futures.add(executor.submit(process_batch, batch))
+            if len(futures) >= args.workers * 2:
+                drain_futures(out, block=False)
         if args.sleep:
             time.sleep(args.sleep)
 
     with args.output_path.open("a", encoding="utf-8") as out:
-        for row in read_jsonl_gz(args.meta_path):
-            if seen < args.offset:
+        executor = ThreadPoolExecutor(max_workers=args.workers) if args.workers > 1 and not args.rule_only else None
+        try:
+            for row in read_jsonl_gz(args.meta_path):
+                if seen < args.offset:
+                    seen += 1
+                    continue
+                if limit is not None and processed + len(pending) >= limit:
+                    break
+
+                product_id = clean_text(row.get("parent_asin"))
                 seen += 1
-                continue
-            if limit is not None and processed + len(pending) >= limit:
-                break
+                if not product_id or product_id in done_ids:
+                    continue
 
-            product_id = clean_text(row.get("parent_asin"))
-            seen += 1
-            if not product_id or product_id in done_ids:
-                continue
+                rule_attrs = rule_attributes(row)
+                payload = product_payload(row, args.max_input_chars, args.compact_input)
+                payload["product_id"] = product_id
 
-            rule_attrs = rule_attributes(row)
-            payload = product_payload(row, args.max_input_chars, args.compact_input)
-            payload["product_id"] = product_id
+                if args.skip_sparse and is_sparse(payload):
+                    record = {
+                        "product_id": product_id,
+                        "title": row.get("title", ""),
+                        "provider": "rules",
+                        "model": "rules",
+                        "attributes": rule_attrs,
+                        "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+                    }
+                    write_records(out, [record])
+                    processed += 1
+                    print(f"{processed}: {product_id} attributes={len(rule_attrs)} rule-only")
+                    continue
 
-            if args.skip_sparse and is_sparse(payload):
-                record = {
-                    "product_id": product_id,
-                    "title": row.get("title", ""),
-                    "provider": "rules",
-                    "model": "rules",
-                    "attributes": rule_attrs,
-                    "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
-                }
-                write_records(out, [record])
-                processed += 1
-                print(f"{processed}: {product_id} attributes={len(rule_attrs)} rule-only")
-                continue
+                pending.append(
+                    {
+                        "product_id": product_id,
+                        "title": row.get("title", ""),
+                        "payload": payload,
+                        "rule_attributes": rule_attrs,
+                    }
+                )
+                if len(pending) >= args.batch_size:
+                    flush_pending(out, executor)
 
-            pending.append(
-                {
-                    "product_id": product_id,
-                    "title": row.get("title", ""),
-                    "payload": payload,
-                    "rule_attributes": rule_attrs,
-                }
-            )
-            if len(pending) >= args.batch_size:
-                flush_pending(out)
-
-        flush_pending(out)
+            flush_pending(out, executor)
+            drain_futures(out, block=True)
+        finally:
+            if executor is not None:
+                executor.shutdown(wait=True)
 
     print(f"Wrote {processed} product attribute rows to {args.output_path}")
 

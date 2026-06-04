@@ -91,8 +91,8 @@ def convert(input_path: Path, output_dir: Path) -> dict[str, int]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert OpenAI product attribute JSONL to Neo4j-ready CSV files.")
-    parser.add_argument("--input-path", type=Path, default=Path("kg_output/attributes/product_attributes_openai.jsonl"))
+    parser = argparse.ArgumentParser(description="Convert LLM product attribute JSONL to Neo4j-ready CSV files.")
+    parser.add_argument("--input-path", type=Path, default=Path("kg_output/attributes/product_attributes_llm.jsonl"))
     parser.add_argument("--output-dir", type=Path, default=Path("kg_output/all_beauty"))
     return parser.parse_args()
 

@@ -233,7 +233,7 @@ LIMIT 5;
 ```bash
 cp .env.example .env
 # Edit .env and set OPENAI_API_KEY or DEEPSEEK_API_KEY.
-python3 scripts/extract_product_attributes_openai.py \
+python3 scripts/extract_product_attributes_llm.py \
   --provider deepseek \
   --limit 20 \
   --resume \
@@ -245,7 +245,7 @@ python3 scripts/extract_product_attributes_openai.py \
 默认输出：
 
 ```text
-kg_output/attributes/product_attributes_openai.jsonl
+kg_output/attributes/product_attributes_llm.jsonl
 ```
 
 建议流程：
