@@ -266,3 +266,9 @@ rel_product_attribute.csv
 ```text
 neo4j/import_openai_attributes.cypher
 ```
+
+如果使用 Neo4j Aura，可以直接通过 Bolt 导入属性 CSV：
+
+```bash
+python3 scripts/import_attributes_to_neo4j.py --input-dir kg_output/all_beauty_aura_small
+```
