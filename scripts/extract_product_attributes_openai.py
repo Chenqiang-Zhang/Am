@@ -76,6 +76,22 @@ Rules:
 """
 
 
+def load_env_file(path: Path = Path(".env")) -> None:
+    if not path.exists():
+        return
+
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def read_jsonl_gz(path: Path):
     with gzip.open(path, "rt", encoding="utf-8") as f:
         for line in f:
@@ -196,6 +212,7 @@ def extract_attributes(
 
 
 def parse_args() -> argparse.Namespace:
+    load_env_file()
     parser = argparse.ArgumentParser(description="Extract product attributes with OpenAI Structured Outputs.")
     parser.add_argument("--meta-path", type=Path, default=Path("data/meta_All_Beauty.jsonl.gz"))
     parser.add_argument("--output-path", type=Path, default=Path("kg_output/attributes/product_attributes_openai.jsonl"))

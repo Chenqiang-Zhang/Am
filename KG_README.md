@@ -201,7 +201,8 @@ LIMIT 5;
 先从商品元数据中抽取商品级属性，输出 JSONL，确认质量后再并入图谱：
 
 ```bash
-export OPENAI_API_KEY="your_api_key"
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY.
 python3 scripts/extract_product_attributes_openai.py --limit 20
 ```
 
