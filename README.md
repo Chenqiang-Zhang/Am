@@ -63,6 +63,23 @@ Generate Neo4j CSV files:
 python3 scripts/build_kg_csv.py
 ```
 
+Extract product attributes with the OpenAI API:
+
+```bash
+export OPENAI_API_KEY="your_api_key"
+python3 scripts/extract_product_attributes_openai.py --limit 20
+```
+
+The extractor writes JSONL output to `kg_output/attributes/product_attributes_openai.jsonl`. Start with a small `--limit`, inspect the result quality, then scale up with `--resume`.
+
+Convert extracted attributes into Neo4j CSV files:
+
+```bash
+python3 scripts/attributes_to_kg_csv.py
+```
+
+Then import the generated `nodes_attributes.csv` and `rel_product_attribute.csv` with `neo4j/import_openai_attributes.cypher`.
+
 If you use Neo4j Aura and want Aura to read CSV files through GitHub raw URLs, generate smaller CSV chunks:
 
 ```bash

@@ -195,3 +195,43 @@ LIMIT 5;
 - 将 Neo4j 查询到的路径转换成自然语言推荐理由。
 
 最重要的设计原则是：LLM 应该解释从图谱中检索到的证据，而不是编造证据。
+
+## 使用 OpenAI API 抽取商品属性
+
+先从商品元数据中抽取商品级属性，输出 JSONL，确认质量后再并入图谱：
+
+```bash
+export OPENAI_API_KEY="your_api_key"
+python3 scripts/extract_product_attributes_openai.py --limit 20
+```
+
+默认输出：
+
+```text
+kg_output/attributes/product_attributes_openai.jsonl
+```
+
+建议流程：
+
+1. 先运行 `--limit 20`，人工检查属性质量。
+2. 如果质量稳定，再运行更大的批次，例如 `--limit 1000 --resume`。
+3. 后续把输出转换成 `Attribute` 或增强版 `Feature` 节点，并建立 `(Product)-[:HAS_ATTRIBUTE]->(Attribute)` 关系。
+
+转换成 Neo4j CSV：
+
+```bash
+python3 scripts/attributes_to_kg_csv.py
+```
+
+这会在 `kg_output/all_beauty/` 下生成：
+
+```text
+nodes_attributes.csv
+rel_product_attribute.csv
+```
+
+导入基础图谱后，再运行：
+
+```text
+neo4j/import_openai_attributes.cypher
+```
