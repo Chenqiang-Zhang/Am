@@ -120,8 +120,29 @@ python3 scripts/split_csv_for_aura_github.py \
 
 Then upload the CSV files from `kg_output/all_beauty_github/all_beauty/` to a publicly accessible location and run `neo4j/all_beauty_import_github_chunks.cypher`.
 
+Run the first recommendation baseline from local KG CSV files:
+
+```bash
+python3 scripts/recommend_products.py \
+  --input-dir kg_output/all_beauty_aura_small \
+  --user-id AGKHLEW2SOWHNMFQIJGBECAF7INQ \
+  --query "black waterproof eyeliner for daily makeup" \
+  --top-k 10
+```
+
+You can also pass explicit behavior signals when browsing or purchase records come from the app layer:
+
+```bash
+python3 scripts/recommend_products.py \
+  --viewed-product-id B07S141T2R \
+  --purchased-product-id B00YQ6X8EO \
+  --query "long lasting black eyeliner" \
+  --json
+```
+
 ## Next Steps
 
+- Improve the recommendation baseline with offline evaluation, explicit browsing events, and hybrid graph/collaborative signals.
 - Use LLMs to extract more normalized product attributes from titles, descriptions, and reviews, such as effects, skin type, scent, texture, and usage scenario.
 - Use LLMs to parse natural-language user needs into graph query constraints.
 - Retrieve evidence paths from Neo4j, then use an LLM to generate recommendation explanations grounded in those paths.

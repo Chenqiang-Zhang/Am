@@ -216,6 +216,36 @@ RETURN path
 LIMIT 5;
 ```
 
+## 本地推荐算法 Baseline
+
+第一版推荐脚本可以直接读取 `kg_output/*` 下的 CSV 文件，不依赖 Neo4j 在线连接。它会综合三类信号排序：
+
+- 个性化：用户高评分历史、显式购买记录、显式浏览记录与候选商品的共享 Feature/Attribute 和文本相似度。
+- 自然语言相关性：用户输入的商品需求与商品标题、Feature、Attribute 的词项匹配。
+- 商品质量：`average_rating` 和 `rating_number` 的平滑质量分。
+
+按用户历史和自然语言需求推荐：
+
+```bash
+python3 scripts/recommend_products.py \
+  --input-dir kg_output/all_beauty_aura_small \
+  --user-id AGKHLEW2SOWHNMFQIJGBECAF7INQ \
+  --query "black waterproof eyeliner for daily makeup" \
+  --top-k 10
+```
+
+如果浏览记录、购买记录来自应用层，可以直接传商品 ID：
+
+```bash
+python3 scripts/recommend_products.py \
+  --viewed-product-id B07S141T2R \
+  --purchased-product-id B00YQ6X8EO \
+  --query "long lasting black eyeliner" \
+  --json
+```
+
+输出结果包含 `score_parts`、`matched_terms`、`evidence_terms`、`evidence_features`、`evidence_attributes`，用于解释为什么这个商品排在前面。
+
 ## 下一步如何接入 LLM
 
 图谱构建完成后，可以把 LLM 用在三个位置：
