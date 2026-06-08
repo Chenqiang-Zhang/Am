@@ -1,0 +1,14 @@
+{
+  "products": 112590,
+  "users": 168659,
+  "reviews": 200000,
+  "stores": 30361,
+  "categories": 2,
+  "features": 89666,
+  "rel_wrote": 200000,
+  "rel_reviews": 200000,
+  "rel_rated": 200000,
+  "rel_product_store": 101259,
+  "rel_product_category": 112590,
+  "rel_product_feature": 110807
+}

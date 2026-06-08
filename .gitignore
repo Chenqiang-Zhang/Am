@@ -1,6 +1,4 @@
-# Local datasets and generated graph exports
-data/
-kg_output/
+# Generated graph exports and local datasets are tracked for private-repo migration.
 
 # Python caches and environments
 __pycache__/
