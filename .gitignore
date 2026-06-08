@@ -1,6 +1,7 @@
 # Local datasets and generated graph exports
 data/
 kg_output/
+docs/
 
 # Python caches and environments
 __pycache__/

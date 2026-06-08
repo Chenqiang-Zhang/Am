@@ -182,7 +182,7 @@ def build_kg(
         if not user_id or not product_id:
             continue
 
-        review_id = stable_id("review", f"{user_id}|{product_id}|{row.get('timestamp', '')}|{idx}")
+        review_id = stable_id("review", f"{user_id}|{product_id}|{row.get('timestamp', '')}")
         rating = row.get("rating", "")
         timestamp = row.get("timestamp", "")
         helpful_vote = row.get("helpful_vote", 0)
