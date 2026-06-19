@@ -13,7 +13,8 @@ Neo4j Knowledge Graph
     ↓
 REST API (FastAPI)
     ├── LLM intent extraction  (natural language → structured attribute filters)
-    └── Graph traversal        (Cypher match + confidence-weighted scoring)
+    ├── Multi-path graph recall (attributes + feature text + title/category/store)
+    └── Hybrid ranking          (match coverage + rating quality + popularity)
 ```
 
 ## Graph Schema
@@ -143,7 +144,7 @@ Open `http://localhost:8000/docs` for the interactive Swagger UI.
 
 ### `POST /recommend`
 
-Accepts a natural-language query and returns ranked product recommendations with matched attributes as explanation paths.
+Accepts a natural-language query and returns ranked product recommendations with graph-backed evidence and a score breakdown.
 
 **Request:**
 ```json
@@ -173,13 +174,29 @@ Accepts a natural-language query and returns ranked product recommendations with
         {"attribute_type": "skin_type", "value": "dry", "confidence": 0.9, "evidence": "Skin Type: Dry"},
         {"attribute_type": "ingredient", "value": "hyaluronic acid", "confidence": 1.0, "evidence": "Hyaluronic Acid"}
       ],
-      "explanation": "Matched — skin_type: dry | ingredient: hyaluronic acid"
+      "matched_terms": ["dry", "fragrance-free", "gentle", "hyaluronic acid"],
+      "matched_feature_evidence": ["Fragrance free moisturizer for dry sensitive skin"],
+      "score_breakdown": {
+        "attribute_match": 0.95,
+        "feature_text_match": 0.75,
+        "field_match": 0.25,
+        "rating_quality": 0.82,
+        "popularity": 0.64,
+        "query_coverage": 0.86
+      },
+      "explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings"
     }
   ]
 }
 ```
 
-The `matched_attributes` array represents the graph path that justifies each recommendation:
+The recommender uses three recall paths, then re-ranks the merged candidates:
+
+- `Product -[:HAS_ATTRIBUTE]-> Attribute` for precise structured matches
+- `Product -[:HAS_FEATURE]-> Feature` for broader text matches from product metadata
+- `Product` title/category and `Product -[:SOLD_BY]-> Store` for simple field matches
+
+The final score combines attribute match, feature-text match, field match, query coverage, Bayesian-smoothed rating quality, and popularity. The `matched_attributes` array represents the most precise graph path that justifies a recommendation:
 `User Query → [LLM intent] → Attribute ←[HAS_ATTRIBUTE]← Product`
 
 ## Data Scale

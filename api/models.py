@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RecommendRequest(BaseModel):
@@ -37,6 +37,9 @@ class Recommendation(BaseModel):
     rating_number: int | None = None
     score: float
     matched_attributes: list[MatchedAttribute]
+    matched_terms: list[str] = Field(default_factory=list)
+    matched_feature_evidence: list[str] = Field(default_factory=list)
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
     explanation: str
 
 
