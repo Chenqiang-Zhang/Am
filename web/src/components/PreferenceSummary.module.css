@@ -1,0 +1,31 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary-weak);
+  border: 1px solid #e6d3d0;
+  border-radius: var(--radius);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid #e0cfcc;
+  color: var(--color-text);
+  font-size: 13px;
+}
