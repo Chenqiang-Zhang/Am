@@ -188,6 +188,7 @@ Accepts a natural-language query and returns ranked product recommendations with
       "display_title": "...",
       "display_language": "en",
       "availability_status": "available",
+      "data_quality_score": 0.82,
       "score": 2.85,
       "matched_attributes": [
         {"attribute_type": "skin_type", "value": "dry", "confidence": 0.9, "evidence": "Skin Type: Dry"},
@@ -272,6 +273,17 @@ The recommender also performs data cleaning and deduplication:
 - deduplicates candidates by product ID and cleaned title
 - exposes multilingual display fields (`display_title`, `display_explanation`, `price_display`) for the frontend
 - marks products without a dataset price as `currently_unavailable`; the frontend can filter available, unavailable, or all results
+- defaults recommendation recall to `sellable_status = "available"` and `data_quality_score >= 0.6`
+
+### Product quality audit
+
+Run the audit after importing or expanding product data:
+
+```bash
+conda run -n py312 python scripts/audit_product_quality.py
+```
+
+The script scans all `Product` nodes, writes `sellable_status`, `data_quality_score`, and `quality_flags` back to Neo4j, and generates JSON/Markdown reports under `reports/product_quality/`. Use `--dry-run` to generate reports without writing to Neo4j.
 
 ## Data Scale
 

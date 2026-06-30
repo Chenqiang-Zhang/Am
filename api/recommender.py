@@ -133,6 +133,8 @@ UNWIND $filters AS f
 MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute)
 WHERE a.attribute_type = f.attribute_type
   AND toLower(a.value) CONTAINS toLower(f.value)
+  AND coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
   AND ($min_rating IS NULL OR toFloat(p.average_rating) >= $min_rating)
   AND ($price_max IS NULL OR (p.price IS NOT NULL AND toFloat(p.price) <= $price_max))
 WITH p, a.attribute_type AS atype, a.value AS aval,
@@ -156,6 +158,8 @@ RETURN p.product_id AS product_id,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
        matched_attrs,
        score AS attribute_score
 ORDER BY score DESC, toFloat(p.average_rating) DESC
@@ -167,6 +171,8 @@ _FEATURE_SEARCH_CYPHER = """
 UNWIND $terms AS term
 MATCH (p:Product)-[:HAS_FEATURE]->(f:Feature)
 WHERE toLower(coalesce(f.normalized_text, f.text, "")) CONTAINS term
+  AND coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
   AND ($min_rating IS NULL OR toFloat(p.average_rating) >= $min_rating)
   AND ($price_max IS NULL OR (p.price IS NOT NULL AND toFloat(p.price) <= $price_max))
 WITH p, term, head(collect(f.text)) AS evidence, count(DISTINCT f) AS hits
@@ -180,6 +186,8 @@ RETURN p.product_id AS product_id,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
        feature_matches,
        feature_term_hits,
        feature_hit_count
@@ -198,6 +206,8 @@ WHERE (
     OR toLower(coalesce(p.main_category, "")) CONTAINS term
     OR any(store_name IN store_names WHERE toLower(coalesce(store_name, "")) CONTAINS term)
   )
+  AND coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
   AND ($min_rating IS NULL OR toFloat(p.average_rating) >= $min_rating)
   AND ($price_max IS NULL OR (p.price IS NOT NULL AND toFloat(p.price) <= $price_max))
 WITH p, collect(DISTINCT term) AS field_terms
@@ -207,6 +217,8 @@ RETURN p.product_id AS product_id,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
        field_terms
 ORDER BY size(field_terms) DESC, toFloat(p.average_rating) DESC
 LIMIT $candidate_limit
@@ -215,6 +227,7 @@ LIMIT $candidate_limit
 RATING_PRIOR = 3.8
 RATING_PRIOR_COUNT = 50
 POPULARITY_REFERENCE_COUNT = 5000
+DEFAULT_MIN_RECOMMENDATION_QUALITY_SCORE = 0.6
 FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
 
 
@@ -674,6 +687,9 @@ class Recommender:
             auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"]),
         )
         self.neo4j_database = os.environ.get("NEO4J_DATABASE", "neo4j")
+        self.min_quality_score = float(
+            os.environ.get("MIN_RECOMMENDATION_QUALITY_SCORE", DEFAULT_MIN_RECOMMENDATION_QUALITY_SCORE)
+        )
         provider = os.environ.get("LLM_PROVIDER", "openai").lower()
         if provider == "deepseek":
             self.llm = OpenAI(
@@ -724,6 +740,7 @@ class Recommender:
                     filters=filters,
                     min_rating=intent.min_rating,
                     price_max=intent.price_max,
+                    min_quality_score=self.min_quality_score,
                     candidate_limit=candidate_limit,
                 )
                 for record in result:
@@ -746,6 +763,7 @@ class Recommender:
                     terms=terms,
                     min_rating=intent.min_rating,
                     price_max=intent.price_max,
+                    min_quality_score=self.min_quality_score,
                     candidate_limit=candidate_limit,
                 )
                 for record in result:
@@ -764,6 +782,7 @@ class Recommender:
                     terms=terms,
                     min_rating=intent.min_rating,
                     price_max=intent.price_max,
+                    min_quality_score=self.min_quality_score,
                     candidate_limit=candidate_limit,
                 )
                 for record in result:
@@ -963,6 +982,8 @@ def _candidate(candidates: dict[str, dict[str, Any]], record: Any) -> dict[str, 
             "average_rating": _optional_float(record["average_rating"]),
             "rating_number": _optional_int(record["rating_number"]),
             "image_url": record.get("image_url"),
+            "sellable_status": record.get("sellable_status"),
+            "data_quality_score": _optional_float(record.get("data_quality_score")),
             "attribute_score": 0.0,
             "matched_attributes": [],
             "feature_terms": set(),
@@ -1031,7 +1052,8 @@ def _rank_candidates(
                 image_url=candidate.get("image_url"),
                 price=candidate["price"],
                 price_display=_price_display(candidate["price"], lang),
-                availability_status=_availability_status(candidate["price"]),
+                availability_status=_availability_status(candidate["price"], candidate.get("sellable_status")),
+                data_quality_score=candidate.get("data_quality_score"),
                 average_rating=candidate["average_rating"],
                 rating_number=candidate["rating_number"],
                 score=round(final_score, 4),
@@ -1134,7 +1156,9 @@ def _price_display(price: float | None, lang: str) -> str | None:
     return f"${price:.2f}"
 
 
-def _availability_status(price: float | None) -> str:
+def _availability_status(price: float | None, sellable_status: str | None = None) -> str:
+    if sellable_status:
+        return sellable_status
     return "available" if price is not None else "currently_unavailable"
 
 

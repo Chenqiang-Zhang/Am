@@ -39,6 +39,7 @@ class Recommendation(BaseModel):
     price: float | None = None
     price_display: str | None = None
     availability_status: str = "available"
+    data_quality_score: float | None = None
     average_rating: float | None = None
     rating_number: int | None = None
     score: float
