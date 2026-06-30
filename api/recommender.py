@@ -494,6 +494,164 @@ def _safe_json(content: str | None) -> dict[str, Any] | None:
         return None
 
 
+_HEURISTIC_RULES: list[dict[str, Any]] = [
+    {
+        "slot": "product_type",
+        "attribute_type": "product_type",
+        "value": "moisturizer",
+        "summary": {"en": "moisturizer", "ja": "保湿クリーム"},
+        "terms": ["moisturizer", "moisturiser", "face cream", "cream", "lotion", "保湿クリーム", "クリーム", "乳液"],
+    },
+    {
+        "slot": "product_type",
+        "attribute_type": "product_type",
+        "value": "serum",
+        "summary": {"en": "serum", "ja": "美容液"},
+        "terms": ["serum", "essence", "美容液"],
+    },
+    {
+        "slot": "product_type",
+        "attribute_type": "product_type",
+        "value": "toner",
+        "summary": {"en": "toner", "ja": "化粧水"},
+        "terms": ["toner", "化粧水"],
+    },
+    {
+        "slot": "product_type",
+        "attribute_type": "product_type",
+        "value": "cleanser",
+        "summary": {"en": "cleanser", "ja": "洗顔料"},
+        "terms": ["cleanser", "face wash", "洗顔", "洗顔料"],
+    },
+    {
+        "slot": "skin_type",
+        "attribute_type": "skin_type",
+        "value": "dry",
+        "summary": {"en": "dry skin", "ja": "乾燥肌"},
+        "terms": ["dry skin", "dry", "乾燥肌", "乾燥"],
+    },
+    {
+        "slot": "skin_type",
+        "attribute_type": "skin_type",
+        "value": "sensitive",
+        "summary": {"en": "sensitive skin", "ja": "敏感肌"},
+        "terms": ["sensitive skin", "sensitive", "敏感肌", "敏感"],
+    },
+    {
+        "slot": "scent",
+        "attribute_type": "scent",
+        "value": "unscented",
+        "summary": {"en": "fragrance-free", "ja": "無香料"},
+        "terms": ["fragrance-free", "fragrance free", "unscented", "no fragrance", "無香料", "無香"],
+    },
+    {
+        "slot": "ingredient",
+        "attribute_type": "ingredient",
+        "value": "hyaluronic acid",
+        "summary": {"en": "hyaluronic acid", "ja": "ヒアルロン酸"},
+        "terms": ["hyaluronic acid", "ヒアルロン酸"],
+    },
+    {
+        "slot": "ingredient",
+        "attribute_type": "ingredient",
+        "value": "vitamin c",
+        "summary": {"en": "vitamin C", "ja": "ビタミンC"},
+        "terms": ["vitamin c", "ビタミンc", "ビタミンC"],
+    },
+    {
+        "slot": "ingredient",
+        "attribute_type": "ingredient",
+        "value": "retinol",
+        "summary": {"en": "retinol", "ja": "レチノール"},
+        "terms": ["retinol", "レチノール"],
+    },
+    {
+        "slot": "benefit",
+        "attribute_type": "benefit",
+        "value": "moisturizing",
+        "summary": {"en": "moisturizing", "ja": "保湿"},
+        "terms": ["moisturizing", "hydrating", "hydration", "保湿", "うるおい", "潤い"],
+    },
+    {
+        "slot": "benefit",
+        "attribute_type": "benefit",
+        "value": "soothing",
+        "summary": {"en": "soothing", "ja": "鎮静"},
+        "terms": ["soothing", "calming", "鎮静", "肌荒れ"],
+    },
+]
+
+
+def _matches_any(text: str, terms: list[str]) -> bool:
+    folded = text.lower()
+    return any(term.lower() in folded for term in terms)
+
+
+def _detect_filled_slots(text: str) -> set[str]:
+    slots: set[str] = set()
+    for rule in _HEURISTIC_RULES:
+        if rule["slot"] == "product_type":
+            continue
+        if _matches_any(text, rule["terms"]):
+            slots.add(rule["slot"])
+    if re.search(r"(?:under|below|less than)\s*\$?\d+|\$\d+|\d+\s*ドル|\d+\s*円", text, re.I):
+        slots.add("price_max")
+    if re.search(r"(?:rating|stars?|評価).*(?:[4-5](?:\.\d)?)", text, re.I):
+        slots.add("min_rating")
+    return slots
+
+
+def _heuristic_intent(text: str) -> SearchIntent:
+    filters: list[AttributeFilter] = []
+    keywords: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    for rule in _HEURISTIC_RULES:
+        if not _matches_any(text, rule["terms"]):
+            continue
+        key = (rule["attribute_type"], rule["value"])
+        if key in seen:
+            continue
+        seen.add(key)
+        weight = 1.0 if rule["slot"] in {"product_type", "skin_type", "ingredient"} else 0.7
+        filters.append(
+            AttributeFilter(
+                attribute_type=rule["attribute_type"],
+                value=rule["value"],
+                weight=weight,
+            )
+        )
+        keywords.append(rule["value"])
+
+    price_max = None
+    price_match = re.search(r"(?:under|below|less than)\s*\$?(\d+)|\$(\d+)", text, re.I)
+    if price_match:
+        price_max = float(price_match.group(1) or price_match.group(2))
+
+    min_rating = None
+    rating_match = re.search(r"(?:rating|stars?).*?([4-5](?:\.\d)?)", text, re.I)
+    if rating_match:
+        min_rating = float(rating_match.group(1))
+
+    return SearchIntent(
+        attribute_filters=filters,
+        keywords=list(dict.fromkeys(keywords)),
+        price_max=price_max,
+        min_rating=min_rating,
+    )
+
+
+def _heuristic_summary(text: str, lang: str) -> list[str]:
+    normalized_lang = _normalize_lang(lang)
+    summary: list[str] = []
+    for rule in _HEURISTIC_RULES:
+        if _matches_any(text, rule["terms"]):
+            label = rule["summary"][normalized_lang]
+            if label not in summary:
+                summary.append(label)
+    return summary
+
+
 def _load_env(path: Path = Path(".env")) -> None:
     if not path.exists():
         return
@@ -528,15 +686,18 @@ class Recommender:
             self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
     def extract_intent(self, query: str) -> SearchIntent:
-        response = self.llm.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": INTENT_SYSTEM_PROMPT},
-                {"role": "user", "content": query},
-            ],
-            temperature=0,
-        )
-        data = _safe_json(response.choices[0].message.content) or {}
+        try:
+            response = self.llm.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+                    {"role": "user", "content": query},
+                ],
+                temperature=0,
+            )
+            data = _safe_json(response.choices[0].message.content) or {}
+        except Exception:
+            return _heuristic_intent(query)
         return SearchIntent(
             attribute_filters=_parse_attribute_filters(data.get("attribute_filters", [])),
             keywords=data.get("keywords", []),
@@ -634,12 +795,6 @@ class Recommender:
             for m in all_user_msgs
             for kw in ("おまかせ", "なんでも", "no preference", "don't mind", "どちらでも")
         )
-        # 各回答が「こだわらない」でなければ filled とみなす
-        _no_pref_kws = ("こだわらない", "なんでも", "don't mind", "no preference")
-        py_filled = sum(
-            1 for m in answer_msgs
-            if not any(kw in m.get("content", "") for kw in _no_pref_kws)
-        )
         # 「こだわらない」を含む回答も「質問に答えた」ので asked_slots へは加算
         # （次のスロットに進むためのトラッキング）
         asked_slots = _extract_asked_slots(messages, lang)
@@ -647,6 +802,9 @@ class Recommender:
         # 製品タイプを会話テキストから推定（LLM 結果より後で補完）
         user_text = " ".join(m.get("content", "") for m in all_user_msgs).lower()
         product_type = _guess_product_type(user_text)
+        detected_slots = _detect_filled_slots(user_text)
+        asked_slots |= detected_slots
+        py_filled = len(detected_slots)
 
         should_search = py_filled >= 2 or user_said_no_pref or asked >= MAX_QUESTIONS
 
@@ -661,12 +819,17 @@ class Recommender:
             role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
             llm_messages.append({"role": role, "content": m.get("content", "")})
 
-        response = self.llm.chat.completions.create(
-            model=self.model, messages=llm_messages, temperature=0, **_json_format_kwargs()
-        )
-        data = _safe_json(response.choices[0].message.content) or {}
+        try:
+            response = self.llm.chat.completions.create(
+                model=self.model, messages=llm_messages, temperature=0, **_json_format_kwargs()
+            )
+            data = _safe_json(response.choices[0].message.content) or {}
+        except Exception:
+            data = {}
         summary = data.get("preference_summary") or []
         intent_data = data.get("intent") or {}
+        if not summary:
+            summary = _heuristic_summary(user_text, lang)
 
         # ── 結果を返す ────────────────────────────────────────────────────────
         if should_search:
