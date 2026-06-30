@@ -187,6 +187,7 @@ Accepts a natural-language query and returns ranked product recommendations with
       "title": "...",
       "display_title": "...",
       "display_language": "en",
+      "availability_status": "available",
       "score": 2.85,
       "matched_attributes": [
         {"attribute_type": "skin_type", "value": "dry", "confidence": 0.9, "evidence": "Skin Type: Dry"},
@@ -270,6 +271,7 @@ The recommender also performs data cleaning and deduplication:
 - normalizes whitespace and empty text
 - deduplicates candidates by product ID and cleaned title
 - exposes multilingual display fields (`display_title`, `display_explanation`, `price_display`) for the frontend
+- marks products without a dataset price as `currently_unavailable`; the frontend can filter available, unavailable, or all results
 
 ## Data Scale
 

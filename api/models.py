@@ -38,6 +38,7 @@ class Recommendation(BaseModel):
     image_url: str | None = None
     price: float | None = None
     price_display: str | None = None
+    availability_status: str = "available"
     average_rating: float | None = None
     rating_number: int | None = None
     score: float

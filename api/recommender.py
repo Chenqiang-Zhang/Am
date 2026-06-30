@@ -1031,6 +1031,7 @@ def _rank_candidates(
                 image_url=candidate.get("image_url"),
                 price=candidate["price"],
                 price_display=_price_display(candidate["price"], lang),
+                availability_status=_availability_status(candidate["price"]),
                 average_rating=candidate["average_rating"],
                 rating_number=candidate["rating_number"],
                 score=round(final_score, 4),
@@ -1131,6 +1132,10 @@ def _price_display(price: float | None, lang: str) -> str | None:
         # UI側では最新レートを使って円換算するため、APIは元通貨を明示する。
         return f"${price:.2f} USD"
     return f"${price:.2f}"
+
+
+def _availability_status(price: float | None) -> str:
+    return "available" if price is not None else "currently_unavailable"
 
 
 def _rating_quality_score(average_rating: float | None, rating_number: int | None) -> float:

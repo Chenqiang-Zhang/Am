@@ -45,6 +45,7 @@ export interface Recommendation {
   image_url: string | null;
   price: number | null;
   price_display: string | null;
+  availability_status: "available" | "currently_unavailable";
   average_rating: number | null;
   rating_number: number | null;
   score: number;

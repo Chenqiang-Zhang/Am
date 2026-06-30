@@ -113,6 +113,30 @@
   color: var(--color-text-muted);
 }
 
+.availabilityOk,
+.availabilityUnavailable {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.availabilityOk {
+  border-color: var(--color-border);
+  color: var(--color-primary);
+  background: var(--color-primary-weak);
+}
+
+.availabilityUnavailable {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
 .id {
   font-size: 11px;
   color: var(--color-text-muted);

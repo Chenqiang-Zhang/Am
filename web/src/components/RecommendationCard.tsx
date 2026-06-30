@@ -29,8 +29,9 @@ interface Props {
 
 // 1 商品の説明カード。既定（ユーザーモード）はやさしい表示、devMode で機械的な根拠データ。
 export default function RecommendationCard({ rec, rank, devMode }: Props) {
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const jpyRate = useUsdToJpy();
+  const available = rec.availability_status === "available" || rec.price != null;
   return (
     <article className={styles.card} style={{ animationDelay: `${(rank - 1) * 70}ms` }}>
       <ProductImage src={rec.image_url} alt={rec.title} />
@@ -49,10 +50,13 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
 
         <div className={styles.meta}>
           <RatingStars rating={rec.average_rating} count={rec.rating_number} />
+          <span className={available ? styles.availabilityOk : styles.availabilityUnavailable}>
+            {available ? t.availableLabel : t.unavailableLabel}
+          </span>
           <span className={rec.price != null ? styles.price : styles.priceUnknown}>
             {rec.price != null
               ? formatPrice(rec.price, lang, jpyRate)
-              : (lang === "ja" ? "価格情報なし" : "Price unavailable")}
+              : (lang === "ja" ? "価格未登録" : "No price in dataset")}
           </span>
           {devMode && <span className={styles.id}>{rec.product_id}</span>}
         </div>

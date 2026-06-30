@@ -22,6 +22,13 @@ interface Dict {
   otherPlaceholder: string;
   yourPreferences: string;
   empty: string;
+  resultFilter: string;
+  filterAvailable: string;
+  filterAll: string;
+  filterUnavailable: string;
+  availableLabel: string;
+  unavailableLabel: string;
+  filteredEmpty: string;
   matchedAttributes: string;
   matchedTerms: string;
   evidence: string;
@@ -53,6 +60,13 @@ const ja: Dict = {
   otherPlaceholder: "自由に入力…",
   yourPreferences: "あなたの希望",
   empty: "条件に一致する商品が見つかりませんでした。言葉を変えて、もう一度お試しください。",
+  resultFilter: "表示",
+  filterAvailable: "購入可能",
+  filterAll: "すべて",
+  filterUnavailable: "販売不可のみ",
+  availableLabel: "購入可能",
+  unavailableLabel: "売り切れ・現在購入不可",
+  filteredEmpty: "この表示条件に一致する商品はありません。",
   matchedAttributes: "一致した属性",
   matchedTerms: "一致テキスト",
   evidence: "根拠（特徴文）",
@@ -84,6 +98,13 @@ const en: Dict = {
   otherPlaceholder: "Type here…",
   yourPreferences: "Your preferences",
   empty: "No matching products found. Try rephrasing your request.",
+  resultFilter: "View",
+  filterAvailable: "Available",
+  filterAll: "All",
+  filterUnavailable: "Unavailable only",
+  availableLabel: "Available",
+  unavailableLabel: "Sold out / currently unavailable",
+  filteredEmpty: "No products match this result filter.",
   matchedAttributes: "Matched attributes",
   matchedTerms: "Matched terms",
   evidence: "Evidence (from description)",
