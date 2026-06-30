@@ -999,6 +999,7 @@ def _rank_candidates(
         rating_quality_score = _rating_quality_score(candidate["average_rating"], candidate["rating_number"])
         popularity_score = _popularity_score(candidate["rating_number"])
         query_coverage_score = min((len(matched_attributes) + len(matched_terms)) / total_signals, 1.0)
+        price_availability_score = 1.0 if candidate["price"] is not None else 0.0
 
         final_score = (
             4.5 * attribute_match_score
@@ -1007,6 +1008,7 @@ def _rank_candidates(
             + 1.5 * rating_quality_score
             + 0.75 * popularity_score
             + 1.25 * query_coverage_score
+            + 2.0 * price_availability_score
         )
 
         breakdown = {
@@ -1016,6 +1018,7 @@ def _rank_candidates(
             "rating_quality": round(rating_quality_score, 4),
             "popularity": round(popularity_score, 4),
             "query_coverage": round(query_coverage_score, 4),
+            "price_availability": round(price_availability_score, 4),
         }
         explanation = _build_rich_explanation(candidate, matched_terms, lang)
 
@@ -1043,6 +1046,7 @@ def _rank_candidates(
 
     recommendations.sort(
         key=lambda r: (
+            r.price is not None,
             r.score,
             r.score_breakdown.get("query_coverage", 0.0),
             r.average_rating or 0.0,

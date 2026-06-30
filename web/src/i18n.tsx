@@ -112,6 +112,7 @@ export const METRIC_LABELS: Record<Lang, Record<string, string>> = {
     query_coverage: "クエリ被覆率",
     rating_quality: "評価品質",
     popularity: "人気度",
+    price_availability: "価格あり",
   },
   en: {
     attribute_match: "Attribute match",
@@ -120,6 +121,7 @@ export const METRIC_LABELS: Record<Lang, Record<string, string>> = {
     query_coverage: "Query coverage",
     rating_quality: "Rating quality",
     popularity: "Popularity",
+    price_availability: "Price available",
   },
 };
 

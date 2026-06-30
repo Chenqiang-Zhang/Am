@@ -15,7 +15,7 @@ REST API (FastAPI)
     ├── LLM intent extraction  (natural language → structured attribute filters)
     ├── Conversational recommendation (multi-turn preference collection)
     ├── Multi-path graph recall (attributes + feature text + title/category/store)
-    ├── Hybrid ranking          (match coverage + rating quality + popularity)
+    ├── Hybrid ranking          (match coverage + rating quality + popularity + price availability)
     └── Reason feedback logging (recommendation explanation feedback)
 ```
 
@@ -200,7 +200,8 @@ Accepts a natural-language query and returns ranked product recommendations with
         "field_match": 0.25,
         "rating_quality": 0.82,
         "popularity": 0.64,
-        "query_coverage": 0.86
+        "query_coverage": 0.86,
+        "price_availability": 1.0
       },
       "reason_quantification": {
         "attribute_match": 0.95,
@@ -208,7 +209,8 @@ Accepts a natural-language query and returns ranked product recommendations with
         "field_match": 0.25,
         "rating_quality": 0.82,
         "popularity": 0.64,
-        "query_coverage": 0.86
+        "query_coverage": 0.86,
+        "price_availability": 1.0
       },
       "explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings",
       "display_explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings"
@@ -259,7 +261,7 @@ The recommender uses three recall paths, then re-ranks the merged candidates:
 - `Product -[:HAS_FEATURE]-> Feature` for broader text matches from product metadata
 - `Product` title/category and `Product -[:SOLD_BY]-> Store` for simple field matches
 
-The final score combines attribute match, feature-text match, field match, query coverage, Bayesian-smoothed rating quality, and popularity. The `matched_attributes` array represents the most precise graph path that justifies a recommendation:
+The final score combines attribute match, feature-text match, field match, query coverage, Bayesian-smoothed rating quality, popularity, and price availability. The `matched_attributes` array represents the most precise graph path that justifies a recommendation:
 `User Query → [LLM intent] → Attribute ←[HAS_ATTRIBUTE]← Product`
 
 The recommender also performs data cleaning and deduplication:
