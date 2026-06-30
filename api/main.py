@@ -4,7 +4,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from .models import RecommendRequest, RecommendResponse
+from .models import (
+    ChatRequest,
+    ChatResponse,
+    RecommendRequest,
+    RecommendResponse,
+    RecommendationFeedbackRequest,
+    RecommendationFeedbackResponse,
+    ReviewItem,
+    ReviewsResponse,
+)
 from .recommender import Recommender
 
 _recommender: Recommender | None = None
@@ -31,5 +40,33 @@ async def health() -> dict:
 async def recommend(req: RecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    intent, results = _recommender.recommend(req.query, req.limit)
+    intent, results = _recommender.recommend(req.query, req.limit, req.lang)
     return RecommendResponse(query=req.query, intent=intent, recommendations=results)
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest) -> ChatResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang)
+    return ChatResponse(**result)
+
+
+@app.get("/products/{product_id}/reviews", response_model=ReviewsResponse)
+async def get_reviews(product_id: str, limit: int = 5) -> ReviewsResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    rows = _recommender.get_reviews(product_id, limit)
+    reviews = [ReviewItem(**r) for r in rows]
+    return ReviewsResponse(product_id=product_id, reviews=reviews)
+
+
+@app.post("/recommendations/{product_id}/feedback", response_model=RecommendationFeedbackResponse)
+async def recommendation_feedback(
+    product_id: str,
+    req: RecommendationFeedbackRequest,
+) -> RecommendationFeedbackResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    _recommender.save_feedback(product_id, req.model_dump())
+    return RecommendationFeedbackResponse(status="ok", product_id=product_id)

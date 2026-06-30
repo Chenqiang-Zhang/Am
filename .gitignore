@@ -14,6 +14,15 @@ env/
 .ipynb_checkpoints/
 .DS_Store
 
+# Frontend (web/) build artifacts and dependencies
+web/node_modules/
+web/dist/
+web/*.local
+
+# Runtime logs
+logs/
+.npm-cache/
+
 # Local secrets
 .env
 *.env

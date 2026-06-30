@@ -1,0 +1,37 @@
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* 空星を敷いた上に塗り星をクリップして重ねる */
+.track {
+  position: relative;
+  display: inline-block;
+  letter-spacing: -1px;
+}
+
+.empty {
+  color: #d6dbe1;
+  display: block;
+}
+
+.fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-star);
+}
+
+.value {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.count {
+  color: var(--color-text-muted);
+}

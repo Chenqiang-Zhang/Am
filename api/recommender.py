@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import html as _html_mod
 import json
 import math
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +48,84 @@ Return JSON with this exact structure:
   "min_rating": null
 }}"""
 
+# 対話型推薦：聞き返しは最大この回数まで（しつこくしない）
+MAX_QUESTIONS = 5  # 無限ループ防止の安全網。通常はLLMが先にsearchを選ぶ。
+
+CHAT_SYSTEM_PROMPT = f"""You are a friendly beauty-product shopping assistant. The product catalog is in English (Amazon All_Beauty). The user may write in Japanese or English. Write everything you SHOW the user (questions, quick-reply options, preference_summary) in the TARGET LANGUAGE specified at the very end of these instructions.
+
+Through conversation, collect the user's preferences across these slots:
+- product_type (serum, moisturizer, cleanser, toner, sunscreen, shampoo, conditioner, hand wash, nail, perfume, makeup ...)
+- skin_type (dry, oily, sensitive, combination, acne-prone, normal, all)
+- hair_type (damaged, dry, oily, color-treated, curly, fine, normal, all)
+- scent (unscented/fragrance-free, floral, citrus, woody, fresh, sweet, musky)
+- benefit (moisturizing, brightening, anti-aging, soothing, volumizing, strengthening, long-lasting ...)
+- texture (cream, gel, lotion, powder, oil, balm, foam, mist ...)
+- ingredient to use (hyaluronic acid, vitamin c, retinol, niacinamide, argan oil ...) or avoid
+- price_max (USD number), min_rating (number), brand
+
+DECISION RULE — follow precisely:
+Count filled_slots = number of distinct answered slots from: skin_type, hair_type, scent, benefit, texture, ingredient, price_max, min_rating.
+NOTE: product_type alone does NOT count as a filled_slot.
+
+- action = "ask"    if product_type is unknown OR filled_slots < 2 (AND user has NOT said おまかせ AND questions asked < {MAX_QUESTIONS})
+- action = "search" if filled_slots >= 2 OR user said おまかせ/no preference OR questions >= {MAX_QUESTIONS}
+
+Ask ONE question at a time. Slot priority (first unanswered slot in the list):
+- skincare (cream, lotion, serum, toner, cleanser, sunscreen, eye cream):
+    skin_type → benefit → texture → ingredient → price_max
+- haircare (shampoo, conditioner, treatment, hair oil):
+    hair_type → benefit → scent → ingredient → price_max
+- fragrance / body mist / perfume:
+    scent → benefit → price_max
+- makeup (foundation, lipstick, mascara, eyeshadow, blush, concealer):
+    skin_type → benefit → texture → price_max
+- nail / other / unknown product_type:
+    product_type → benefit → texture → price_max
+
+Give 3-5 quick-reply options in the TARGET LANGUAGE. ALWAYS include one "no preference" option (こだわらない / Don't mind).
+
+IMPORTANT: "benefit" like "moisturizing" inferred from product name (e.g. 保湿クリーム) does NOT count as a filled benefit slot — the user must explicitly confirm it.
+
+Step-by-step example (skincare):
+  Turn 1 user: "保湿クリームが欲しい"
+    → product_type=moisturizer, filled_slots=0 → ask skin_type
+    → question: "肌タイプを教えてください", options: ["乾燥肌","脂性肌","敏感肌","混合肌","こだわらない"]
+  Turn 2 user: "乾燥肌です"
+    → filled_slots=1 (skin_type) → ask benefit (next in priority)
+    → question: "どんな効果を重視しますか？", options: ["高保湿","美白・ブライトニング","エイジングケア","鎮静・バリア強化","こだわらない"]
+  Turn 3 user: "高保湿がいい"
+    → filled_slots=2 (skin_type + benefit) → action = "search"
+
+Step-by-step example (fragrance):
+  Turn 1 user: "香水が欲しい"
+    → product_type=perfume, filled_slots=0 → ask scent
+    → options: ["フローラル","シトラス","ウッディ","フレッシュ","こだわらない"]
+  Turn 2 user: "フローラル"
+    → filled_slots=1 (scent) → ask benefit (price, mood, etc.)
+    → question: "予算や雰囲気の好みはありますか？", options: ["$30以下","$50以下","大人っぽい","軽くて爽やか","こだわらない"]
+  Turn 3 user: "$30以下"
+    → filled_slots=2 (scent + price_max) → action = "search"
+
+When action is "search", produce a structured intent:
+- attribute_filters: list of {{"attribute_type": one of [{", ".join(ATTRIBUTE_TYPES)}], "value": ..., "weight": 1.0|0.7|0.4}}
+- Write ALL values and keywords in ENGLISH (the catalog is English): 敏感肌->"sensitive", 無香料->"unscented", ヒアルロン酸->"hyaluronic acid", 化粧水->"toner", 美容液->"serum".
+- keywords: English words. price_max/min_rating: number or null.
+
+Always include "preference_summary": the user's confirmed preferences as short labels for display, written in the TARGET LANGUAGE (do not mix other languages), e.g. (Japanese) ["化粧水","敏感肌","無香料"] or (English) ["toner","sensitive skin","fragrance-free"].
+
+CONVERSATION HISTORY NOTE: Previous assistant messages in the conversation history contain only the question text shown to the user (extracted from your prior JSON responses). This does NOT mean you should respond in plain text — you MUST ALWAYS respond with a valid JSON object.
+
+Return ONLY this JSON object (no other text before or after):
+{{
+  "action": "ask" | "search",
+  "question": "(ask時) 質問文 / それ以外は null",
+  "options": ["(ask時の選択肢)"],
+  "slot": "(今聞いているスロット名: skin_type / hair_type / scent / benefit / texture / ingredient / price_max / product_type) | null",
+  "filled_slots": <integer: count of distinct answered personalization slots so far, NOT counting product_type>,
+  "intent": {{"attribute_filters": [], "keywords": [], "price_max": null, "min_rating": null}},
+  "preference_summary": []
+}}"""
+
 # Attribute recall: precise, explainable matches from LLM-extracted product attributes.
 # Dedup by (attribute_type, value) first so duplicate Attribute nodes do not inflate the score.
 _ATTRIBUTE_SEARCH_CYPHER = """
@@ -74,6 +155,7 @@ RETURN p.product_id AS product_id,
        p.price AS price,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
        matched_attrs,
        score AS attribute_score
 ORDER BY score DESC, toFloat(p.average_rating) DESC
@@ -97,6 +179,7 @@ RETURN p.product_id AS product_id,
        p.price AS price,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
        feature_matches,
        feature_term_hits,
        feature_hit_count
@@ -123,6 +206,7 @@ RETURN p.product_id AS product_id,
        p.price AS price,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
        field_terms
 ORDER BY size(field_terms) DESC, toFloat(p.average_rating) DESC
 LIMIT $candidate_limit
@@ -131,6 +215,283 @@ LIMIT $candidate_limit
 RATING_PRIOR = 3.8
 RATING_PRIOR_COUNT = 50
 POPULARITY_REFERENCE_COUNT = 5000
+FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
+
+
+_CHAT_JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "chat_response",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "action":             {"type": "string"},
+                "question":           {"type": ["string", "null"]},
+                "options":            {"type": "array", "items": {"type": "string"}},
+                "slot":               {"type": ["string", "null"]},
+                "filled_slots":       {"type": "integer"},
+                "intent":             {"type": ["object", "null"]},
+                "preference_summary": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["action", "question", "options", "slot", "filled_slots", "intent", "preference_summary"],
+        },
+    },
+}
+
+
+def _json_format_kwargs() -> dict[str, Any]:
+    """LM Studio は json_schema、OpenAI/DeepSeek は json_object を使う。
+    両者に対応するためプロバイダーを問わず json_schema を先に試す。
+    外部で例外を捕まえるのではなく、呼び出し側で try/except を避けるためここで dict を返す。"""
+    return {"response_format": _CHAT_JSON_SCHEMA}
+
+
+# filled_slots のカウント対象スロット（product_type は含めない）
+_PERSONALIZATION_SLOTS = {"skin_type", "hair_type", "scent", "benefit", "texture", "ingredient", "price_max", "min_rating"}
+
+# 製品カテゴリ別のスロット優先順位
+_SLOT_PRIORITY: dict[str, list[str]] = {
+    "skincare":   ["skin_type", "benefit", "texture", "ingredient", "price_max"],
+    "haircare":   ["hair_type", "benefit", "scent",   "ingredient", "price_max"],
+    "fragrance":  ["scent",     "benefit", "price_max"],
+    "makeup":     ["skin_type", "benefit", "texture", "price_max"],
+    "other":      ["benefit",   "texture", "price_max"],
+}
+
+# キーワード→製品カテゴリマッピング
+_PRODUCT_TYPE_MAP: list[tuple[list[str], str]] = [
+    (["serum", "moisturizer", "lotion", "cleanser", "toner", "sunscreen", "eye cream",
+      "美容液", "化粧水", "乳液", "保湿クリーム", "クレンザー", "日焼け止め", "洗顔"], "skincare"),
+    (["shampoo", "conditioner", "hair", "treatment", "シャンプー", "コンディショナー",
+      "ヘアオイル", "ヘアケア", "トリートメント"], "haircare"),
+    (["perfume", "fragrance", "cologne", "mist", "香水", "フレグランス", "ミスト"], "fragrance"),
+    (["foundation", "lipstick", "mascara", "eyeshadow", "blush", "concealer", "makeup",
+      "ファンデ", "リップ", "マスカラ", "アイシャドウ", "チーク", "コンシーラー", "メイク"], "makeup"),
+]
+
+# 質問テンプレート（lang → slot_key → {question, options}）
+_QUESTION_TEMPLATES: dict[str, dict[str, dict[str, Any]]] = {
+    "ja": {
+        "product_type": {
+            "question": "どんなアイテムをお探しですか？",
+            "options": ["スキンケア（化粧水・クリーム）", "ヘアケア（シャンプー等）", "フレグランス", "メイクアップ", "こだわらない"],
+            "slot": "product_type",
+        },
+        "skin_type": {
+            "question": "肌タイプを教えてください",
+            "options": ["乾燥肌", "脂性肌", "敏感肌", "混合肌", "こだわらない"],
+            "slot": "skin_type",
+        },
+        "hair_type": {
+            "question": "髪タイプを教えてください",
+            "options": ["ダメージ毛", "乾燥した髪", "細い髪", "カラー毛", "こだわらない"],
+            "slot": "hair_type",
+        },
+        "scent": {
+            "question": "香りの好みはありますか？",
+            "options": ["フローラル", "シトラス", "ウッディ", "フレッシュ", "こだわらない"],
+            "slot": "scent",
+        },
+        "benefit_skincare": {
+            "question": "どんな効果を重視しますか？",
+            "options": ["高保湿", "美白・ブライトニング", "エイジングケア", "鎮静・バリア強化", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_haircare": {
+            "question": "どんな効果を重視しますか？",
+            "options": ["補修・ダメージケア", "保湿・潤い", "ボリュームアップ", "頭皮ケア", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_fragrance": {
+            "question": "予算や雰囲気の好みはありますか？",
+            "options": ["$30以下", "$50以下", "大人っぽい", "爽やか・軽め", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_makeup": {
+            "question": "どんな仕上がりを求めますか？",
+            "options": ["カバー力重視", "自然な仕上がり", "長時間キープ", "ツヤ感", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_other": {
+            "question": "どんな効果を求めますか？",
+            "options": ["保湿", "美白", "エイジングケア", "センシティブ対応", "こだわらない"],
+            "slot": "benefit",
+        },
+        "texture": {
+            "question": "テクスチャの好みはありますか？",
+            "options": ["さっぱり（ジェル・ローション）", "しっとり（クリーム）", "軽め（ミルク）", "こだわらない"],
+            "slot": "texture",
+        },
+        "ingredient": {
+            "question": "特定の成分のご希望はありますか？",
+            "options": ["ヒアルロン酸", "ビタミンC", "レチノール", "ナイアシンアミド", "こだわらない"],
+            "slot": "ingredient",
+        },
+        "price_max": {
+            "question": "ご予算はいかがですか？",
+            "options": ["$20以下", "$30以下", "$50以下", "$100以下", "こだわらない"],
+            "slot": "price_max",
+        },
+    },
+    "en": {
+        "product_type": {
+            "question": "What type of product are you looking for?",
+            "options": ["Skincare (serum, moisturizer)", "Haircare (shampoo, conditioner)", "Fragrance", "Makeup", "Don't mind"],
+            "slot": "product_type",
+        },
+        "skin_type": {
+            "question": "What's your skin type?",
+            "options": ["Dry", "Oily", "Sensitive", "Combination", "Don't mind"],
+            "slot": "skin_type",
+        },
+        "hair_type": {
+            "question": "What's your hair type?",
+            "options": ["Damaged", "Dry", "Fine", "Color-treated", "Don't mind"],
+            "slot": "hair_type",
+        },
+        "scent": {
+            "question": "Any scent preference?",
+            "options": ["Floral", "Citrus", "Woody", "Fresh", "Don't mind"],
+            "slot": "scent",
+        },
+        "benefit_skincare": {
+            "question": "What effect do you want?",
+            "options": ["Deep moisturizing", "Brightening", "Anti-aging", "Soothing", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_haircare": {
+            "question": "What effect do you want?",
+            "options": ["Repair & strengthen", "Moisture & hydration", "Volume", "Scalp care", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_fragrance": {
+            "question": "Any budget or mood preference?",
+            "options": ["Under $30", "Under $50", "Sophisticated", "Fresh & light", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_makeup": {
+            "question": "What finish do you prefer?",
+            "options": ["Full coverage", "Natural look", "Long-lasting", "Dewy glow", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_other": {
+            "question": "What benefit are you looking for?",
+            "options": ["Moisturizing", "Brightening", "Anti-aging", "Sensitive-skin friendly", "Don't mind"],
+            "slot": "benefit",
+        },
+        "texture": {
+            "question": "Any texture preference?",
+            "options": ["Lightweight (gel/lotion)", "Rich (cream)", "Medium (milk)", "Don't mind"],
+            "slot": "texture",
+        },
+        "ingredient": {
+            "question": "Any key ingredient preference?",
+            "options": ["Hyaluronic acid", "Vitamin C", "Retinol", "Niacinamide", "Don't mind"],
+            "slot": "ingredient",
+        },
+        "price_max": {
+            "question": "What's your budget?",
+            "options": ["Under $20", "Under $30", "Under $50", "Under $100", "Don't mind"],
+            "slot": "price_max",
+        },
+    },
+}
+
+
+def _extract_asked_slots(messages: list[dict[str, Any]], lang: str) -> set[str]:
+    """会話履歴のassistantメッセージをテンプレートと照合し、既に聞いたスロットを返す。"""
+    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
+    asked: set[str] = set()
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        q_text = (m.get("content") or "").strip()
+        for tpl in tpls.values():
+            if tpl.get("question") == q_text:
+                slot = tpl.get("slot", "")
+                if slot:
+                    asked.add(slot)
+                break
+    return asked
+
+
+def _guess_product_type(text: str) -> str | None:
+    for keywords, category in _PRODUCT_TYPE_MAP:
+        if any(kw in text for kw in keywords):
+            return category
+    return None
+
+
+def _pick_next_question(product_type: str | None, filled: set[str], lang: str) -> dict[str, Any]:
+    """製品タイプと充填済みスロットから次の質問テンプレートを返す。"""
+    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
+    category = product_type or "other"
+    priority = _SLOT_PRIORITY.get(category, _SLOT_PRIORITY["other"])
+
+    if product_type is None:
+        return tpls["product_type"]
+
+    for slot in priority:
+        if slot in filled:
+            continue
+        # benefit は製品カテゴリ別テンプレートを使う
+        if slot == "benefit":
+            key = f"benefit_{category}" if f"benefit_{category}" in tpls else "benefit_other"
+            return tpls[key]
+        if slot in tpls:
+            return tpls[slot]
+
+    # すべてのスロットが埋まっていれば price_max（最後の手段）
+    return tpls.get("price_max", tpls["product_type"])
+
+
+def _parse_attribute_filters(raw: list[Any]) -> list[AttributeFilter]:
+    """LLM出力のattribute_filtersをパース。value/attribute_typeがNullや非文字列の行を除外する。"""
+    result = []
+    for f in raw:
+        if not isinstance(f, dict):
+            continue
+        if not isinstance(f.get("attribute_type"), str) or not isinstance(f.get("value"), str):
+            continue
+        if not f["attribute_type"] or not f["value"]:
+            continue
+        try:
+            result.append(AttributeFilter(**f))
+        except Exception:
+            continue
+    return result
+
+
+def _extract_json_object(content: str | None) -> str:
+    """Extract a JSON object from an LLM response.
+
+    Provider-agnostic: handles clean JSON, markdown-fenced JSON (```json ... ```),
+    and responses with surrounding prose / reasoning by slicing the outermost {...}.
+    Lets the same code work with LM Studio (no json_object mode), DeepSeek and OpenAI.
+    """
+    text = (content or "").strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start:end + 1]
+    return text
+
+
+def _safe_json(content: str | None) -> dict[str, Any] | None:
+    """LLM応答からJSONを頑健に取り出す。壊れていたら軽く補修し、ダメなら None を返す
+    （json.loads の例外で 500 を出さないためのガード）。"""
+    text = _extract_json_object(content)
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    # よくある崩れ（末尾カンマ）を補修して再挑戦
+    cleaned = re.sub(r",\s*([}\]])", r"\1", text)
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        return None
 
 
 def _load_env(path: Path = Path(".env")) -> None:
@@ -173,18 +534,17 @@ class Recommender:
                 {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                 {"role": "user", "content": query},
             ],
-            response_format={"type": "json_object"},
             temperature=0,
         )
-        data = json.loads(response.choices[0].message.content)
+        data = _safe_json(response.choices[0].message.content) or {}
         return SearchIntent(
-            attribute_filters=[AttributeFilter(**f) for f in data.get("attribute_filters", [])],
+            attribute_filters=_parse_attribute_filters(data.get("attribute_filters", [])),
             keywords=data.get("keywords", []),
             price_max=data.get("price_max"),
             min_rating=data.get("min_rating"),
         )
 
-    def search_products(self, intent: SearchIntent, limit: int) -> list[Recommendation]:
+    def search_products(self, intent: SearchIntent, limit: int, lang: str = "en") -> list[Recommendation]:
         terms = _search_terms(intent)
         if not intent.attribute_filters and not terms:
             return []
@@ -214,7 +574,7 @@ class Recommender:
                             name=m["name"],
                             value=m["value"],
                             confidence=float(m["confidence"] or 0),
-                            evidence=m.get("evidence"),
+                            evidence=_strip_html(m.get("evidence")),
                         )
                         for m in record["matched_attrs"]
                     ]
@@ -233,7 +593,7 @@ class Recommender:
                         m["term"] for m in record["feature_matches"] if m.get("term")
                     )
                     for match in record["feature_matches"]:
-                        evidence = match.get("evidence")
+                        evidence = _strip_html(match.get("evidence"))
                         if evidence and evidence not in candidate["feature_evidence"]:
                             candidate["feature_evidence"].append(evidence)
                     candidate["feature_hit_count"] += int(record["feature_hit_count"] or 0)
@@ -249,15 +609,162 @@ class Recommender:
                     candidate = _candidate(candidates, record)
                     candidate["field_terms"].update(record["field_terms"] or [])
 
-        return _rank_candidates(candidates, intent, terms, limit)
+        return _rank_candidates(candidates, intent, terms, limit, lang)
 
-    def recommend(self, query: str, limit: int = 10) -> tuple[SearchIntent, list[Recommendation]]:
+    def recommend(self, query: str, limit: int = 10, lang: str = "en") -> tuple[SearchIntent, list[Recommendation]]:
         intent = self.extract_intent(query)
-        products = self.search_products(intent, limit)
+        products = self.search_products(intent, limit, lang)
         return intent, products
+
+    def chat(self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja") -> dict[str, Any]:
+        """対話型推薦の1ターン。
+
+        ask/search の判断を Python で担当し LLM の行動決定ルール遵守に依存しない安定動作を実現。
+        - py_filled: ユーザーが答えた質問数（会話履歴から直接カウント）
+        - asked_slots: 過去に聞いたスロット（テンプレートマッチングで特定）
+        """
+        all_user_msgs = [m for m in messages if m.get("role") == "user"]
+        answer_msgs = all_user_msgs[1:]  # 1番目はproduct_typeの質問なので除外
+        asked = sum(1 for m in messages if m.get("role") == "assistant")
+
+        # ── Python で ask/search と次スロットを決定（LLM 不要）─────────────
+        # ユーザーがグローバルに「おまかせ」と言ったか
+        user_said_no_pref = any(
+            kw in m.get("content", "")
+            for m in all_user_msgs
+            for kw in ("おまかせ", "なんでも", "no preference", "don't mind", "どちらでも")
+        )
+        # 各回答が「こだわらない」でなければ filled とみなす
+        _no_pref_kws = ("こだわらない", "なんでも", "don't mind", "no preference")
+        py_filled = sum(
+            1 for m in answer_msgs
+            if not any(kw in m.get("content", "") for kw in _no_pref_kws)
+        )
+        # 「こだわらない」を含む回答も「質問に答えた」ので asked_slots へは加算
+        # （次のスロットに進むためのトラッキング）
+        asked_slots = _extract_asked_slots(messages, lang)
+
+        # 製品タイプを会話テキストから推定（LLM 結果より後で補完）
+        user_text = " ".join(m.get("content", "") for m in all_user_msgs).lower()
+        product_type = _guess_product_type(user_text)
+
+        should_search = py_filled >= 2 or user_said_no_pref or asked >= MAX_QUESTIONS
+
+        # ── LLM 呼び出し: intent 抽出 + preference_summary ─────────────────
+        target_language = "Japanese" if lang == "ja" else "English"
+        system = CHAT_SYSTEM_PROMPT + (
+            f"\n\nTARGET LANGUAGE = {target_language}. Write preference_summary ONLY in this language. "
+            "intent values and keywords stay in ENGLISH regardless of language."
+        )
+        llm_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        for m in messages:
+            role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
+            llm_messages.append({"role": role, "content": m.get("content", "")})
+
+        response = self.llm.chat.completions.create(
+            model=self.model, messages=llm_messages, temperature=0, **_json_format_kwargs()
+        )
+        data = _safe_json(response.choices[0].message.content) or {}
+        summary = data.get("preference_summary") or []
+        intent_data = data.get("intent") or {}
+
+        # ── 結果を返す ────────────────────────────────────────────────────────
+        if should_search:
+            intent = self._intent_from_data(intent_data if intent_data else None, messages)
+            products = self.search_products(intent, limit, lang)
+            return {
+                "action": "search",
+                "question": None,
+                "options": [],
+                "preference_summary": summary,
+                "intent": intent,
+                "recommendations": products,
+            }
+
+        next_q = _pick_next_question(product_type, asked_slots, lang)
+        return {
+            "action": "ask",
+            "question": next_q["question"],
+            "options": next_q["options"],
+            "preference_summary": summary,
+            "intent": None,
+            "recommendations": [],
+        }
+
+    def _intent_from_data(self, intent_data: Any, messages: list[dict[str, Any]]) -> SearchIntent:
+        """LLMが返した intent を SearchIntent 化。無ければ会話全体から抽出にフォールバック。"""
+        if intent_data:
+            try:
+                return SearchIntent(
+                    attribute_filters=_parse_attribute_filters(intent_data.get("attribute_filters", [])),
+                    keywords=intent_data.get("keywords", []),
+                    price_max=intent_data.get("price_max"),
+                    min_rating=intent_data.get("min_rating"),
+                )
+            except Exception:
+                pass
+        text = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
+        return self.extract_intent(text)
+
+    def get_reviews(self, product_id: str, limit: int = 5) -> list[dict[str, Any]]:
+        """商品IDに紐づくレビューをhelpful_vote降順で返す。REVIEWS/WROTEエッジを使用。"""
+        cypher = """
+MATCH (p:Product {product_id: $product_id})<-[:REVIEWS]-(r:Review)
+WHERE r.text IS NOT NULL AND size(coalesce(r.text, '')) > 10
+RETURN r.title AS title,
+       r.text AS text,
+       toFloat(r.rating) AS rating,
+       toInteger(r.helpful_vote) AS helpful_vote,
+       r.verified_purchase AS verified_purchase
+ORDER BY r.helpful_vote DESC, r.rating DESC
+LIMIT $limit
+"""
+        with self.driver.session(database=self.neo4j_database) as session:
+            result = session.run(cypher, product_id=product_id, limit=limit)
+            rows = []
+            for record in result:
+                r = dict(record)
+                r["text"] = _strip_html(r.get("text"))
+                r["title"] = _strip_html(r.get("title"))
+                rows.append(r)
+            return rows
+
+    def save_feedback(self, product_id: str, payload: dict[str, Any]) -> None:
+        """推薦理由のユーザーフィードバックをJSONLで保存する。"""
+        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "product_id": product_id,
+            **payload,
+        }
+        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
     def close(self) -> None:
         self.driver.close()
+
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text: str | None) -> str | None:
+    """HTMLタグとエンティティを除去してプレーンテキストに変換する。"""
+    if not text:
+        return text
+    text = _HTML_TAG_RE.sub(" ", text)          # タグを空白に置換
+    text = _html_mod.unescape(text)             # &amp; &ndash; &#160; 等を全て展開
+    return re.sub(r"\s+", " ", text).strip()    # 連続空白を1つに圧縮
+
+
+def _clean_text(text: Any) -> str:
+    cleaned = _strip_html("" if text is None else str(text)) or ""
+    cleaned = cleaned.replace("\x00", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _dedupe_key(title: str) -> str:
+    key = re.sub(r"[^a-z0-9]+", " ", title.lower())
+    return re.sub(r"\s+", " ", key).strip()
 
 
 def _build_explanation(matched: list[MatchedAttribute]) -> str:
@@ -273,7 +780,7 @@ def _build_explanation(matched: list[MatchedAttribute]) -> str:
 def _search_terms(intent: SearchIntent) -> list[str]:
     terms: list[str] = []
     for value in intent.keywords + [f.value for f in intent.attribute_filters]:
-        term = " ".join(value.lower().strip().split())
+        term = _clean_text(value).lower()
         if len(term) < 2 or term in terms:
             continue
         terms.append(term)
@@ -284,12 +791,15 @@ def _candidate(candidates: dict[str, dict[str, Any]], record: Any) -> dict[str, 
     product_id = record["product_id"]
     candidate = candidates.get(product_id)
     if candidate is None:
+        title = _clean_text(record["title"])
         candidate = {
             "product_id": product_id,
-            "title": record["title"],
+            "title": title,
+            "dedupe_key": _dedupe_key(title),
             "price": _optional_float(record["price"]),
             "average_rating": _optional_float(record["average_rating"]),
             "rating_number": _optional_int(record["rating_number"]),
+            "image_url": record.get("image_url"),
             "attribute_score": 0.0,
             "matched_attributes": [],
             "feature_terms": set(),
@@ -306,6 +816,7 @@ def _rank_candidates(
     intent: SearchIntent,
     terms: list[str],
     limit: int,
+    lang: str,
 ) -> list[Recommendation]:
     total_attribute_weight = sum(max(f.weight, 0.0) for f in intent.attribute_filters) or 1.0
     total_terms = len(terms) or 1
@@ -313,6 +824,8 @@ def _rank_candidates(
 
     recommendations: list[Recommendation] = []
     for candidate in candidates.values():
+        if not candidate["title"]:
+            continue
         matched_attributes = candidate["matched_attributes"]
         matched_terms = sorted(candidate["feature_terms"] | candidate["field_terms"])
 
@@ -341,12 +854,17 @@ def _rank_candidates(
             "popularity": round(popularity_score, 4),
             "query_coverage": round(query_coverage_score, 4),
         }
+        explanation = _build_rich_explanation(candidate, matched_terms, lang)
 
         recommendations.append(
             Recommendation(
                 product_id=candidate["product_id"],
                 title=candidate["title"],
+                display_title=_localized_title(candidate["title"], lang),
+                display_language=_normalize_lang(lang),
+                image_url=candidate.get("image_url"),
                 price=candidate["price"],
+                price_display=_price_display(candidate["price"], lang),
                 average_rating=candidate["average_rating"],
                 rating_number=candidate["rating_number"],
                 score=round(final_score, 4),
@@ -354,7 +872,9 @@ def _rank_candidates(
                 matched_terms=matched_terms,
                 matched_feature_evidence=candidate["feature_evidence"][:5],
                 score_breakdown=breakdown,
-                explanation=_build_rich_explanation(candidate, matched_terms),
+                reason_quantification=breakdown,
+                explanation=explanation,
+                display_explanation=explanation,
             )
         )
 
@@ -367,20 +887,83 @@ def _rank_candidates(
         ),
         reverse=True,
     )
-    return recommendations[:limit]
+    return _dedupe_recommendations(recommendations, limit)
 
 
-def _build_rich_explanation(candidate: dict[str, Any], matched_terms: list[str]) -> str:
+def _build_rich_explanation(candidate: dict[str, Any], matched_terms: list[str], lang: str = "en") -> str:
     parts: list[str] = []
     attribute_explanation = _build_explanation(candidate["matched_attributes"])
     if attribute_explanation != "Matched":
         parts.append(attribute_explanation)
     if matched_terms:
-        parts.append("text terms: " + ", ".join(matched_terms[:6]))
+        label = "一致テキスト" if _normalize_lang(lang) == "ja" else "text terms"
+        parts.append(label + ": " + ", ".join(matched_terms[:6]))
     if candidate["average_rating"] is not None:
         rating_number = candidate["rating_number"] or 0
-        parts.append(f"rating: {candidate['average_rating']:.1f} from {rating_number} ratings")
-    return " | ".join(parts) if parts else "Matched by product quality signals"
+        if _normalize_lang(lang) == "ja":
+            parts.append(f"評価: {candidate['average_rating']:.1f} / {rating_number}件")
+        else:
+            parts.append(f"rating: {candidate['average_rating']:.1f} from {rating_number} ratings")
+    fallback = "商品品質シグナルに基づく推薦" if _normalize_lang(lang) == "ja" else "Matched by product quality signals"
+    return " | ".join(parts) if parts else fallback
+
+
+def _dedupe_recommendations(recommendations: list[Recommendation], limit: int) -> list[Recommendation]:
+    seen_products: set[str] = set()
+    seen_titles: set[str] = set()
+    result: list[Recommendation] = []
+    for rec in recommendations:
+        title_key = _dedupe_key(rec.title)
+        if rec.product_id in seen_products or (title_key and title_key in seen_titles):
+            continue
+        seen_products.add(rec.product_id)
+        if title_key:
+            seen_titles.add(title_key)
+        result.append(rec)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _normalize_lang(lang: str | None) -> str:
+    return "ja" if (lang or "").lower().startswith("ja") else "en"
+
+
+_JA_TITLE_GLOSSARY = {
+    "moisturizer": "保湿クリーム",
+    "moisturizing": "保湿",
+    "cream": "クリーム",
+    "serum": "美容液",
+    "cleanser": "洗顔料",
+    "toner": "化粧水",
+    "sunscreen": "日焼け止め",
+    "shampoo": "シャンプー",
+    "conditioner": "コンディショナー",
+    "fragrance free": "無香料",
+    "sensitive skin": "敏感肌",
+    "dry skin": "乾燥肌",
+    "hyaluronic acid": "ヒアルロン酸",
+    "vitamin c": "ビタミンC",
+    "retinol": "レチノール",
+}
+
+
+def _localized_title(title: str, lang: str) -> str:
+    if _normalize_lang(lang) != "ja":
+        return title
+    localized = title
+    for source, target in sorted(_JA_TITLE_GLOSSARY.items(), key=lambda item: len(item[0]), reverse=True):
+        localized = re.sub(re.escape(source), target, localized, flags=re.I)
+    return localized
+
+
+def _price_display(price: float | None, lang: str) -> str | None:
+    if price is None:
+        return None
+    if _normalize_lang(lang) == "ja":
+        # UI側では最新レートを使って円換算するため、APIは元通貨を明示する。
+        return f"${price:.2f} USD"
+    return f"${price:.2f}"
 
 
 def _rating_quality_score(average_rating: float | None, rating_number: int | None) -> float:
