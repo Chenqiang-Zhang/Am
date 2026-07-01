@@ -8,6 +8,7 @@ import type {
   BehaviorEventResponse,
   ChatMessage,
   ChatResponse,
+  HomeRecommendRequest,
   RecommendationFeedbackRequest,
   RecommendationFeedbackResponse,
   RecommendRequest,
@@ -67,6 +68,27 @@ export async function recommend(
     throw new ApiError(res.status, `APIエラー (${res.status})${detail}`);
   }
 
+  return (await res.json()) as RecommendResponse;
+}
+
+/** ホーム推薦取得（POST /recommend/home） */
+export async function recommendHome(
+  req: HomeRecommendRequest,
+): Promise<RecommendResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/recommend/home`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
+  }
+
+  if (!res.ok) {
+    throw new ApiError(res.status, `APIエラー (${res.status})`);
+  }
   return (await res.json()) as RecommendResponse;
 }
 

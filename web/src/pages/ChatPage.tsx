@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { chat, ApiError } from "../api/client";
+import { useEffect, useState } from "react";
+import { chat, recommendHome, ApiError } from "../api/client";
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
@@ -29,12 +29,39 @@ export default function ChatPage() {
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [options, setOptions] = useState<string[]>([]);
   const [result, setResult] = useState<Result | null>(null);
+  const [homeResult, setHomeResult] = useState<Result | null>(null);
+  const [homeStatus, setHomeStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const { userId, setUserId, resetUserId } = useUserIdentity();
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHome() {
+      if (!userId) return;
+      setHomeStatus("loading");
+      try {
+        const data = await recommendHome({ user_id: userId, limit: LIMIT, lang });
+        if (cancelled) return;
+        setHomeResult({
+          recommendations: data.recommendations,
+          preference_summary: [],
+          intent: data.intent,
+          query: data.query,
+        });
+        setHomeStatus("done");
+      } catch {
+        if (!cancelled) setHomeStatus("error");
+      }
+    }
+    loadHome();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, lang]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -185,6 +212,63 @@ export default function ChatPage() {
           </button>
         )}
       </form>
+
+      {!result && conversation.length === 0 && (
+        <section className={styles.homePanel}>
+          <div className={styles.homeHeader}>
+            <div>
+              <h2 className={styles.homeTitle}>
+                {lang === "ja" ? "あなたへのおすすめ" : "For you"}
+              </h2>
+              <p className={styles.homeSubtitle}>
+                {lang === "ja"
+                  ? "行動履歴がある場合は好みに近い商品を、初回は高品質な人気商品を表示します。"
+                  : "Personalized from your activity when available, otherwise high-quality popular products."}
+              </p>
+            </div>
+            <button
+              type="button"
+              className={styles.homeRefresh}
+              onClick={() => {
+                setHomeResult(null);
+                setHomeStatus("idle");
+                void recommendHome({ user_id: userId, limit: LIMIT, lang })
+                  .then((data) => {
+                    setHomeResult({
+                      recommendations: data.recommendations,
+                      preference_summary: [],
+                      intent: data.intent,
+                      query: data.query,
+                    });
+                    setHomeStatus("done");
+                  })
+                  .catch(() => setHomeStatus("error"));
+              }}
+              disabled={homeStatus === "loading"}
+            >
+              {lang === "ja" ? "更新" : "Refresh"}
+            </button>
+          </div>
+          {homeStatus === "loading" && (
+            <p className={styles.homeState}>{lang === "ja" ? "読み込み中…" : "Loading recommendations..."}</p>
+          )}
+          {homeStatus === "error" && (
+            <p className={styles.homeState}>{lang === "ja" ? "ホーム推薦を取得できませんでした。" : "Could not load home recommendations."}</p>
+          )}
+          {homeResult && homeResult.recommendations.length > 0 && (
+            <>
+              {devMode && homeResult.intent && <IntentPanel intent={homeResult.intent} />}
+              <RecommendationList
+                items={homeResult.recommendations}
+                devMode={devMode}
+                userId={userId}
+                query={homeResult.query}
+                source="home"
+              />
+            </>
+          )}
+        </section>
+      )}
 
       {result && (
         <section className={styles.results}>

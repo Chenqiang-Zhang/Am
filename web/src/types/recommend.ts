@@ -13,6 +13,13 @@ export interface RecommendRequest {
   user_id?: string | null;
 }
 
+/** POST /recommend/home のリクエスト body */
+export interface HomeRecommendRequest {
+  user_id: string;
+  limit: number;
+  lang?: "ja" | "en";
+}
+
 /** LLM が抽出した属性フィルタ 1 件 */
 export interface AttributeFilter {
   attribute_type: string;
