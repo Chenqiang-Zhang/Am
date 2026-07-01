@@ -2,9 +2,12 @@
 LLM-driven autonomous Text2Cypher recommender.
 
 Endpoints served:
-  POST /recommend        — keyword search with optional personalization
-  POST /recommend/home   — behavior-based recommendations (no query text)
-  POST /behavior/view    — log product view to Neo4j
+  POST /recommend                        — keyword search with optional personalization
+  POST /recommend/home                   — behavior-based recommendations (no query text)
+  POST /behavior/view                    — log product view to Neo4j
+  POST /chat                             — multi-turn conversational recommendation (CRS)
+  GET  /products/{product_id}/reviews    — top reviews for a product
+  POST /recommendations/{product_id}/feedback — user feedback on a recommendation reason
 
 Flow (search):
   1. Build user context from Neo4j (rated/viewed products, inferred attributes)
@@ -16,15 +19,24 @@ Flow (home):
   1. Build user context
   2. LLM generates personalized Cypher (collaborative filtering or attribute similarity)
   3. Falls back to popular products when user has no history
+
+Flow (chat):
+  1. Python tracks which preference slots have been answered across turns
+     (stable ask/search decision, independent of LLM instruction-following)
+  2. While slots are missing, ask one clarifying question at a time
+  3. Once enough preferences are collected, delegate to the same Text2Cypher
+     search used by /recommend
 """
 from __future__ import annotations
 
+import html as _html_mod
 import json
 import os
 import re
 import sys
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -416,6 +428,435 @@ def _record_to_recommendation(record: Any) -> Recommendation:
     )
 
 
+# ── conversational recommendation (CRS) — chat constants ────────────────────────
+
+ATTRIBUTE_TYPES = [
+    "benefit", "skin_type", "scent", "texture", "ingredient",
+    "material", "color", "size", "target_area", "usage",
+    "brand", "product_type",
+]
+
+# 対話型推薦：聞き返しは最大この回数まで（しつこくしない）
+MAX_QUESTIONS = 5  # 無限ループ防止の安全網。通常は py_filled >= 2 で先に search になる。
+
+CHAT_SYSTEM_PROMPT = f"""You are a friendly beauty-product shopping assistant. The product catalog is in English (Amazon All_Beauty). The user may write in Japanese or English. Write everything you SHOW the user (questions, quick-reply options, preference_summary) in the TARGET LANGUAGE specified at the very end of these instructions.
+
+Through conversation, collect the user's preferences across these slots:
+- product_type (serum, moisturizer, cleanser, toner, sunscreen, shampoo, conditioner, hand wash, nail, perfume, makeup ...)
+- skin_type (dry, oily, sensitive, combination, acne-prone, normal, all)
+- hair_type (damaged, dry, oily, color-treated, curly, fine, normal, all)
+- scent (unscented/fragrance-free, floral, citrus, woody, fresh, sweet, musky)
+- benefit (moisturizing, brightening, anti-aging, soothing, volumizing, strengthening, long-lasting ...)
+- texture (cream, gel, lotion, powder, oil, balm, foam, mist ...)
+- ingredient to use (hyaluronic acid, vitamin c, retinol, niacinamide, argan oil ...) or avoid
+- price_max (USD number), min_rating (number), brand
+
+DECISION RULE — follow precisely:
+Count filled_slots = number of distinct answered slots from: skin_type, hair_type, scent, benefit, texture, ingredient, price_max, min_rating.
+NOTE: product_type alone does NOT count as a filled_slot.
+
+- action = "ask"    if product_type is unknown OR filled_slots < 2 (AND user has NOT said おまかせ AND questions asked < {MAX_QUESTIONS})
+- action = "search" if filled_slots >= 2 OR user said おまかせ/no preference OR questions >= {MAX_QUESTIONS}
+
+Ask ONE question at a time. Slot priority (first unanswered slot in the list):
+- skincare (cream, lotion, serum, toner, cleanser, sunscreen, eye cream):
+    skin_type → benefit → texture → ingredient → price_max
+- haircare (shampoo, conditioner, treatment, hair oil):
+    hair_type → benefit → scent → ingredient → price_max
+- fragrance / body mist / perfume:
+    scent → benefit → price_max
+- makeup (foundation, lipstick, mascara, eyeshadow, blush, concealer):
+    skin_type → benefit → texture → price_max
+- nail / other / unknown product_type:
+    product_type → benefit → texture → price_max
+
+Give 3-5 quick-reply options in the TARGET LANGUAGE. ALWAYS include one "no preference" option (こだわらない / Don't mind).
+
+IMPORTANT: "benefit" like "moisturizing" inferred from product name (e.g. 保湿クリーム) does NOT count as a filled benefit slot — the user must explicitly confirm it.
+
+Step-by-step example (skincare):
+  Turn 1 user: "保湿クリームが欲しい"
+    → product_type=moisturizer, filled_slots=0 → ask skin_type
+    → question: "肌タイプを教えてください", options: ["乾燥肌","脂性肌","敏感肌","混合肌","こだわらない"]
+  Turn 2 user: "乾燥肌です"
+    → filled_slots=1 (skin_type) → ask benefit (next in priority)
+    → question: "どんな効果を重視しますか？", options: ["高保湿","美白・ブライトニング","エイジングケア","鎮静・バリア強化","こだわらない"]
+  Turn 3 user: "高保湿がいい"
+    → filled_slots=2 (skin_type + benefit) → action = "search"
+
+Step-by-step example (fragrance):
+  Turn 1 user: "香水が欲しい"
+    → product_type=perfume, filled_slots=0 → ask scent
+    → options: ["フローラル","シトラス","ウッディ","フレッシュ","こだわらない"]
+  Turn 2 user: "フローラル"
+    → filled_slots=1 (scent) → ask benefit (price, mood, etc.)
+    → question: "予算や雰囲気の好みはありますか？", options: ["$30以下","$50以下","大人っぽい","軽くて爽やか","こだわらない"]
+  Turn 3 user: "$30以下"
+    → filled_slots=2 (scent + price_max) → action = "search"
+
+When action is "search", produce a structured intent summary (for reference only — the actual product search is performed separately via graph-path retrieval):
+- attribute_filters: list of {{"attribute_type": one of [{", ".join(ATTRIBUTE_TYPES)}], "value": ..., "weight": 1.0|0.7|0.4}}
+- Write ALL values and keywords in ENGLISH (the catalog is English): 敏感肌->"sensitive", 無香料->"unscented", ヒアルロン酸->"hyaluronic acid", 化粧水->"toner", 美容液->"serum".
+- keywords: English words. price_max/min_rating: number or null.
+
+Always include "preference_summary": the user's confirmed preferences as short labels for display, written in the TARGET LANGUAGE (do not mix other languages), e.g. (Japanese) ["化粧水","敏感肌","無香料"] or (English) ["toner","sensitive skin","fragrance-free"].
+
+CONVERSATION HISTORY NOTE: Previous assistant messages in the conversation history contain only the question text shown to the user (extracted from your prior JSON responses). This does NOT mean you should respond in plain text — you MUST ALWAYS respond with a valid JSON object.
+
+Return ONLY this JSON object (no other text before or after):
+{{
+  "action": "ask" | "search",
+  "question": "(ask時) 質問文 / それ以外は null",
+  "options": ["(ask時の選択肢)"],
+  "slot": "(今聞いているスロット名: skin_type / hair_type / scent / benefit / texture / ingredient / price_max / product_type) | null",
+  "filled_slots": <integer: count of distinct answered personalization slots so far, NOT counting product_type>,
+  "intent": {{"attribute_filters": [], "keywords": [], "price_max": null, "min_rating": null}},
+  "preference_summary": []
+}}"""
+
+FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
+
+_CHAT_JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "chat_response",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "action":             {"type": "string"},
+                "question":           {"type": ["string", "null"]},
+                "options":            {"type": "array", "items": {"type": "string"}},
+                "slot":               {"type": ["string", "null"]},
+                "filled_slots":       {"type": "integer"},
+                "intent":             {"type": ["object", "null"]},
+                "preference_summary": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["action", "question", "options", "slot", "filled_slots", "intent", "preference_summary"],
+        },
+    },
+}
+
+
+def _json_format_kwargs() -> dict[str, Any]:
+    """LM Studio は json_schema、OpenAI/DeepSeek は json_object を使う。
+    両者に対応するためプロバイダーを問わず json_schema を先に試す。
+    外部で例外を捕まえるのではなく、呼び出し側で try/except を避けるためここで dict を返す。"""
+    return {"response_format": _CHAT_JSON_SCHEMA}
+
+
+# 製品カテゴリ別のスロット優先順位
+_SLOT_PRIORITY: dict[str, list[str]] = {
+    "skincare":   ["skin_type", "benefit", "texture", "ingredient", "price_max"],
+    "haircare":   ["hair_type", "benefit", "scent",   "ingredient", "price_max"],
+    "fragrance":  ["scent",     "benefit", "price_max"],
+    "makeup":     ["skin_type", "benefit", "texture", "price_max"],
+    "other":      ["benefit",   "texture", "price_max"],
+}
+
+# キーワード→製品カテゴリマッピング
+_PRODUCT_TYPE_MAP: list[tuple[list[str], str]] = [
+    (["serum", "moisturizer", "lotion", "cleanser", "toner", "sunscreen", "eye cream",
+      "美容液", "化粧水", "乳液", "保湿クリーム", "クレンザー", "日焼け止め", "洗顔"], "skincare"),
+    (["shampoo", "conditioner", "hair", "treatment", "シャンプー", "コンディショナー",
+      "ヘアオイル", "ヘアケア", "トリートメント"], "haircare"),
+    (["perfume", "fragrance", "cologne", "mist", "香水", "フレグランス", "ミスト"], "fragrance"),
+    (["foundation", "lipstick", "mascara", "eyeshadow", "blush", "concealer", "makeup",
+      "ファンデ", "リップ", "マスカラ", "アイシャドウ", "チーク", "コンシーラー", "メイク"], "makeup"),
+]
+
+# 質問テンプレート（lang → slot_key → {question, options}）
+_QUESTION_TEMPLATES: dict[str, dict[str, dict[str, Any]]] = {
+    "ja": {
+        "product_type": {
+            "question": "どんなアイテムをお探しですか？",
+            "options": ["スキンケア（化粧水・クリーム）", "ヘアケア（シャンプー等）", "フレグランス", "メイクアップ", "こだわらない"],
+            "slot": "product_type",
+        },
+        "skin_type": {
+            "question": "肌タイプを教えてください",
+            "options": ["乾燥肌", "脂性肌", "敏感肌", "混合肌", "こだわらない"],
+            "slot": "skin_type",
+        },
+        "hair_type": {
+            "question": "髪タイプを教えてください",
+            "options": ["ダメージ毛", "乾燥した髪", "細い髪", "カラー毛", "こだわらない"],
+            "slot": "hair_type",
+        },
+        "scent": {
+            "question": "香りの好みはありますか？",
+            "options": ["フローラル", "シトラス", "ウッディ", "フレッシュ", "こだわらない"],
+            "slot": "scent",
+        },
+        "benefit_skincare": {
+            "question": "どんな効果を重視しますか？",
+            "options": ["高保湿", "美白・ブライトニング", "エイジングケア", "鎮静・バリア強化", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_haircare": {
+            "question": "どんな効果を重視しますか？",
+            "options": ["補修・ダメージケア", "保湿・潤い", "ボリュームアップ", "頭皮ケア", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_fragrance": {
+            "question": "予算や雰囲気の好みはありますか？",
+            "options": ["$30以下", "$50以下", "大人っぽい", "爽やか・軽め", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_makeup": {
+            "question": "どんな仕上がりを求めますか？",
+            "options": ["カバー力重視", "自然な仕上がり", "長時間キープ", "ツヤ感", "こだわらない"],
+            "slot": "benefit",
+        },
+        "benefit_other": {
+            "question": "どんな効果を求めますか？",
+            "options": ["保湿", "美白", "エイジングケア", "センシティブ対応", "こだわらない"],
+            "slot": "benefit",
+        },
+        "texture": {
+            "question": "テクスチャの好みはありますか？",
+            "options": ["さっぱり（ジェル・ローション）", "しっとり（クリーム）", "軽め（ミルク）", "こだわらない"],
+            "slot": "texture",
+        },
+        "ingredient": {
+            "question": "特定の成分のご希望はありますか？",
+            "options": ["ヒアルロン酸", "ビタミンC", "レチノール", "ナイアシンアミド", "こだわらない"],
+            "slot": "ingredient",
+        },
+        "price_max": {
+            "question": "ご予算はいかがですか？",
+            "options": ["$20以下", "$30以下", "$50以下", "$100以下", "こだわらない"],
+            "slot": "price_max",
+        },
+    },
+    "en": {
+        "product_type": {
+            "question": "What type of product are you looking for?",
+            "options": ["Skincare (serum, moisturizer)", "Haircare (shampoo, conditioner)", "Fragrance", "Makeup", "Don't mind"],
+            "slot": "product_type",
+        },
+        "skin_type": {
+            "question": "What's your skin type?",
+            "options": ["Dry", "Oily", "Sensitive", "Combination", "Don't mind"],
+            "slot": "skin_type",
+        },
+        "hair_type": {
+            "question": "What's your hair type?",
+            "options": ["Damaged", "Dry", "Fine", "Color-treated", "Don't mind"],
+            "slot": "hair_type",
+        },
+        "scent": {
+            "question": "Any scent preference?",
+            "options": ["Floral", "Citrus", "Woody", "Fresh", "Don't mind"],
+            "slot": "scent",
+        },
+        "benefit_skincare": {
+            "question": "What effect do you want?",
+            "options": ["Deep moisturizing", "Brightening", "Anti-aging", "Soothing", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_haircare": {
+            "question": "What effect do you want?",
+            "options": ["Repair & strengthen", "Moisture & hydration", "Volume", "Scalp care", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_fragrance": {
+            "question": "Any budget or mood preference?",
+            "options": ["Under $30", "Under $50", "Sophisticated", "Fresh & light", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_makeup": {
+            "question": "What finish do you prefer?",
+            "options": ["Full coverage", "Natural look", "Long-lasting", "Dewy glow", "Don't mind"],
+            "slot": "benefit",
+        },
+        "benefit_other": {
+            "question": "What benefit are you looking for?",
+            "options": ["Moisturizing", "Brightening", "Anti-aging", "Sensitive-skin friendly", "Don't mind"],
+            "slot": "benefit",
+        },
+        "texture": {
+            "question": "Any texture preference?",
+            "options": ["Lightweight (gel/lotion)", "Rich (cream)", "Medium (milk)", "Don't mind"],
+            "slot": "texture",
+        },
+        "ingredient": {
+            "question": "Any key ingredient preference?",
+            "options": ["Hyaluronic acid", "Vitamin C", "Retinol", "Niacinamide", "Don't mind"],
+            "slot": "ingredient",
+        },
+        "price_max": {
+            "question": "What's your budget?",
+            "options": ["Under $20", "Under $30", "Under $50", "Under $100", "Don't mind"],
+            "slot": "price_max",
+        },
+    },
+}
+
+
+def _extract_asked_slots(messages: list[dict[str, Any]], lang: str) -> set[str]:
+    """会話履歴のassistantメッセージをテンプレートと照合し、既に聞いたスロットを返す。"""
+    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
+    asked: set[str] = set()
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        q_text = (m.get("content") or "").strip()
+        for tpl in tpls.values():
+            if tpl.get("question") == q_text:
+                slot = tpl.get("slot", "")
+                if slot:
+                    asked.add(slot)
+                break
+    return asked
+
+
+def _guess_product_type(text: str) -> str | None:
+    for keywords, category in _PRODUCT_TYPE_MAP:
+        if any(kw in text for kw in keywords):
+            return category
+    return None
+
+
+def _pick_next_question(product_type: str | None, filled: set[str], lang: str) -> dict[str, Any]:
+    """製品タイプと充填済みスロットから次の質問テンプレートを返す。"""
+    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
+    category = product_type or "other"
+    priority = _SLOT_PRIORITY.get(category, _SLOT_PRIORITY["other"])
+
+    if product_type is None:
+        return tpls["product_type"]
+
+    for slot in priority:
+        if slot in filled:
+            continue
+        # benefit は製品カテゴリ別テンプレートを使う
+        if slot == "benefit":
+            key = f"benefit_{category}" if f"benefit_{category}" in tpls else "benefit_other"
+            return tpls[key]
+        if slot in tpls:
+            return tpls[slot]
+
+    # すべてのスロットが埋まっていれば price_max（最後の手段）
+    return tpls.get("price_max", tpls["product_type"])
+
+
+_HEURISTIC_RULES: list[dict[str, Any]] = [
+    {
+        "slot": "product_type",
+        "value": "moisturizer",
+        "summary": {"en": "moisturizer", "ja": "保湿クリーム"},
+        "terms": ["moisturizer", "moisturiser", "face cream", "cream", "lotion", "保湿クリーム", "クリーム", "乳液"],
+    },
+    {
+        "slot": "product_type",
+        "value": "serum",
+        "summary": {"en": "serum", "ja": "美容液"},
+        "terms": ["serum", "essence", "美容液"],
+    },
+    {
+        "slot": "product_type",
+        "value": "toner",
+        "summary": {"en": "toner", "ja": "化粧水"},
+        "terms": ["toner", "化粧水"],
+    },
+    {
+        "slot": "product_type",
+        "value": "cleanser",
+        "summary": {"en": "cleanser", "ja": "洗顔料"},
+        "terms": ["cleanser", "face wash", "洗顔", "洗顔料"],
+    },
+    {
+        "slot": "skin_type",
+        "value": "dry",
+        "summary": {"en": "dry skin", "ja": "乾燥肌"},
+        "terms": ["dry skin", "dry", "乾燥肌", "乾燥"],
+    },
+    {
+        "slot": "skin_type",
+        "value": "sensitive",
+        "summary": {"en": "sensitive skin", "ja": "敏感肌"},
+        "terms": ["sensitive skin", "sensitive", "敏感肌", "敏感"],
+    },
+    {
+        "slot": "scent",
+        "value": "unscented",
+        "summary": {"en": "fragrance-free", "ja": "無香料"},
+        "terms": ["fragrance-free", "fragrance free", "unscented", "no fragrance", "無香料", "無香"],
+    },
+    {
+        "slot": "ingredient",
+        "value": "hyaluronic acid",
+        "summary": {"en": "hyaluronic acid", "ja": "ヒアルロン酸"},
+        "terms": ["hyaluronic acid", "ヒアルロン酸"],
+    },
+    {
+        "slot": "ingredient",
+        "value": "vitamin c",
+        "summary": {"en": "vitamin C", "ja": "ビタミンC"},
+        "terms": ["vitamin c", "ビタミンc", "ビタミンC"],
+    },
+    {
+        "slot": "ingredient",
+        "value": "retinol",
+        "summary": {"en": "retinol", "ja": "レチノール"},
+        "terms": ["retinol", "レチノール"],
+    },
+    {
+        "slot": "benefit",
+        "value": "moisturizing",
+        "summary": {"en": "moisturizing", "ja": "保湿"},
+        "terms": ["moisturizing", "hydrating", "hydration", "保湿", "うるおい", "潤い"],
+    },
+    {
+        "slot": "benefit",
+        "value": "soothing",
+        "summary": {"en": "soothing", "ja": "鎮静"},
+        "terms": ["soothing", "calming", "鎮静", "肌荒れ"],
+    },
+]
+
+
+def _matches_any(text: str, terms: list[str]) -> bool:
+    folded = text.lower()
+    return any(term.lower() in folded for term in terms)
+
+
+def _detect_filled_slots(text: str) -> set[str]:
+    slots: set[str] = set()
+    for rule in _HEURISTIC_RULES:
+        if rule["slot"] == "product_type":
+            continue
+        if _matches_any(text, rule["terms"]):
+            slots.add(rule["slot"])
+    if re.search(r"(?:under|below|less than)\s*\$?\d+|\$\d+|\d+\s*ドル|\d+\s*円", text, re.I):
+        slots.add("price_max")
+    if re.search(r"(?:rating|stars?|評価).*(?:[4-5](?:\.\d)?)", text, re.I):
+        slots.add("min_rating")
+    return slots
+
+
+def _normalize_lang(lang: str | None) -> str:
+    return "ja" if (lang or "").lower().startswith("ja") else "en"
+
+
+def _heuristic_summary(text: str, lang: str) -> list[str]:
+    normalized_lang = _normalize_lang(lang)
+    summary: list[str] = []
+    for rule in _HEURISTIC_RULES:
+        if _matches_any(text, rule["terms"]):
+            label = rule["summary"][normalized_lang]
+            if label not in summary:
+                summary.append(label)
+    return summary
+
+
+def _strip_html(text: str | None) -> str | None:
+    if text is None:
+        return None
+    return _html_mod.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+
+
 # ── Recommender ────────────────────────────────────────────────────────────────
 
 class Recommender:
@@ -512,6 +953,110 @@ class Recommender:
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
+
+    def chat(self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja") -> dict[str, Any]:
+        """対話型推薦の1ターン。
+
+        ask/search の判断を Python で担当し LLM の行動決定ルール遵守に依存しない安定動作を実現。
+        - detected_slots: 会話全文から検出した回答済みスロット（テンプレートマッチング）
+        - asked: これまでにassistantが発言した回数
+        search が決まった後の商品検索は self.recommend() 経由の Text2Cypher に委譲する。
+        """
+        all_user_msgs = [m for m in messages if m.get("role") == "user"]
+        asked = sum(1 for m in messages if m.get("role") == "assistant")
+
+        user_said_no_pref = any(
+            kw in m.get("content", "")
+            for m in all_user_msgs
+            for kw in ("おまかせ", "なんでも", "no preference", "don't mind", "どちらでも")
+        )
+        asked_slots = _extract_asked_slots(messages, lang)
+
+        user_text = " ".join(m.get("content", "") for m in all_user_msgs).lower()
+        product_type = _guess_product_type(user_text)
+        detected_slots = _detect_filled_slots(user_text)
+        asked_slots |= detected_slots
+        py_filled = len(detected_slots)
+
+        should_search = py_filled >= 2 or user_said_no_pref or asked >= MAX_QUESTIONS
+
+        # ── LLM 呼び出し: preference_summary の生成 ─────────────────────────
+        target_language = "Japanese" if lang == "ja" else "English"
+        system = CHAT_SYSTEM_PROMPT + (
+            f"\n\nTARGET LANGUAGE = {target_language}. Write preference_summary ONLY in this language."
+        )
+        llm_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        for m in messages:
+            role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
+            llm_messages.append({"role": role, "content": m.get("content", "")})
+
+        try:
+            response = self._llm.chat.completions.create(
+                model=self._model, messages=llm_messages, temperature=0, **_json_format_kwargs()
+            )
+            data = _parse_llm_json(response.choices[0].message.content or "{}")
+        except Exception:
+            data = {}
+        summary = data.get("preference_summary") or []
+        if not summary:
+            summary = _heuristic_summary(user_text, lang)
+
+        # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
+        if should_search:
+            query_text = " ".join(m.get("content", "") for m in all_user_msgs)
+            _search_id, intent, products, _fallback = self.recommend(query_text, None, limit)
+            return {
+                "action": "search",
+                "question": None,
+                "options": [],
+                "preference_summary": summary,
+                "intent": intent,
+                "recommendations": products,
+            }
+
+        next_q = _pick_next_question(product_type, asked_slots, lang)
+        return {
+            "action": "ask",
+            "question": next_q["question"],
+            "options": next_q["options"],
+            "preference_summary": summary,
+            "intent": None,
+            "recommendations": [],
+        }
+
+    def get_reviews(self, product_id: str, limit: int = 5) -> list[dict[str, Any]]:
+        """商品IDに紐づくレビューをhelpful_vote降順で返す。(Review)-[:ABOUT]->(Product) エッジを使用。"""
+        cypher = """
+MATCH (p:Product {product_id: $product_id})<-[:ABOUT]-(r:Review)
+WHERE r.text IS NOT NULL AND size(coalesce(r.text, '')) > 10
+RETURN r.title AS title,
+       r.text AS text,
+       toFloat(r.rating) AS rating,
+       toInteger(r.helpful_vote) AS helpful_vote,
+       r.verified AS verified_purchase
+ORDER BY r.helpful_vote DESC, r.rating DESC
+LIMIT $limit
+"""
+        with self._driver.session(database=self._neo4j_db) as session:
+            result = session.run(cypher, product_id=product_id, limit=limit)
+            rows = []
+            for record in result:
+                r = dict(record)
+                r["text"] = _strip_html(r.get("text"))
+                r["title"] = _strip_html(r.get("title"))
+                rows.append(r)
+            return rows
+
+    def save_feedback(self, product_id: str, payload: dict[str, Any]) -> None:
+        """推薦理由のユーザーフィードバックをJSONLで保存する。"""
+        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "product_id": product_id,
+            **payload,
+        }
+        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30

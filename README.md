@@ -13,8 +13,10 @@ Neo4j Knowledge Graph
     ↓
 REST API (FastAPI)
     ├── LLM intent extraction  (natural language → structured attribute filters)
+    ├── Conversational recommendation (multi-turn preference collection)
     ├── Multi-path graph recall (attributes + feature text + title/category/store)
-    └── Hybrid ranking          (match coverage + rating quality + popularity)
+    ├── Hybrid ranking          (match coverage + rating quality + popularity + price availability)
+    └── Reason feedback logging (recommendation explanation feedback)
 ```
 
 ## Graph Schema
@@ -58,6 +60,8 @@ REST API (FastAPI)
 ├── scripts/               # Data pipeline scripts
 │   ├── build_kg_csv.py                    # Build base graph CSVs
 │   ├── extract_product_attributes_llm.py  # LLM attribute extraction
+│   ├── extract_attributes_from_details.py # Zero-cost attribute extraction from metadata details
+│   ├── enrich_product_images.py           # Add Product.image_url from metadata
 │   ├── attributes_to_kg_csv.py            # Convert attributes JSONL → CSV
 │   ├── import_kg_to_neo4j.py              # Import base graph via Bolt
 │   ├── import_attributes_to_neo4j.py      # Import attributes via Bolt
@@ -66,6 +70,7 @@ REST API (FastAPI)
 │   ├── main.py            # FastAPI app
 │   ├── recommender.py     # LLM intent extraction + Neo4j graph query
 │   └── models.py          # Pydantic request/response models
+├── web/                   # React + TypeScript conversational UI
 └── data.ipynb             # Data exploration notebook
 ```
 
@@ -140,6 +145,16 @@ uvicorn api.main:app --reload
 
 Open `http://localhost:8000/docs` for the interactive Swagger UI.
 
+### 6. Start the Frontend UI
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://localhost:8000`.
+
 ## API Usage
 
 ### `POST /recommend`
@@ -150,7 +165,8 @@ Accepts a natural-language query and returns ranked product recommendations with
 ```json
 {
   "query": "I have dry and sensitive skin, looking for a gentle face moisturizer with hyaluronic acid, preferably fragrance-free",
-  "limit": 5
+  "limit": 5,
+  "lang": "en"
 }
 ```
 
@@ -169,6 +185,10 @@ Accepts a natural-language query and returns ranked product recommendations with
     {
       "product_id": "B0...",
       "title": "...",
+      "display_title": "...",
+      "display_language": "en",
+      "availability_status": "available",
+      "data_quality_score": 0.82,
       "score": 2.85,
       "matched_attributes": [
         {"attribute_type": "skin_type", "value": "dry", "confidence": 0.9, "evidence": "Skin Type: Dry"},
@@ -182,13 +202,60 @@ Accepts a natural-language query and returns ranked product recommendations with
         "field_match": 0.25,
         "rating_quality": 0.82,
         "popularity": 0.64,
-        "query_coverage": 0.86
+        "query_coverage": 0.86,
+        "price_availability": 1.0
       },
-      "explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings"
+      "reason_quantification": {
+        "attribute_match": 0.95,
+        "feature_text_match": 0.75,
+        "field_match": 0.25,
+        "rating_quality": 0.82,
+        "popularity": 0.64,
+        "query_coverage": 0.86,
+        "price_availability": 1.0
+      },
+      "explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings",
+      "display_explanation": "Matched - skin_type: dry | ingredient: hyaluronic acid | text terms: dry, fragrance-free, gentle, hyaluronic acid | rating: 4.5 from 328 ratings"
     }
   ]
 }
 ```
+
+### `POST /chat`
+
+Runs one turn of conversational recommendation. The backend uses the conversation history to decide whether to ask one more preference question or search immediately.
+
+```json
+{
+  "messages": [
+    {"role": "user", "content": "乾燥肌向けの保湿クリームが欲しい"}
+  ],
+  "limit": 8,
+  "lang": "ja"
+}
+```
+
+The response has either:
+
+- `action: "ask"` with one question and quick-reply options
+- `action: "search"` with `preference_summary`, `intent`, and recommendations
+
+### `POST /recommendations/{product_id}/feedback`
+
+Stores user feedback on whether the recommendation reason was useful.
+
+```json
+{
+  "query": "dry sensitive skin moisturizer",
+  "lang": "en",
+  "helpful": true,
+  "reason_rating": 5,
+  "selected_reasons": ["reason_helpful"],
+  "comment": "The matched terms were clear."
+}
+```
+
+Feedback is appended to `logs/recommendation_feedback.jsonl`, which is ignored by Git.
 
 The recommender uses three recall paths, then re-ranks the merged candidates:
 
@@ -196,8 +263,27 @@ The recommender uses three recall paths, then re-ranks the merged candidates:
 - `Product -[:HAS_FEATURE]-> Feature` for broader text matches from product metadata
 - `Product` title/category and `Product -[:SOLD_BY]-> Store` for simple field matches
 
-The final score combines attribute match, feature-text match, field match, query coverage, Bayesian-smoothed rating quality, and popularity. The `matched_attributes` array represents the most precise graph path that justifies a recommendation:
+The final score combines attribute match, feature-text match, field match, query coverage, Bayesian-smoothed rating quality, popularity, and price availability. The `matched_attributes` array represents the most precise graph path that justifies a recommendation:
 `User Query → [LLM intent] → Attribute ←[HAS_ATTRIBUTE]← Product`
+
+The recommender also performs data cleaning and deduplication:
+
+- strips HTML tags and entities from evidence/reviews
+- normalizes whitespace and empty text
+- deduplicates candidates by product ID and cleaned title
+- exposes multilingual display fields (`display_title`, `display_explanation`, `price_display`) for the frontend
+- marks products without a dataset price as `currently_unavailable`; the frontend can filter available, unavailable, or all results
+- defaults recommendation recall to `sellable_status = "available"` and `data_quality_score >= 0.6`
+
+### Product quality audit
+
+Run the audit after importing or expanding product data:
+
+```bash
+conda run -n py312 python scripts/audit_product_quality.py
+```
+
+The script scans all `Product` nodes, writes `sellable_status`, `data_quality_score`, and `quality_flags` back to Neo4j, and generates JSON/Markdown reports under `reports/product_quality/`. Use `--dry-run` to generate reports without writing to Neo4j.
 
 ## Data Scale
 

@@ -1,0 +1,79 @@
+/* グローバルスタイル：最小限のリセット＋デザイントークン。
+   方向性 = プレミアム/エディトリアル（暖色オフホワイト・セリフ見出し・ワイン系アクセント・余白大）。
+   個々の見た目は各コンポーネントの *.module.css に置く。 */
+
+:root {
+  /* カラートークン */
+  --color-bg: #f2ebe0;          /* 暖かみのあるオフホワイト（紙のような地） */
+  --color-surface: #fffef9;     /* 暖色の白（カード面） */
+  --color-border: #e0d5c0;      /* ヘアラインの境界 */
+  --color-text: #1a1410;        /* 暖色の黒に近い文字 */
+  --color-text-muted: #8c8073;  /* 暖色のグレー */
+  --color-primary: #6e2838;     /* 深いワイン（アクセント） */
+  --color-primary-weak: #f0e6e4;/* 淡いワインの面 */
+  --color-accent: #6e2838;
+  --color-gold: #b5964a;        /* ゴールドアクセント */
+  --color-gold-light: #f5edd8;  /* 淡いゴールド面 */
+  --color-warning-bg: #fbf3e8;
+  --color-warning-border: #ecd6b8;
+  --color-warning-text: #8a5a2b;
+  --color-danger-bg: #fcefec;
+  --color-danger-border: #f0cfc6;
+  --color-danger-text: #a23b2c;
+  --color-star: #b5964a;        /* ゴールドと統一 */
+
+  /* スコア内訳バー（開発者ビュー用） */
+  --color-bar: #6e2838;
+  --color-bar-track: #ece4d7;
+
+  --radius: 2px;                /* ラグジュアリー＝シャープな角丸 */
+  --radius-sm: 2px;
+  --radius-lg: 4px;
+  --shadow-card: 0 2px 8px rgba(100, 60, 30, 0.07), 0 1px 2px rgba(100, 60, 30, 0.04);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-serif: Georgia, "Times New Roman", "Hiragino Mincho ProN",
+    "Yu Mincho", "YuMincho", serif;
+  --font-sans: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  line-height: 1.65;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input,
+select {
+  font: inherit;
+}
