@@ -10,6 +10,7 @@ export interface RecommendRequest {
   query: string;
   limit: number;
   lang?: "ja" | "en";
+  user_id?: string | null;
 }
 
 /** LLM が抽出した属性フィルタ 1 件 */
@@ -97,6 +98,22 @@ export interface ChatResponse {
   preference_summary: string[];
   intent: SearchIntent | null;
   recommendations: Recommendation[];
+}
+
+export interface BehaviorEventRequest {
+  user_id: string;
+  event_type: string;
+  product_id?: string | null;
+  product_ids?: string[];
+  query?: string | null;
+  rank?: number | null;
+  source?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface BehaviorEventResponse {
+  status: string;
+  event_count: number;
 }
 
 // ===== レコメンド理由フィードバック =====

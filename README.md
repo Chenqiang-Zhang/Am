@@ -257,6 +257,23 @@ Stores user feedback on whether the recommendation reason was useful.
 
 Feedback is appended to `logs/recommendation_feedback.jsonl`, which is ignored by Git.
 
+### `POST /behavior/events`
+
+Stores lightweight user behavior events in Neo4j for personalization. The frontend generates an anonymous `user_id` in `localStorage` and sends events such as `impression`, `product_click`, `review_open`, `amazon_click`, `feedback_yes`, `feedback_no`, and `filter_change`.
+
+```json
+{
+  "user_id": "anon_abc123",
+  "event_type": "amazon_click",
+  "product_id": "B07N5B8WWR",
+  "query": "moisturizer for dry sensitive skin",
+  "rank": 1,
+  "source": "chat"
+}
+```
+
+The recommender uses positive behavior history to boost products with similar graph attributes and lightly down-ranks products the same user has already strongly interacted with.
+
 The recommender uses three recall paths, then re-ranks the merged candidates:
 
 - `Product -[:HAS_ATTRIBUTE]-> Attribute` for precise structured matches
@@ -284,6 +301,16 @@ conda run -n py312 python scripts/audit_product_quality.py
 ```
 
 The script scans all `Product` nodes, writes `sellable_status`, `data_quality_score`, and `quality_flags` back to Neo4j, and generates JSON/Markdown reports under `reports/product_quality/`. Use `--dry-run` to generate reports without writing to Neo4j.
+
+### Review mention extraction
+
+Run review mention extraction when you want review-derived attribute signals:
+
+```bash
+conda run -n py312 python scripts/extract_review_mentions_llm.py --limit 500
+```
+
+The script reads existing `Review` nodes, extracts attribute mentions and sentiment with an LLM, then writes `Review -[:MENTIONS]-> Attribute` relationships. When these relationships exist, recommendation ranking adds positive review mention boosts and negative review mention penalties for query-relevant attributes.
 
 ## Data Scale
 

@@ -8,6 +8,8 @@ import PreferenceSummary from "../components/PreferenceSummary";
 import IntentPanel from "../components/IntentPanel";
 import RecommendationList from "../components/RecommendationList";
 import HelpModal from "../components/HelpModal";
+import { useUserIdentity } from "../lib/userIdentity";
+import { trackBehavior } from "../lib/behavior";
 import styles from "./ChatPage.module.css";
 
 const LIMIT = 8;
@@ -16,6 +18,7 @@ interface Result {
   recommendations: Recommendation[];
   preference_summary: string[];
   intent: SearchIntent | null;
+  query: string;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -31,6 +34,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const { userId, setUserId, resetUserId } = useUserIdentity();
 
   async function send(text: string) {
     const content = text.trim();
@@ -45,7 +49,7 @@ export default function ChatPage() {
     setStatus("loading");
 
     try {
-      const r = await chat(next, LIMIT, lang);
+      const r = await chat(next, LIMIT, lang, userId);
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
@@ -54,6 +58,7 @@ export default function ChatPage() {
           recommendations: r.recommendations,
           preference_summary: r.preference_summary,
           intent: r.intent,
+          query: next.filter((m) => m.role === "user").map((m) => m.content).join(" "),
         });
       }
       setStatus("idle");
@@ -64,6 +69,9 @@ export default function ChatPage() {
   }
 
   function reset() {
+    if (conversation.length > 0) {
+      trackBehavior({ userId, eventType: "restart", source: "chat" });
+    }
     setConversation([]);
     setOptions([]);
     setResult(null);
@@ -115,6 +123,17 @@ export default function ChatPage() {
               onChange={(e) => setDevMode(e.target.checked)}
             />
             {t.devView}
+          </label>
+          <label className={styles.userControl}>
+            <span>{lang === "ja" ? "ユーザー" : "User"}</span>
+            <input
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              aria-label="user id"
+            />
+            <button type="button" onClick={resetUserId} title={lang === "ja" ? "匿名IDを再生成" : "Reset anonymous ID"}>
+              ↻
+            </button>
           </label>
         </div>
         <div className={styles.headerText}>
@@ -171,7 +190,13 @@ export default function ChatPage() {
         <section className={styles.results}>
           <PreferenceSummary items={result.preference_summary} />
           {devMode && result.intent && <IntentPanel intent={result.intent} />}
-          <RecommendationList items={result.recommendations} devMode={devMode} />
+          <RecommendationList
+            items={result.recommendations}
+            devMode={devMode}
+            userId={userId}
+            query={result.query}
+            source="chat"
+          />
           <div className={styles.restartBanner}>
             <span className={styles.restartText}>
               {lang === "ja" ? "他の商品を探しますか？" : "Looking for something else?"}

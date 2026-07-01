@@ -5,8 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from .models import (
+    BehaviorEventRequest,
+    BehaviorEventResponse,
     ChatRequest,
     ChatResponse,
+    HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
     RecommendationFeedbackRequest,
@@ -40,15 +43,23 @@ async def health() -> dict:
 async def recommend(req: RecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    intent, results = _recommender.recommend(req.query, req.limit, req.lang)
+    intent, results = _recommender.recommend(req.query, req.limit, req.lang, req.user_id)
     return RecommendResponse(query=req.query, intent=intent, recommendations=results)
+
+
+@app.post("/recommend/home", response_model=RecommendResponse)
+async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    intent, results = _recommender.recommend_home(req.user_id, req.limit, req.lang)
+    return RecommendResponse(query="[home]", intent=intent, recommendations=results)
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang)
+    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang, req.user_id)
     return ChatResponse(**result)
 
 
@@ -70,3 +81,11 @@ async def recommendation_feedback(
         raise HTTPException(status_code=503, detail="Recommender not initialized")
     _recommender.save_feedback(product_id, req.model_dump())
     return RecommendationFeedbackResponse(status="ok", product_id=product_id)
+
+
+@app.post("/behavior/events", response_model=BehaviorEventResponse)
+async def behavior_event(req: BehaviorEventRequest) -> BehaviorEventResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    count = _recommender.log_behavior_event(req.model_dump())
+    return BehaviorEventResponse(status="ok", event_count=count)

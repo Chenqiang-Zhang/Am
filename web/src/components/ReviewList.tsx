@@ -8,11 +8,12 @@ import styles from "./ReviewList.module.css";
 interface Props {
   productId: string;
   ratingNumber?: number | null;
+  onOpen?: () => void;
 }
 
 type Status = "idle" | "loading" | "done" | "error";
 
-export default function ReviewList({ productId, ratingNumber }: Props) {
+export default function ReviewList({ productId, ratingNumber, onOpen }: Props) {
   const { lang, t } = useI18n();
   const [status, setStatus] = useState<Status>("idle");
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -20,6 +21,7 @@ export default function ReviewList({ productId, ratingNumber }: Props) {
 
   async function load() {
     if (status !== "idle") return;
+    onOpen?.();
     setStatus("loading");
     try {
       const data = await fetchReviews(productId, 5);
@@ -48,7 +50,10 @@ export default function ReviewList({ productId, ratingNumber }: Props) {
 
   if (!open) {
     return (
-      <button type="button" className={styles.trigger} onClick={() => setOpen(true)}>
+      <button type="button" className={styles.trigger} onClick={() => {
+        onOpen?.();
+        setOpen(true);
+      }}>
         {lang === "ja" ? "レビューを見る" : "Show reviews"} ▼
       </button>
     );

@@ -1,15 +1,19 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Recommendation } from "../types/recommend";
 import { useI18n } from "../i18n";
 import RecommendationCard from "./RecommendationCard";
+import { trackBehavior } from "../lib/behavior";
 import styles from "./RecommendationList.module.css";
 
 interface Props {
   items: Recommendation[];
   devMode: boolean;
+  userId: string;
+  query?: string | null;
+  source?: string;
 }
 
-export default function RecommendationList({ items, devMode }: Props) {
+export default function RecommendationList({ items, devMode, userId, query, source = "chat" }: Props) {
   const { t, lang } = useI18n();
   const [filter, setFilter] = useState<"available" | "all" | "unavailable">("available");
 
@@ -31,11 +35,35 @@ export default function RecommendationList({ items, devMode }: Props) {
     rec.availability_status === "available" || rec.price != null;
   const availableCount = items.filter(isAvailable).length;
   const unavailableCount = items.length - availableCount;
-  const visibleItems = items.filter((rec) => {
+  const visibleItems = useMemo(() => items.filter((rec) => {
     if (filter === "all") return true;
     if (filter === "available") return isAvailable(rec);
     return !isAvailable(rec);
-  });
+  }), [items, filter]);
+  const visibleIds = visibleItems.map((rec) => rec.product_id).join(",");
+
+  useEffect(() => {
+    if (visibleItems.length === 0) return;
+    trackBehavior({
+      userId,
+      eventType: "impression",
+      productIds: visibleItems.map((rec) => rec.product_id),
+      query,
+      source,
+      metadata: { filter, count: visibleItems.length },
+    });
+  }, [visibleIds, userId, query, source, filter, visibleItems]);
+
+  function changeFilter(next: "available" | "all" | "unavailable") {
+    setFilter(next);
+    trackBehavior({
+      userId,
+      eventType: "filter_change",
+      query,
+      source,
+      metadata: { filter: next },
+    });
+  }
   const heading =
     lang === "ja"
       ? `おすすめ（${visibleItems.length}/${items.length}件）`
@@ -50,21 +78,21 @@ export default function RecommendationList({ items, devMode }: Props) {
           <button
             type="button"
             className={filter === "available" ? styles.filterActive : styles.filterBtn}
-            onClick={() => setFilter("available")}
+            onClick={() => changeFilter("available")}
           >
             {t.filterAvailable} ({availableCount})
           </button>
           <button
             type="button"
             className={filter === "all" ? styles.filterActive : styles.filterBtn}
-            onClick={() => setFilter("all")}
+            onClick={() => changeFilter("all")}
           >
             {t.filterAll} ({items.length})
           </button>
           <button
             type="button"
             className={filter === "unavailable" ? styles.filterActive : styles.filterBtn}
-            onClick={() => setFilter("unavailable")}
+            onClick={() => changeFilter("unavailable")}
           >
             {t.filterUnavailable} ({unavailableCount})
           </button>
@@ -80,7 +108,15 @@ export default function RecommendationList({ items, devMode }: Props) {
       ) : (
         <div className={styles.list}>
           {visibleItems.map((rec, i) => (
-            <RecommendationCard key={rec.product_id} rec={rec} rank={i + 1} devMode={devMode} />
+            <RecommendationCard
+              key={rec.product_id}
+              rec={rec}
+              rank={i + 1}
+              devMode={devMode}
+              userId={userId}
+              query={query}
+              source={source}
+            />
           ))}
         </div>
       )}

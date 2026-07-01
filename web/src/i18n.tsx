@@ -134,6 +134,10 @@ export const METRIC_LABELS: Record<Lang, Record<string, string>> = {
     rating_quality: "評価品質",
     popularity: "人気度",
     price_availability: "価格あり",
+    user_behavior: "ユーザー行動",
+    review_positive: "レビュー好意",
+    review_negative: "レビュー懸念",
+    seen_penalty: "閲覧済み減点",
   },
   en: {
     attribute_match: "Attribute match",
@@ -143,6 +147,10 @@ export const METRIC_LABELS: Record<Lang, Record<string, string>> = {
     rating_quality: "Rating quality",
     popularity: "Popularity",
     price_availability: "Price available",
+    user_behavior: "User behavior",
+    review_positive: "Positive reviews",
+    review_negative: "Review concerns",
+    seen_penalty: "Seen penalty",
   },
 };
 

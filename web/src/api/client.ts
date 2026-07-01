@@ -4,6 +4,8 @@
 //   接続先の変更・エラー処理の方針はこのファイルに集約する。
 // ============================================================================
 import type {
+  BehaviorEventRequest,
+  BehaviorEventResponse,
   ChatMessage,
   ChatResponse,
   RecommendationFeedbackRequest,
@@ -73,13 +75,14 @@ export async function chat(
   messages: ChatMessage[],
   limit = 10,
   lang: "ja" | "en" = "ja",
+  userId?: string | null,
 ): Promise<ChatResponse> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, limit, lang }),
+      body: JSON.stringify({ messages, limit, lang, user_id: userId }),
     });
   } catch {
     throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
@@ -88,6 +91,18 @@ export async function chat(
     throw new ApiError(res.status, `APIエラー (${res.status})`);
   }
   return (await res.json()) as ChatResponse;
+}
+
+export async function sendBehaviorEvent(
+  event: BehaviorEventRequest,
+): Promise<BehaviorEventResponse> {
+  const res = await fetch(`${BASE}/behavior/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+  });
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as BehaviorEventResponse;
 }
 
 /** 商品レビュー取得（GET /products/{id}/reviews） */

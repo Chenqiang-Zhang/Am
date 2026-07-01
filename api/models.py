@@ -7,6 +7,13 @@ class RecommendRequest(BaseModel):
     query: str
     limit: int = 10
     lang: str = "en"
+    user_id: str | None = None
+
+
+class HomeRecommendRequest(BaseModel):
+    user_id: str
+    limit: int = 10
+    lang: str = "en"
 
 
 class AttributeFilter(BaseModel):
@@ -68,6 +75,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     limit: int = 10
     lang: str = "ja"  # 表示言語（"ja" | "en"）。LLMの質問・選択肢・サマリの言語に反映
+    user_id: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -106,3 +114,19 @@ class RecommendationFeedbackRequest(BaseModel):
 class RecommendationFeedbackResponse(BaseModel):
     status: str
     product_id: str
+
+
+class BehaviorEventRequest(BaseModel):
+    user_id: str
+    event_type: str
+    product_id: str | None = None
+    product_ids: list[str] = Field(default_factory=list)
+    query: str | None = None
+    rank: int | None = None
+    source: str = "chat"
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class BehaviorEventResponse(BaseModel):
+    status: str
+    event_count: int

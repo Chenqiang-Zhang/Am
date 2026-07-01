@@ -94,6 +94,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .headerText {
@@ -144,6 +145,41 @@
 .langActive {
   background: var(--color-text);
   color: #fff;
+}
+
+.userControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.userControl input {
+  width: 128px;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text);
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+.userControl button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+
+.userControl button:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .conversation {

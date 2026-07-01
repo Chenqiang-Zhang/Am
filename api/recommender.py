@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -224,11 +225,44 @@ ORDER BY size(field_terms) DESC, toFloat(p.average_rating) DESC
 LIMIT $candidate_limit
 """
 
+_HOME_RECOMMEND_CYPHER = """
+MATCH (p:Product)
+WHERE coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+WITH p,
+     coalesce(toFloat(p.average_rating), 3.8) AS rating,
+     coalesce(toInteger(p.rating_number), 0) AS rating_count,
+     coalesce(toFloat(p.data_quality_score), 0.0) AS quality
+RETURN p.product_id AS product_id,
+       p.title AS title,
+       p.price AS price,
+       p.average_rating AS average_rating,
+       p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
+       rating * 0.7 + log(toFloat(rating_count) + 1) * 0.3 + quality AS field_score,
+       [] AS field_terms
+ORDER BY field_score DESC
+LIMIT $candidate_limit
+"""
+
 RATING_PRIOR = 3.8
 RATING_PRIOR_COUNT = 50
 POPULARITY_REFERENCE_COUNT = 5000
 DEFAULT_MIN_RECOMMENDATION_QUALITY_SCORE = 0.6
 FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
+BEHAVIOR_EVENT_WEIGHTS = {
+    "impression": 0.15,
+    "product_click": 1.0,
+    "review_open": 1.5,
+    "amazon_click": 3.0,
+    "feedback_yes": 2.5,
+    "feedback_no": -2.0,
+    "filter_change": 0.1,
+    "restart": -0.2,
+}
+POSITIVE_BEHAVIOR_EVENTS = ["product_click", "review_open", "amazon_click", "feedback_yes"]
 
 
 _CHAT_JSON_SCHEMA = {
@@ -721,7 +755,13 @@ class Recommender:
             min_rating=data.get("min_rating"),
         )
 
-    def search_products(self, intent: SearchIntent, limit: int, lang: str = "en") -> list[Recommendation]:
+    def search_products(
+        self,
+        intent: SearchIntent,
+        limit: int,
+        lang: str = "en",
+        user_id: str | None = None,
+    ) -> list[Recommendation]:
         terms = _search_terms(intent)
         if not intent.attribute_filters and not terms:
             return []
@@ -789,14 +829,54 @@ class Recommender:
                     candidate = _candidate(candidates, record)
                     candidate["field_terms"].update(record["field_terms"] or [])
 
+            if candidates:
+                self._apply_behavior_context(session, candidates, user_id)
+                self._apply_review_mention_context(session, candidates, intent, terms)
+
         return _rank_candidates(candidates, intent, terms, limit, lang)
 
-    def recommend(self, query: str, limit: int = 10, lang: str = "en") -> tuple[SearchIntent, list[Recommendation]]:
+    def recommend(
+        self,
+        query: str,
+        limit: int = 10,
+        lang: str = "en",
+        user_id: str | None = None,
+    ) -> tuple[SearchIntent, list[Recommendation]]:
         intent = self.extract_intent(query)
-        products = self.search_products(intent, limit, lang)
+        products = self.search_products(intent, limit, lang, user_id)
         return intent, products
 
-    def chat(self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja") -> dict[str, Any]:
+    def recommend_home(self, user_id: str, limit: int = 10, lang: str = "en") -> tuple[SearchIntent, list[Recommendation]]:
+        intent = self._behavior_home_intent(user_id)
+        if intent.attribute_filters or intent.keywords:
+            products = self.search_products(intent, limit, lang, user_id)
+            if products:
+                return intent, products
+
+        fallback_intent = SearchIntent(attribute_filters=[], keywords=["popular"], price_max=None, min_rating=None)
+        with self.driver.session(database=self.neo4j_database) as session:
+            candidates: dict[str, dict[str, Any]] = {}
+            result = session.run(
+                _HOME_RECOMMEND_CYPHER,
+                min_quality_score=self.min_quality_score,
+                candidate_limit=max(100, min(500, limit * 50)),
+            )
+            for record in result:
+                candidate = _candidate(candidates, record)
+                candidate["field_terms"].add("popular")
+                candidate["field_score"] = float(record.get("field_score") or 0.0)
+            if candidates:
+                self._apply_behavior_context(session, candidates, user_id)
+                self._apply_review_mention_context(session, candidates, fallback_intent, ["popular"])
+        return fallback_intent, _rank_candidates(candidates, fallback_intent, ["popular"], limit, lang)
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        limit: int = 10,
+        lang: str = "ja",
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """対話型推薦の1ターン。
 
         ask/search の判断を Python で担当し LLM の行動決定ルール遵守に依存しない安定動作を実現。
@@ -853,7 +933,7 @@ class Recommender:
         # ── 結果を返す ────────────────────────────────────────────────────────
         if should_search:
             intent = self._intent_from_data(intent_data if intent_data else None, messages)
-            products = self.search_products(intent, limit, lang)
+            products = self.search_products(intent, limit, lang, user_id)
             return {
                 "action": "search",
                 "question": None,
@@ -922,6 +1002,207 @@ LIMIT $limit
         with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
+    def log_behavior_event(self, payload: dict[str, Any]) -> int:
+        user_id = _clean_user_id(payload.get("user_id"))
+        if not user_id:
+            return 0
+        product_ids = [pid for pid in payload.get("product_ids", []) if isinstance(pid, str) and pid]
+        if payload.get("product_id"):
+            product_ids.insert(0, str(payload["product_id"]))
+        deduped_product_ids = list(dict.fromkeys(product_ids))
+        event_type = _clean_text(payload.get("event_type")).lower() or "unknown"
+        weight = BEHAVIOR_EVENT_WEIGHTS.get(event_type, 0.0)
+        event_id = "evt_" + uuid.uuid4().hex
+        created_at = datetime.now(timezone.utc).isoformat()
+        products = [
+            {"product_id": product_id, "rank": int(payload.get("rank") or index + 1)}
+            for index, product_id in enumerate(deduped_product_ids)
+        ]
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        cypher = """
+MERGE (u:User {user_id: $user_id})
+CREATE (e:BehaviorEvent {
+  event_id: $event_id,
+  event_type: $event_type,
+  query: $event_query,
+  source: $source,
+  created_at: $created_at,
+  weight: $weight,
+  metadata_json: $metadata_json
+})
+CREATE (u)-[:PERFORMED]->(e)
+WITH e
+UNWIND $products AS item
+MATCH (p:Product {product_id: item.product_id})
+CREATE (e)-[:ON_PRODUCT {rank: item.rank}]->(p)
+"""
+        cypher_without_products = """
+MERGE (u:User {user_id: $user_id})
+CREATE (e:BehaviorEvent {
+  event_id: $event_id,
+  event_type: $event_type,
+  query: $event_query,
+  source: $source,
+  created_at: $created_at,
+  weight: $weight,
+  metadata_json: $metadata_json
+})
+CREATE (u)-[:PERFORMED]->(e)
+"""
+        with self.driver.session(database=self.neo4j_database) as session:
+            session.run(
+                cypher if products else cypher_without_products,
+                user_id=user_id,
+                event_id=event_id,
+                event_type=event_type,
+                event_query=payload.get("query"),
+                source=payload.get("source") or "chat",
+                created_at=created_at,
+                weight=weight,
+                metadata_json=json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+                products=products,
+            ).consume()
+        return max(len(products), 1)
+
+    def _behavior_home_intent(self, user_id: str | None) -> SearchIntent:
+        user_id = _clean_user_id(user_id)
+        if not user_id:
+            return SearchIntent(attribute_filters=[], keywords=["popular"], price_max=None, min_rating=None)
+        cypher = """
+MATCH (:User {user_id: $user_id})-[:PERFORMED]->(e:BehaviorEvent)-[:ON_PRODUCT]->(:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)
+WHERE e.event_type IN $positive_events
+WITH a.attribute_type AS attribute_type, a.value AS value, sum(toFloat(coalesce(e.weight, 1.0))) AS weight
+ORDER BY weight DESC
+LIMIT 5
+RETURN attribute_type, value, weight
+"""
+        with self.driver.session(database=self.neo4j_database) as session:
+            rows = [dict(record) for record in session.run(cypher, user_id=user_id, positive_events=POSITIVE_BEHAVIOR_EVENTS)]
+        filters = [
+            AttributeFilter(attribute_type=row["attribute_type"], value=row["value"], weight=0.7)
+            for row in rows
+            if row.get("attribute_type") and row.get("value")
+        ]
+        keywords = [row["value"] for row in rows if row.get("value")]
+        if not filters and not keywords:
+            keywords = ["popular"]
+        return SearchIntent(attribute_filters=filters, keywords=keywords[:5], price_max=None, min_rating=None)
+
+    def _apply_behavior_context(
+        self,
+        session: Any,
+        candidates: dict[str, dict[str, Any]],
+        user_id: str | None,
+    ) -> None:
+        user_id = _clean_user_id(user_id)
+        if not user_id or not candidates:
+            return
+        product_ids = list(candidates)
+        preference_rows = session.run(
+            """
+            MATCH (:User {user_id: $user_id})-[:PERFORMED]->(e:BehaviorEvent)-[:ON_PRODUCT]->(:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)
+            WHERE e.event_type IN $positive_events
+            RETURN a.attribute_type AS attribute_type, a.value AS value, sum(toFloat(coalesce(e.weight, 1.0))) AS weight
+            ORDER BY weight DESC
+            LIMIT 30
+            """,
+            user_id=user_id,
+            positive_events=POSITIVE_BEHAVIOR_EVENTS,
+        )
+        preferred: dict[tuple[str, str], float] = {}
+        for record in preference_rows:
+            key = (_clean_text(record["attribute_type"]).lower(), _clean_text(record["value"]).lower())
+            if key[0] and key[1]:
+                preferred[key] = float(record["weight"] or 0.0)
+        seen_rows = session.run(
+            """
+            MATCH (:User {user_id: $user_id})-[:PERFORMED]->(e:BehaviorEvent)-[:ON_PRODUCT]->(p:Product)
+            WHERE e.event_type IN $strong_events
+            RETURN collect(DISTINCT p.product_id) AS product_ids
+            """,
+            user_id=user_id,
+            strong_events=["product_click", "review_open", "amazon_click", "feedback_yes"],
+        )
+        seen_record = seen_rows.single()
+        seen_product_ids = set(seen_record["product_ids"] if seen_record else [])
+        for candidate in candidates.values():
+            candidate["seen_penalty"] = 1.0 if candidate["product_id"] in seen_product_ids else 0.0
+        if not preferred:
+            return
+
+        attr_rows = session.run(
+            """
+            MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)
+            WHERE p.product_id IN $product_ids
+            RETURN p.product_id AS product_id,
+                   collect(DISTINCT {attribute_type: a.attribute_type, value: a.value}) AS attrs
+            """,
+            product_ids=product_ids,
+        )
+        for record in attr_rows:
+            candidate = candidates.get(record["product_id"])
+            if candidate is None:
+                continue
+            shared_weight = 0.0
+            for attr in record["attrs"] or []:
+                key = (_clean_text(attr.get("attribute_type")).lower(), _clean_text(attr.get("value")).lower())
+                shared_weight += preferred.get(key, 0.0)
+            candidate["behavior_score"] = min(shared_weight / 6.0, 1.0)
+
+    def _apply_review_mention_context(
+        self,
+        session: Any,
+        candidates: dict[str, dict[str, Any]],
+        intent: SearchIntent,
+        terms: list[str],
+    ) -> None:
+        if not candidates:
+            return
+        signals = {
+            _clean_text(value).lower()
+            for value in terms + [f.value for f in intent.attribute_filters]
+            if _clean_text(value)
+        }
+        if not signals:
+            return
+        rel_check = session.run(
+            "CALL db.relationshipTypes() YIELD relationshipType "
+            "WHERE relationshipType = 'MENTIONS' RETURN count(*) AS count"
+        ).single()
+        if not rel_check or int(rel_check["count"] or 0) == 0:
+            return
+        result = session.run(
+            """
+            MATCH (p:Product)<-[:REVIEWS]-(r:Review)-[m:MENTIONS]->(a:Attribute)
+            WHERE p.product_id IN $product_ids
+            RETURN p.product_id AS product_id,
+                   a.attribute_type AS attribute_type,
+                   a.value AS value,
+                   m.sentiment AS sentiment,
+                   count(*) AS mention_count,
+                   avg(toFloat(coalesce(m.confidence, 0.7))) AS confidence,
+                   head(collect(m.evidence)) AS evidence
+            """,
+            product_ids=list(candidates),
+        )
+        for record in result:
+            value = _clean_text(record["value"]).lower()
+            attr_type = _clean_text(record["attribute_type"]).lower()
+            if not any(signal in value or value in signal or signal in attr_type for signal in signals):
+                continue
+            candidate = candidates.get(record["product_id"])
+            if candidate is None:
+                continue
+            mention_strength = min(float(record["mention_count"] or 0) * float(record["confidence"] or 0.0) / 5.0, 1.0)
+            sentiment = _clean_text(record["sentiment"]).lower()
+            if sentiment == "negative":
+                candidate["review_negative_score"] = min(candidate.get("review_negative_score", 0.0) + mention_strength, 1.0)
+            else:
+                candidate["review_positive_score"] = min(candidate.get("review_positive_score", 0.0) + mention_strength, 1.0)
+                evidence = _strip_html(record.get("evidence"))
+                if evidence and evidence not in candidate["feature_evidence"]:
+                    candidate["feature_evidence"].append(evidence)
+
     def close(self) -> None:
         self.driver.close()
 
@@ -942,6 +1223,11 @@ def _clean_text(text: Any) -> str:
     cleaned = _strip_html("" if text is None else str(text)) or ""
     cleaned = cleaned.replace("\x00", " ")
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _clean_user_id(value: Any) -> str:
+    cleaned = _clean_text(value)
+    return re.sub(r"[^A-Za-z0-9_.:-]+", "_", cleaned)[:80]
 
 
 def _dedupe_key(title: str) -> str:
@@ -985,6 +1271,11 @@ def _candidate(candidates: dict[str, dict[str, Any]], record: Any) -> dict[str, 
             "sellable_status": record.get("sellable_status"),
             "data_quality_score": _optional_float(record.get("data_quality_score")),
             "attribute_score": 0.0,
+            "field_score": _optional_float(record.get("field_score")) or 0.0,
+            "behavior_score": 0.0,
+            "seen_penalty": 0.0,
+            "review_positive_score": 0.0,
+            "review_negative_score": 0.0,
             "matched_attributes": [],
             "feature_terms": set(),
             "field_terms": set(),
@@ -1021,6 +1312,10 @@ def _rank_candidates(
         popularity_score = _popularity_score(candidate["rating_number"])
         query_coverage_score = min((len(matched_attributes) + len(matched_terms)) / total_signals, 1.0)
         price_availability_score = 1.0 if candidate["price"] is not None else 0.0
+        user_behavior_score = float(candidate.get("behavior_score") or 0.0)
+        seen_penalty_score = float(candidate.get("seen_penalty") or 0.0)
+        review_positive_score = float(candidate.get("review_positive_score") or 0.0)
+        review_negative_score = float(candidate.get("review_negative_score") or 0.0)
 
         final_score = (
             4.5 * attribute_match_score
@@ -1030,6 +1325,10 @@ def _rank_candidates(
             + 0.75 * popularity_score
             + 1.25 * query_coverage_score
             + 2.0 * price_availability_score
+            + 1.2 * user_behavior_score
+            + 1.0 * review_positive_score
+            - 1.2 * review_negative_score
+            - 0.75 * seen_penalty_score
         )
 
         breakdown = {
@@ -1040,6 +1339,10 @@ def _rank_candidates(
             "popularity": round(popularity_score, 4),
             "query_coverage": round(query_coverage_score, 4),
             "price_availability": round(price_availability_score, 4),
+            "user_behavior": round(user_behavior_score, 4),
+            "review_positive": round(review_positive_score, 4),
+            "review_negative": round(review_negative_score, 4),
+            "seen_penalty": round(seen_penalty_score, 4),
         }
         explanation = _build_rich_explanation(candidate, matched_terms, lang)
 
@@ -1094,6 +1397,10 @@ def _build_rich_explanation(candidate: dict[str, Any], matched_terms: list[str],
             parts.append(f"評価: {candidate['average_rating']:.1f} / {rating_number}件")
         else:
             parts.append(f"rating: {candidate['average_rating']:.1f} from {rating_number} ratings")
+    if candidate.get("behavior_score", 0.0) > 0:
+        parts.append("ユーザー行動と類似" if _normalize_lang(lang) == "ja" else "similar to your activity")
+    if candidate.get("review_positive_score", 0.0) > 0:
+        parts.append("レビュー内の好意的な言及あり" if _normalize_lang(lang) == "ja" else "positive review mentions")
     fallback = "商品品質シグナルに基づく推薦" if _normalize_lang(lang) == "ja" else "Matched by product quality signals"
     return " | ".join(parts) if parts else fallback
 

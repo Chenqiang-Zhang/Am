@@ -5,6 +5,7 @@ import type { Lang } from "../i18n";
 import { friendlyTags, evidenceQuote } from "../lib/explain";
 import { useUsdToJpy } from "../lib/exchangeRate";
 import { sendRecommendationFeedback } from "../api/client";
+import { trackBehavior } from "../lib/behavior";
 import ReviewList from "./ReviewList";
 
 function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
@@ -25,15 +26,37 @@ interface Props {
   rec: Recommendation;
   rank: number;
   devMode: boolean;
+  userId: string;
+  query?: string | null;
+  source?: string;
 }
 
 // 1 商品の説明カード。既定（ユーザーモード）はやさしい表示、devMode で機械的な根拠データ。
-export default function RecommendationCard({ rec, rank, devMode }: Props) {
+export default function RecommendationCard({ rec, rank, devMode, userId, query, source = "chat" }: Props) {
   const { t, lang } = useI18n();
   const jpyRate = useUsdToJpy();
   const available = rec.availability_status === "available" || rec.price != null;
+  function track(eventType: string, metadata: Record<string, string | number | boolean | null> = {}) {
+    trackBehavior({
+      userId,
+      eventType,
+      productId: rec.product_id,
+      query,
+      rank,
+      source,
+      metadata,
+    });
+  }
   return (
-    <article className={styles.card} style={{ animationDelay: `${(rank - 1) * 70}ms` }}>
+    <article
+      className={styles.card}
+      style={{ animationDelay: `${(rank - 1) * 70}ms` }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button,a")) return;
+        track("product_click", { area: "card" });
+      }}
+    >
       <ProductImage src={rec.image_url} alt={rec.title} />
       <div className={styles.body}>
         <div className={styles.head}>
@@ -61,14 +84,15 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
           {devMode && <span className={styles.id}>{rec.product_id}</span>}
         </div>
 
-        {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
-        <ReasonFeedback productId={rec.product_id} lang={lang} />
-        <ReviewList productId={rec.product_id} ratingNumber={rec.rating_number} />
+        {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} onExpand={() => track("product_click", { area: "reason_expand" })} />}
+        <ReasonFeedback productId={rec.product_id} lang={lang} onSend={(helpful) => track(helpful ? "feedback_yes" : "feedback_no")} />
+        <ReviewList productId={rec.product_id} ratingNumber={rec.rating_number} onOpen={() => track("review_open")} />
         <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => track("amazon_click")}
         >
           {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}
         </a>
@@ -102,7 +126,7 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
 }
 
 // ===== ユーザーモード：やさしい「おすすめポイント」 =====
-function UserExplanation({ rec }: { rec: Recommendation }) {
+function UserExplanation({ rec, onExpand }: { rec: Recommendation; onExpand: () => void }) {
   const { lang } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const tags = friendlyTags(rec, lang);
@@ -129,7 +153,10 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
           <button
             type="button"
             className={styles.quoteToggle}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              setExpanded((v) => !v);
+              if (!expanded) onExpand();
+            }}
           >
             {expanded
               ? (lang === "ja" ? "閉じる" : "Show less")
@@ -168,7 +195,7 @@ function DevExplanation({ rec }: { rec: Recommendation }) {
   );
 }
 
-function ReasonFeedback({ productId, lang }: { productId: string; lang: Lang }) {
+function ReasonFeedback({ productId, lang, onSend }: { productId: string; lang: Lang; onSend: (helpful: boolean) => void }) {
   const [state, setState] = useState<"idle" | "sent" | "error">("idle");
 
   async function send(helpful: boolean) {
@@ -179,6 +206,7 @@ function ReasonFeedback({ productId, lang }: { productId: string; lang: Lang }) 
         reason_rating: helpful ? 5 : 2,
         selected_reasons: helpful ? ["reason_helpful"] : ["reason_unclear"],
       });
+      onSend(helpful);
       setState("sent");
     } catch {
       setState("error");

@@ -5,6 +5,7 @@ import SearchBar from "../components/SearchBar";
 import IntentPanel from "../components/IntentPanel";
 import RecommendationList from "../components/RecommendationList";
 import { useI18n } from "../i18n";
+import { useUserIdentity } from "../lib/userIdentity";
 import styles from "./SearchPage.module.css";
 
 type Status = "idle" | "loading" | "success" | "error";
@@ -20,13 +21,14 @@ export default function SearchPage() {
   const [lastQuery, setLastQuery] = useState<{ query: string; limit: number } | null>(null);
   // 開発者ビュー（Intent・スコア内訳など機械的な根拠を表示）。既定はユーザー向けにOFF。
   const [devMode, setDevMode] = useState(false);
+  const { userId } = useUserIdentity();
 
   async function runSearch(query: string, limit: number) {
     setStatus("loading");
     setError(null);
     setLastQuery({ query, limit });
     try {
-      const data = await recommend({ query, limit, lang });
+      const data = await recommend({ query, limit, lang, user_id: userId });
       setResponse(data);
       setStatus("success");
     } catch (e) {
@@ -90,7 +92,13 @@ export default function SearchPage() {
         {status === "success" && response && (
           <>
             {devMode && <IntentPanel intent={response.intent} />}
-            <RecommendationList items={response.recommendations} devMode={devMode} />
+            <RecommendationList
+              items={response.recommendations}
+              devMode={devMode}
+              userId={userId}
+              query={response.query}
+              source="search"
+            />
           </>
         )}
       </main>
