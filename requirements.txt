@@ -1,7 +1,9 @@
 pandas
 numpy
 matplotlib
+pyyaml
 openai
+google-genai
 neo4j
 fastapi
 uvicorn[standard]

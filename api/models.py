@@ -5,45 +5,46 @@ from pydantic import BaseModel, Field
 
 class RecommendRequest(BaseModel):
     query: str
-    limit: int = 10
+    user_id: str | None = None
+    limit: int = Field(default=10, ge=1, le=50)
 
 
-class AttributeFilter(BaseModel):
-    attribute_type: str
-    value: str
-    weight: float = 1.0
+class HomeRecommendRequest(BaseModel):
+    user_id: str
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class ViewLogRequest(BaseModel):
+    user_id: str
+    product_id: str
+    search_id: str | None = None
 
 
 class SearchIntent(BaseModel):
-    attribute_filters: list[AttributeFilter]
-    keywords: list[str]
-    price_max: float | None = None
-    min_rating: float | None = None
+    cypher: str
+    cypher_explanation: str
 
 
-class MatchedAttribute(BaseModel):
-    attribute_type: str
-    name: str
+class MatchedAttr(BaseModel):
+    attr_type: str
     value: str
-    confidence: float
-    evidence: str | None = None
 
 
 class Recommendation(BaseModel):
     product_id: str
     title: str
     price: float | None = None
-    average_rating: float | None = None
-    rating_number: int | None = None
+    avg_rating: float | None = None
+    rating_count: int | None = None
     score: float
-    matched_attributes: list[MatchedAttribute]
-    matched_terms: list[str] = Field(default_factory=list)
-    matched_feature_evidence: list[str] = Field(default_factory=list)
-    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    matched_attrs: list[MatchedAttr] = Field(default_factory=list)
     explanation: str
 
 
 class RecommendResponse(BaseModel):
     query: str
+    mode: str = "search"  # "search" | "home"
     intent: SearchIntent
     recommendations: list[Recommendation]
+    search_id: str
+    fallback: bool = False

@@ -1,0 +1,43 @@
+# ジャンル設定ファイル
+# ここを変えるだけで別の Amazon カテゴリに対応できる。
+# スキーマ・コード・Cypher クエリは変えない。
+
+genre: "All_Beauty"
+
+# ---- データパス ----
+data:
+  review_path: "data/All_Beauty.jsonl.gz"
+  meta_path:   "data/meta_All_Beauty.jsonl.gz"
+  output_dir:  "kg_output/all_beauty"
+
+# ---- データ規模（-1 = 全件） ----
+scale:
+  max_reviews: 20     # 1商品あたりの最大レビュー数（直近順）
+  max_meta:    1000   # レビュー数の多い順に上位 n 件の商品を使う
+  min_feature_len: 8
+
+# ---- LLM 設定（属性抽出・Text2Cypher 共通） ----
+# attr_type は LLM が自由に定義する（ジャンル非依存）。
+# snake_case・既存の型を再利用するようプロンプトで指示し、後処理で正規化する。
+llm:
+  provider: "groq"                # gemini / groq / deepseek / openai
+  model:   # 省略時はプロバイダのデフォルト
+  attr_type_normalize: true       # 抽出後に snake_case 正規化を行うか
+  min_confidence: 0.6             # この値未満の Attribute は除外
+  min_review_text_len: 30         # MENTIONS 抽出対象の最小文字数
+
+# ---- Neo4j 接続 ----
+# URI・パスワードは Am/.env に書く（このファイルには書かない）
+# → Am/.env.example を参照
+
+# ---- API サーバ ----
+api:
+  host: "0.0.0.0"
+  port: 8000
+  recommend_limit_default: 10
+  recommend_limit_max: 50
+
+# ---- Text2Cypher ----
+text2cypher:
+  max_cypher_attempts: 3   # Cypher 生成失敗時の最大リトライ回数
+  candidate_limit: 20      # Cypher の LIMIT デフォルト値
