@@ -516,34 +516,6 @@ Return ONLY this JSON object (no other text before or after):
 
 FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
 
-_CHAT_JSON_SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "chat_response",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "action":             {"type": "string"},
-                "question":           {"type": ["string", "null"]},
-                "options":            {"type": "array", "items": {"type": "string"}},
-                "slot":               {"type": ["string", "null"]},
-                "filled_slots":       {"type": "integer"},
-                "intent":             {"type": ["object", "null"]},
-                "preference_summary": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["action", "question", "options", "slot", "filled_slots", "intent", "preference_summary"],
-        },
-    },
-}
-
-
-def _json_format_kwargs() -> dict[str, Any]:
-    """LM Studio は json_schema、OpenAI/DeepSeek は json_object を使う。
-    両者に対応するためプロバイダーを問わず json_schema を先に試す。
-    外部で例外を捕まえるのではなく、呼び出し側で try/except を避けるためここで dict を返す。"""
-    return {"response_format": _CHAT_JSON_SCHEMA}
-
 
 # 製品カテゴリ別のスロット優先順位
 _SLOT_PRIORITY: dict[str, list[str]] = {
@@ -992,7 +964,8 @@ class Recommender:
 
         try:
             response = self._llm.chat.completions.create(
-                model=self._model, messages=llm_messages, temperature=0, **_json_format_kwargs()
+                model=self._model, messages=llm_messages,
+                response_format={"type": "json_object"}, temperature=0,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
         except Exception:
