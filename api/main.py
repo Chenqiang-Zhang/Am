@@ -14,6 +14,8 @@ from .models import (
     RecommendationFeedbackResponse,
     ReviewItem,
     ReviewsResponse,
+    SampleUser,
+    SampleUsersResponse,
     ViewLogRequest,
 )
 from .recommender import Recommender
@@ -42,7 +44,7 @@ async def health() -> dict:
 async def recommend(req: RecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    search_id, intent, results, fallback = _recommender.recommend(req.query, req.user_id, req.limit)
+    search_id, intent, results, fallback = _recommender.recommend(req.query, req.user_id, req.limit, req.lang)
     return RecommendResponse(
         query=req.query, mode="search", intent=intent, recommendations=results,
         search_id=search_id, fallback=fallback,
@@ -53,7 +55,7 @@ async def recommend(req: RecommendRequest) -> RecommendResponse:
 async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    search_id, intent, results, fallback = _recommender.recommend_home(req.user_id, req.limit)
+    search_id, intent, results, fallback = _recommender.recommend_home(req.user_id, req.limit, req.lang)
     return RecommendResponse(
         query="[home]", mode="home", intent=intent, recommendations=results,
         search_id=search_id, fallback=fallback,
@@ -71,8 +73,17 @@ async def log_view(req: ViewLogRequest) -> None:
 async def chat(req: ChatRequest) -> ChatResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang)
+    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang, req.user_id)
     return ChatResponse(**result)
+
+
+@app.get("/users/sample", response_model=SampleUsersResponse)
+async def sample_users(limit: int = 10) -> SampleUsersResponse:
+    """デモ用: 評価履歴を持つ実ユーザーを何件か返す（テストユーザー選択に使用）。"""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    rows = _recommender.sample_users(limit)
+    return SampleUsersResponse(users=[SampleUser(**r) for r in rows])
 
 
 @app.get("/products/{product_id}/reviews", response_model=ReviewsResponse)
@@ -93,3 +104,21 @@ async def recommendation_feedback(
         raise HTTPException(status_code=503, detail="Recommender not initialized")
     _recommender.save_feedback(product_id, req.model_dump())
     return RecommendationFeedbackResponse(status="ok", product_id=product_id)
+
+
+if __name__ == "__main__":
+    import yaml
+    from pathlib import Path
+
+    import uvicorn
+
+    cfg_path = Path(__file__).parent.parent / "config.yaml"
+    api_cfg: dict = {}
+    if cfg_path.exists():
+        with cfg_path.open(encoding="utf-8") as f:
+            api_cfg = (yaml.safe_load(f) or {}).get("api", {})
+    uvicorn.run(
+        "api.main:app",
+        host=api_cfg.get("host", "0.0.0.0"),
+        port=api_cfg.get("port", 8000),
+    )

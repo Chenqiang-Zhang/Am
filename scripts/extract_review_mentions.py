@@ -97,8 +97,8 @@ def build_system_prompt(genre: str, known_attr_types: list[str]) -> str:
     """
     Build the LLM system prompt dynamically.
 
-    known_attr_types: attr_types already in use (collected from product_attributes.jsonl
-    or DETAIL_KEY_MAP). The LLM is told to reuse these names for consistency.
+    known_attr_types: attr_types already in use (collected from product_attributes.jsonl).
+    The LLM is told to reuse these names for consistency.
     """
     known = "\n".join(f"  {t}" for t in sorted(known_attr_types))
     return f"""\
@@ -113,8 +113,6 @@ KNOWN attr_type names (already used in this knowledge graph — reuse these exac
 
 FORBIDDEN attr_type — never use:
   brand           (brand is a separate node; do not extract it)
-  item_form       (→ use texture)
-  product_benefit (→ use benefit)
   feature, other  (too generic)
 
 Rules for value:
@@ -305,7 +303,7 @@ def load_done_ids(output_path: Path) -> set[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract review attribute mentions via LLM.")
-    parser.add_argument("--config", type=Path, default=Path("../config.yaml"))
+    parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
     parser.add_argument("--reviews-csv", type=Path, help="Path to nodes_reviews.csv")
     parser.add_argument("--about-csv", type=Path, help="Path to rel_about.csv")
     parser.add_argument("--output-path", type=Path)
@@ -334,7 +332,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = Path(data_cfg.get("output_dir", "kg_output/all_beauty"))
+    out_dir = args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/all_beauty")
     reviews_csv = args.reviews_csv or (out_dir / "nodes_reviews.csv")
     about_csv = args.about_csv or (out_dir / "rel_about.csv")
     output_path = args.output_path or (out_dir / "attributes" / "review_mentions.jsonl")
@@ -349,7 +347,7 @@ def main() -> None:
     use_responses_api = False  # use chat.completions for all providers
 
     # Build system prompt: collect known attr_types from product_attributes.jsonl
-    # (already produced by extract_product_attributes_llm.py) for consistency
+    # (already produced by extract_product_attributes.py) for consistency
     genre = cfg.get("genre", "products")
     attr_path = out_dir / "attributes" / "product_attributes.jsonl"
     known_attr_types: set[str] = set()

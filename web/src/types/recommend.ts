@@ -8,32 +8,21 @@
 /** POST /recommend のリクエスト body */
 export interface RecommendRequest {
   query: string;
+  user_id?: string | null;
   limit: number;
   lang?: "ja" | "en";
 }
 
-/** LLM が抽出した属性フィルタ 1 件 */
-export interface AttributeFilter {
-  attribute_type: string;
-  value: string;
-  weight: number;
-}
-
-/** クエリの「システムによる解釈」 */
+/** クエリの「システムによる解釈」（Text2Cypher: LLMが生成したCypherとその一文説明） */
 export interface SearchIntent {
-  attribute_filters: AttributeFilter[];
-  keywords: string[];
-  price_max: number | null;
-  min_rating: number | null;
+  cypher: string;
+  cypher_explanation: string;
 }
 
 /** 推薦根拠となった、商品に一致した構造化属性 1 件 */
-export interface MatchedAttribute {
-  attribute_type: string;
-  name: string;
+export interface MatchedAttr {
+  attr_type: string;
   value: string;
-  confidence: number;
-  evidence: string | null;
 }
 
 /** 推薦商品 1 件（説明付き） */
@@ -41,32 +30,23 @@ export interface Recommendation {
   product_id: string;
   title: string;
   display_title: string | null;
-  display_language: "ja" | "en";
   image_url: string | null;
   price: number | null;
-  price_display: string | null;
-  availability_status: string;
-  data_quality_score: number | null;
-  average_rating: number | null;
-  rating_number: number | null;
+  avg_rating: number | null;
+  rating_count: number | null;
   score: number;
-  matched_attributes: MatchedAttribute[];
-  matched_terms: string[];
-  matched_feature_evidence: string[];
-  /** スコア内訳。キー例: attribute_match / feature_text_match / field_match /
-   *  rating_quality / popularity / query_coverage（0〜1） */
-  score_breakdown: Record<string, number>;
-  /** レコメンド理由の定量化。通常は score_breakdown と同じキーをユーザー説明用に返す。 */
-  reason_quantification: Record<string, number>;
+  matched_attrs: MatchedAttr[];
   explanation: string;
-  display_explanation: string | null;
 }
 
 /** POST /recommend のレスポンス */
 export interface RecommendResponse {
   query: string;
+  mode: "search" | "home";
   intent: SearchIntent;
   recommendations: Recommendation[];
+  search_id: string;
+  fallback: boolean;
 }
 
 // ===== 対話型推薦（CRS）=====
@@ -112,4 +92,14 @@ export interface RecommendationFeedbackRequest {
 export interface RecommendationFeedbackResponse {
   status: string;
   product_id: string;
+}
+
+// ===== デモ用テストユーザー選択 =====
+export interface SampleUser {
+  user_id: string;
+  rated_count: number;
+}
+
+export interface SampleUsersResponse {
+  users: SampleUser[];
 }

@@ -22,7 +22,7 @@ from typing import Any
 # ── Gemini native SDK wrapper ─────────────────────────────────────────────────
 # google-genai SDK uses AQ keys; the OpenAI-compatible endpoint does not.
 # This wrapper makes google-genai look like an OpenAI client so the rest of
-# the codebase (extract_product_attributes_llm.py, extract_mentions.py, etc.)
+# the codebase (extract_product_attributes.py, extract_review_mentions.py, etc.)
 # needs no changes.
 
 class _GeminiMessage:

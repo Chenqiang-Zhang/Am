@@ -1,126 +1,232 @@
-# グラフの構築ルール
-バックエンド担当はこのルールに基づいてグラフデータベースを構築．
+# グラフスキーマ定義
+
+バックエンド担当はこのルールに基づいてグラフデータベースを構築する。
+ジャンル（Amazon カテゴリ）を変えても同じスキーマが使えるよう設計している。
+ジャンル依存の設定は `config.yaml` で管理する。
 
 ---
 
-## ノード
-
-### ユーザ（User）
-| プロパティ | フィールド | 備考 |
-|-----------|-----------|------|
-| user_id | user_id | PK |
+## ノード（7種）
 
 ### 商品（Product）
-| プロパティ | フィールド | 備考 |
-|-----------|-----------|------|
-| product_id | parent_asin | PK |
-| title | title | 商品名 |
-| main_category | main_category | メインカテゴリ名（非正規化済み） |
-| price | price | 数値，欠損あり |
-| average_rating | average_rating | 数値 |
-| rating_number | rating_number | 整数 |
+| プロパティ | データ元 | 型 | 備考 |
+|-----------|---------|-----|------|
+| product_id | parent_asin | string | PK |
+| title | title | string | 商品名 |
+| price | price | float | 欠損あり |
+| avg_rating | average_rating | float | |
+| rating_count | rating_number | int | |
+| description | features + description を連結 | string | 生テキスト。LLM属性抽出とFull-Text検索に使う |
+| image_url | images | string | 欠損あり。`enrich_product_images.py` で後付け |
+| title_ja | title（LLM翻訳） | string | 欠損あり。`translate_titles.py` で後付け。表示言語が日本語のときのみAPIが使う |
 
-> **brand について**：Amazon Reviews'23 の生データには独立した brand フィールドが存在しない．`store` フィールドをブランド／出品者の代替として Store ノードで管理する．LLM 属性抽出で `brand` を Attribute ノードとして補完可能．
+### ユーザ（User）
+| プロパティ | データ元 | 型 | 備考 |
+|-----------|---------|-----|------|
+| user_id | user_id | string | PK |
 
 ### レビュー（Review）
-| プロパティ | フィールド | 備考 |
-|-----------|-----------|------|
-| review_id | 生成 ID | SHA1(user_id\|product_id\|timestamp)，PK |
-| title | title | レビュータイトル |
-| text | text | レビュー本文 |
-| rating | rating | 評価点（1–5） |
-| timestamp | timestamp | Unix ms |
-| helpful_vote | helpful_vote | 「参考になった」票数 |
-| verified_purchase | verified_purchase | 購入確認済みフラグ（bool） |
-
-> `asin`（商品 ID）はレビューノードのプロパティではなく REVIEWS エッジで表現する．
+| プロパティ | データ元 | 型 | 備考 |
+|-----------|---------|-----|------|
+| review_id | 生成 ID | string | SHA1(user_id\|product_id\|timestamp)，PK |
+| rating | rating | float | 1–5 |
+| timestamp | timestamp | int | Unix ms |
+| helpful_vote | helpful_vote | int | |
+| verified | verified_purchase | bool | |
+| title | title | string | レビュータイトル |
+| text | text | string | レビュー本文（生テキスト。LLM属性抽出に使う） |
 
 ### カテゴリ（Category）
-| プロパティ | フィールド | 備考 |
-|-----------|-----------|------|
-| category_id | 生成 ID | SHA1(name)，PK |
-| name | main_category / categories | カテゴリ名 |
+| プロパティ | データ元 | 型 | 備考 |
+|-----------|---------|-----|------|
+| category_id | 生成 ID | string | SHA1(name.lower())，PK |
+| name | main_category / categories | string | カテゴリ名 |
+| level | 階層深さ | int | 0=メイン，1=サブ，… |
 
-### ストア（Store）
-| プロパティ | フィールド | 備考 |
-|-----------|-----------|------|
-| store_id | 生成 ID | SHA1(name)，PK |
-| name | store | ブランド／出品者名として扱う |
+### ブランド（Brand）
+| プロパティ | データ元 | 型 | 備考 |
+|-----------|---------|-----|------|
+| brand_id | 生成 ID | string | SHA1(name.lower())，PK |
+| name | store | string | Amazon の store フィールドをブランドとして扱う |
 
-### 特徴テキスト（Feature）
-商品メタデータの `features` / `description` フィールドから抽出した生テキスト．
+> **注**: Amazon Reviews'23 の生データに独立した brand フィールドは存在しない。`store` フィールドはブランドの Amazon ストアフロント名に相当するため Brand ノードとして扱う。
 
-| プロパティ | 備考 |
-|-----------|------|
-| feature_id | SHA1(normalized_text)，PK |
-| text | 元テキスト |
-| normalized_text | 小文字・記号除去済みテキスト |
+### 商品属性（Attribute）
+| プロパティ | 型 | 備考 |
+|-----------|-----|------|
+| attribute_id | string | SHA1(attr_type\|value)，PK |
+| attr_type | string | ジャンル非依存。LLM抽出または `details` のルールベース抽出で自動生成 |
+| value | string | 属性値（小文字・正規化済み） |
 
-### 商品属性（Attribute）※ LLM 抽出
-LLM（OpenAI / DeepSeek）が商品メタデータから構造化して抽出した属性．Feature とは別ノード．
+> **ジャンル非依存の仕組み**: `attr_type` は LLM が自由に命名するか、`extract_product_attributes.py` が metadata の `details` キーを自動で snake_case 化して生成する（手動の対応表は持たない）。config.yaml にジャンル別の属性リストは持たない。プロンプトで「snake_case・既存の型を再利用」と指示することに加え、抽出完了後に `normalize_attributes.py` が全体の attr_type／value を見て同義語の統合マップを LLM に作らせ、`build_attribute_csvs.py` が適用することで表記ゆれを解消する（例: `item_form` と `texture` の統合）。スキーマ・エッジ・Cypher クエリはジャンルによらず共通。
 
-| プロパティ | 備考 |
-|-----------|------|
-| attribute_id | SHA1(attribute_type\|name\|value)，PK |
-| name | 属性名 |
-| value | 属性値 |
-| attribute_type | benefit / skin_type / scent / texture / ingredient / material / color / size / target_area / usage / brand / product_type / other |
+### 検索ログ（SearchLog）
+| プロパティ | 型 | 備考 |
+|-----------|-----|------|
+| log_id | string | UUID，PK |
+| query | string | 検索クエリ文字列。ホーム推薦時は `"[home]"` |
+| cypher | string | LLM が生成した Cypher |
+| explanation | string | Cypher の一文説明 |
+| result_product_ids | string[] | 検索結果の product_id 一覧 |
+| result_count | int | 検索結果件数 |
+| timestamp | int | Unix ms |
+
+> パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）のために `api/recommender.py` の `log_search()` が書き込む。ユーザごとに直近 30 件のみ保持し、古いものは削除する。
 
 ---
 
-## エッジ
-
-### WROTE：User → Review
-ユーザがレビューを書いた関係．エッジ属性なし．
-
-### REVIEWS：Review → Product
-レビューが対象商品を評価している関係．エッジ属性なし．
+## エッジ（10種）
 
 ### RATED：User → Product
-推薦クエリの高速化のため，User→Product 間に直接張るショートカットエッジ．
+協調フィルタリングの中核エッジ。User→Product 間のショートカット。
 
-| エッジ属性 | フィールド | 備考 |
-|-----------|-----------|------|
-| rating | rating | 評価点 |
-| timestamp | timestamp | Unix ms |
-| verified_purchase | verified_purchase | 購入確認済みフラグ |
+| エッジ属性 | 型 | 備考 |
+|-----------|-----|------|
+| rating | float | 評価点（1–5） |
+| timestamp | int | Unix ms |
+
+### WROTE：User → Review
+ユーザがレビューを書いた関係。属性なし。
+
+### ABOUT：Review → Product
+レビューが対象商品についての関係。属性なし。
+
+> Am/ の `REVIEWS` エッジを改名（語義を明確化）。
 
 ### BELONGS_TO：Product → Category
-商品がカテゴリに属する関係．エッジ属性なし．
+商品がカテゴリに属する関係。属性なし。
 
-### SOLD_BY：Product → Store
-商品がストア（ブランド）から販売されている関係．エッジ属性なし．
+### SUBCATEGORY_OF：Category → Category
+カテゴリの親子階層関係。可変長パスクエリ（`*1..N`）を使った階層横断を可能にする。属性なし。
 
-### HAS_FEATURE：Product → Feature
-商品が特徴テキストを持つ関係．エッジ属性なし．
+### MADE_BY：Product → Brand
+商品がブランドに紐づく関係。属性なし。
 
 ### HAS_ATTRIBUTE：Product → Attribute
-LLM 抽出属性との関係．
+商品説明テキストから LLM が抽出した属性。
 
-| エッジ属性 | 備考 |
-|-----------|------|
-| confidence | LLM の確信度（0–1） |
-| evidence | 根拠テキスト |
-| model | 使用モデル名（例：deepseek-chat） |
+| エッジ属性 | 型 | 備考 |
+|-----------|-----|------|
+| confidence | float | LLM の確信度（0–1） |
+| evidence | string | 抽出の根拠テキスト（Product.description の部分文字列） |
+| source | string | 抽出元の種別。"product_desc" 固定 |
+| model | string | 使用した LLM モデル名 |
+
+### MENTIONS：Review → Attribute
+レビューテキストから LLM が抽出した属性言及。商品説明にない「ユーザ検証済み」属性を表現する。
+
+| エッジ属性 | 型 | 備考 |
+|-----------|-----|------|
+| sentiment | string | "positive" / "negative" / "neutral" |
+| confidence | float | LLM の確信度（0–1） |
+
+### VIEWED：User → Product
+ユーザが商品を閲覧した関係。パーソナライゼーションの行動ログ。
+
+| エッジ属性 | 型 | 備考 |
+|-----------|-----|------|
+| timestamp | int | Unix ms |
+| search_id | string\|null | 閲覧元の SearchLog.log_id（あれば） |
+
+> ユーザごとに直近 20 件のみ保持し、古いものは削除する。
+
+### SEARCHED：User → SearchLog
+ユーザが検索を実行した関係。属性なし。
 
 ---
 
 ## グラフ構造の概略
 
 ```
-User -[WROTE]-> Review -[REVIEWS]-> Product
-User -[RATED]-> Product
-Product -[BELONGS_TO]-> Category
-Product -[SOLD_BY]-> Store
-Product -[HAS_FEATURE]-> Feature
-Product -[HAS_ATTRIBUTE]-> Attribute
+User  -[WROTE]->        Review -[ABOUT]->        Product
+User  -[RATED]->                                 Product
+User  -[VIEWED]->                                Product
+User  -[SEARCHED]->     SearchLog
+                        Review -[MENTIONS]->      Attribute
+                                                 Product -[HAS_ATTRIBUTE]-> Attribute
+                                                 Product -[BELONGS_TO]->   Category
+                                                 Product -[MADE_BY]->      Brand
+Category -[SUBCATEGORY_OF]-> Category
+```
+
+---
+
+## 代表的な多段推論クエリ
+
+### ① 4ホップ協調フィルタリング
+```cypher
+MATCH (u:User {user_id: $uid})-[:RATED]->(seen:Product)
+      <-[:RATED]-(peer:User)-[:RATED]->(rec:Product)
+WHERE peer <> u AND NOT (u)-[:RATED]->(rec)
+RETURN rec, count(peer) AS support
+ORDER BY support DESC LIMIT $limit
+```
+
+### ② 属性ベース類似推薦（3ホップ）
+```cypher
+MATCH (u:User {user_id: $uid})-[:RATED {rating: 4}]->(p:Product)
+      -[:HAS_ATTRIBUTE]->(a:Attribute)
+      <-[:HAS_ATTRIBUTE]-(rec:Product)
+WHERE rec <> p AND NOT (u)-[:RATED]->(rec)
+RETURN rec, collect(DISTINCT a.value) AS matched_attrs
+ORDER BY size(matched_attrs) DESC LIMIT $limit
+```
+
+### ③ カテゴリ階層横断（可変長パス）
+```cypher
+MATCH (p:Product)-[:BELONGS_TO]->(:Category)
+      -[:SUBCATEGORY_OF*1..3]->(main:Category {name: $category})
+RETURN p LIMIT $limit
+```
+
+### ④ ユーザ検証済み属性推薦（MENTIONS 活用）
+```cypher
+MATCH (u:User)-[:WROTE]->(r:Review)-[:ABOUT]->(p:Product),
+      (r)-[:MENTIONS {sentiment: "positive"}]->(a:Attribute {attr_type: $attr_type, value: $value})
+WHERE r.rating >= 4
+RETURN p, count(r) AS evidence_count
+ORDER BY evidence_count DESC LIMIT $limit
+```
+
+### ⑤ 商品説明 × レビュー両方で確認された属性を持つ商品
+```cypher
+MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)
+      <-[:MENTIONS {sentiment: "positive"}]-(r:Review)-[:ABOUT]->(p)
+WHERE a.attr_type = $attr_type
+RETURN p, a.value, count(r) AS user_confirmations
+ORDER BY user_confirmations DESC LIMIT $limit
+```
+
+---
+
+## Neo4j インデックス
+
+```cypher
+CREATE CONSTRAINT product_id_unique IF NOT EXISTS FOR (n:Product) REQUIRE n.product_id IS UNIQUE;
+CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (n:User) REQUIRE n.user_id IS UNIQUE;
+CREATE CONSTRAINT review_id_unique IF NOT EXISTS FOR (n:Review) REQUIRE n.review_id IS UNIQUE;
+CREATE CONSTRAINT category_id_unique IF NOT EXISTS FOR (n:Category) REQUIRE n.category_id IS UNIQUE;
+CREATE CONSTRAINT brand_id_unique IF NOT EXISTS FOR (n:Brand) REQUIRE n.brand_id IS UNIQUE;
+CREATE CONSTRAINT attribute_id_unique IF NOT EXISTS FOR (n:Attribute) REQUIRE n.attribute_id IS UNIQUE;
+CREATE CONSTRAINT log_id_unique IF NOT EXISTS FOR (n:SearchLog) REQUIRE n.log_id IS UNIQUE;
+
+-- Attribute 検索用
+CREATE INDEX attr_type  IF NOT EXISTS FOR (a:Attribute) ON (a.attr_type);
+CREATE INDEX attr_value IF NOT EXISTS FOR (a:Attribute) ON (a.value);
+
+-- Full-Text 検索用
+CREATE FULLTEXT INDEX product_description_ft IF NOT EXISTS FOR (n:Product) ON EACH [n.title, n.description];
+CREATE FULLTEXT INDEX review_text_ft IF NOT EXISTS FOR (n:Review) ON EACH [n.title, n.text];
 ```
 
 ---
 
 ## 実装上の注意
 
-- `review_id` は `SHA1(user_id|product_id|timestamp)` で生成する．行インデックスは含めない（リビルド時の ID 安定性のため）．
-- Feature ノードは `--max-features-per-product`（デフォルト 20）で商品ごとの上限を設ける．
-- Attribute ノードは LLM 抽出後に別スクリプト（`attributes_to_kg_csv.py`）で CSV 化し，`import_attributes_to_neo4j.py` でインポートする．ベースグラフとは独立して追加可能．
-- Aura 無料枠（ノード上限 200k）向けには `--max-reviews 30000 --max-meta 20000` で小規模グラフを構築する．
+- `review_id` は `SHA1(user_id|product_id|timestamp)` で生成する（リビルド時の ID 安定性のため行インデックスは使わない）。
+- `attribute_id` は `SHA1(attr_type|value)` で生成する（同じ属性は同一ノードとして共有される）。
+- `Product.description` は `features` と `description` フィールドを空白で連結した生テキスト。
+- `HAS_ATTRIBUTE` は `extract_product_attributes.py` + `build_attribute_csvs.py` で、`MENTIONS` は `extract_review_mentions.py` + `build_attribute_csvs.py` で生成する。
+- `SearchLog` ノードと `SEARCHED`／`VIEWED` エッジは、KG構築パイプラインではなく `api/recommender.py`（`log_search()`／`log_view()`）が API 呼び出し時に書き込む。パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）専用のデータで、Text2Cypher の商品検索クエリ自体は対象としない。
+- データ規模は `config.yaml` の `scale` セクションで制御する。
+- Am/ の `Feature` ノード・`HAS_FEATURE` エッジは廃止。テキストは `Product.description` に統合。

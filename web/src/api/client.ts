@@ -11,6 +11,7 @@ import type {
   RecommendRequest,
   RecommendResponse,
   ReviewsResponse,
+  SampleUsersResponse,
 } from "../types/recommend";
 
 // dev は vite.config.ts の proxy 経由で :8000 へ届く（CORS 不要）。
@@ -73,13 +74,14 @@ export async function chat(
   messages: ChatMessage[],
   limit = 10,
   lang: "ja" | "en" = "ja",
+  userId?: string | null,
 ): Promise<ChatResponse> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, limit, lang }),
+      body: JSON.stringify({ messages, limit, lang, user_id: userId ?? null }),
     });
   } catch {
     throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
@@ -88,6 +90,13 @@ export async function chat(
     throw new ApiError(res.status, `APIエラー (${res.status})`);
   }
   return (await res.json()) as ChatResponse;
+}
+
+/** デモ用テストユーザー一覧（GET /users/sample） */
+export async function sampleUsers(limit = 10): Promise<SampleUsersResponse> {
+  const res = await fetch(`${BASE}/users/sample?limit=${limit}`);
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as SampleUsersResponse;
 }
 
 /** 商品レビュー取得（GET /products/{id}/reviews） */

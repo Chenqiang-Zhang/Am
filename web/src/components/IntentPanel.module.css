@@ -16,83 +16,30 @@
   letter-spacing: 0.04em;
 }
 
-.warning {
+.explanation {
   margin: 0;
-  padding: var(--space-3);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-warning-text);
-}
-
-.rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.row {
-  display: flex;
-  gap: var(--space-3);
-  align-items: baseline;
-}
-
-.rowLabel {
-  flex: 0 0 92px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.rowBody {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.attrChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #f3e8ff;
-  border: 1px solid #e9d5ff;
-  font-size: 13px;
-}
-
-.attrType {
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-.attrValue {
+  font-size: 15px;
+  line-height: 1.6;
   color: var(--color-text);
 }
 
-.weight {
-  color: var(--color-text-muted);
-  font-size: 11px;
+.cypherDetails {
+  margin-top: var(--space-3);
 }
 
-.keywordChip {
-  padding: 3px 8px;
-  border-radius: 999px;
+.cypherSummary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.cypherCode {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
   background: var(--color-primary-weak);
-  border: 1px solid #d6e4fd;
-  color: var(--color-primary);
-  font-size: 13px;
-}
-
-.scalar {
-  font-size: 14px;
-}
-
-.none {
-  color: var(--color-text-muted);
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }

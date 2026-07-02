@@ -2,10 +2,13 @@
 Import all KG CSV files into Neo4j (or Neo4j Aura).
 
 Run order:
-  1. python build_kg_csv.py           → base graph CSVs
-  2. python extract_product_attributes_llm.py + extract_mentions.py
-  3. python build_attribute_csvs.py   → Attribute node + edge CSVs
-  4. python import_kg_to_neo4j.py     → this script (imports everything)
+  1. python build_kg_csvs.py             → base graph CSVs
+  2. python extract_product_attributes.py + extract_review_mentions.py
+  3. python normalize_attributes.py      → (optional) attr_type/value canonicalization
+  4. python build_attribute_csvs.py      → Attribute node + edge CSVs
+  5. python import_kg_to_neo4j.py        → this script (imports everything)
+  6. python enrich_product_images.py     → (optional) Product.image_url
+  7. python translate_titles.py          → (optional) Product.title_ja
 
 Attribute jobs (nodes_attributes.csv, rel_has_attribute.csv, rel_mentions.csv)
 are optional — silently skipped if the files do not exist yet.
@@ -113,9 +116,13 @@ def create_schema(driver: Any, database: str | None) -> None:
         "CREATE CONSTRAINT category_id  IF NOT EXISTS FOR (c:Category)  REQUIRE c.category_id  IS UNIQUE",
         "CREATE CONSTRAINT brand_id     IF NOT EXISTS FOR (b:Brand)     REQUIRE b.brand_id     IS UNIQUE",
         "CREATE CONSTRAINT attribute_id IF NOT EXISTS FOR (a:Attribute) REQUIRE a.attribute_id IS UNIQUE",
+        "CREATE CONSTRAINT log_id       IF NOT EXISTS FOR (s:SearchLog) REQUIRE s.log_id       IS UNIQUE",
         # additional indexes for Attribute lookup
         "CREATE INDEX attr_type  IF NOT EXISTS FOR (a:Attribute) ON (a.attr_type)",
         "CREATE INDEX attr_value IF NOT EXISTS FOR (a:Attribute) ON (a.value)",
+        # fulltext indexes for broader text search (see Graph_rule.md)
+        "CREATE FULLTEXT INDEX product_description_ft IF NOT EXISTS FOR (n:Product) ON EACH [n.title, n.description]",
+        "CREATE FULLTEXT INDEX review_text_ft IF NOT EXISTS FOR (n:Review) ON EACH [n.title, n.text]",
     ]
     with driver.session(database=database) as session:
         for stmt in statements:
@@ -379,7 +386,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Import KG CSV files into Neo4j / Neo4j Aura."
     )
-    parser.add_argument("--config", type=Path, default=Path("../config.yaml"))
+    parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
     parser.add_argument("--input-dir", type=Path, default=None,
                         help="Directory containing CSV files (default: data.output_dir from config.yaml)")
     parser.add_argument("--uri",      default=None, help="Neo4j URI (overrides config)")
@@ -395,9 +402,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    # load .env from parent directory (Am/)
-    env_path = args.config.parent / ".env" if args.config.exists() else Path("../.env")
-    load_env_file(env_path)
+    config_dir = args.config.resolve().parent
+
+    # load .env from the directory containing config.yaml (Am/)
+    load_env_file(config_dir / ".env")
     load_env_file()  # fallback: also try CWD/.env
 
     cfg: dict = {}
@@ -413,7 +421,7 @@ def main() -> None:
     user     = args.user     or os.environ.get("NEO4J_USERNAME")               or neo4j_cfg.get("username", "neo4j")
     password = args.password or os.environ.get("NEO4J_PASSWORD")               or neo4j_cfg.get("password", "")
     database = args.database or os.environ.get("NEO4J_DATABASE")
-    input_dir = args.input_dir or Path(data_cfg.get("output_dir", "kg_output/all_beauty"))
+    input_dir = args.input_dir or (config_dir / data_cfg.get("output_dir", "kg_output/all_beauty"))
 
     if not uri or not password:
         print(

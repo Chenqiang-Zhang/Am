@@ -2,8 +2,11 @@
 Convert LLM extraction outputs to Neo4j import CSVs.
 
 Reads:
-  product_attributes.jsonl  (from extract_product_attributes_llm.py)
-  review_mentions.jsonl     (from extract_mentions.py)
+  product_attributes.jsonl     (from extract_product_attributes.py)
+  review_mentions.jsonl        (from extract_review_mentions.py)
+  attribute_canonical_map.json (optional, from normalize_attributes.py)
+  nodes_products.csv           (from build_kg_csvs.py; used to drop attributes for
+                                 products outside the current scale.max_meta selection)
 
 Writes:
   nodes_attributes.csv          -- Attribute nodes (deduped by attribute_id)
@@ -53,15 +56,47 @@ def read_jsonl(path: Path):
                     continue
 
 
+def load_canonical_map(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"attr_type_map": {}, "value_map": {}}
+    with path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    return {"attr_type_map": data.get("attr_type_map", {}), "value_map": data.get("value_map", {})}
+
+
+def canonicalize(t: str, v: str, canon: dict[str, Any]) -> tuple[str, str]:
+    t2 = canon["attr_type_map"].get(t, t)
+    v2 = canon["value_map"].get(t2, {}).get(v, v)
+    return t2, v2
+
+
+def load_valid_product_ids(nodes_products_path: Path) -> set[str] | None:
+    """Products actually selected into the base graph (build_kg_csvs.py's scale.max_meta cap).
+
+    Extraction scripts may process a broader set (e.g. --rule-only --limit -1 warms a
+    cache ahead of a future scale.max_meta increase). Filtering here guarantees we never
+    write HAS_ATTRIBUTE edges or Attribute nodes for products that aren't actually in the
+    graph — Neo4j's MATCH-based import silently drops such edges, but the orphan Attribute
+    nodes would still get created.
+    """
+    if not nodes_products_path.exists():
+        return None
+    with nodes_products_path.open(encoding="utf-8") as f:
+        return {row["product_id"] for row in csv.DictReader(f)}
+
+
 def build_attribute_csvs(
     product_attrs_path: Path,
     review_mentions_path: Path,
     output_dir: Path,
     min_confidence: float,
+    canon: dict[str, Any],
+    valid_product_ids: set[str] | None,
 ) -> dict[str, int]:
     attribute_nodes: dict[str, dict] = {}
     has_attribute_edges: list[dict] = []
     mentions_edges: list[dict] = []
+    skipped_out_of_scope = 0
 
     # ── product attributes → HAS_ATTRIBUTE ────────────────────────────────────
     if product_attrs_path.exists():
@@ -70,12 +105,16 @@ def build_attribute_csvs(
             model = str(record.get("model", ""))
             if not product_id:
                 continue
+            if valid_product_ids is not None and product_id not in valid_product_ids:
+                skipped_out_of_scope += 1
+                continue
             for attr in record.get("attributes", []):
                 t = str(attr.get("attr_type", "")).strip()
                 v = str(attr.get("value", "")).strip()
                 confidence = float(attr.get("confidence", 0.0))
                 if not t or not v or confidence < min_confidence:
                     continue
+                t, v = canonicalize(t, v, canon)
                 aid = attr_id(t, v)
                 attribute_nodes.setdefault(aid, {"attribute_id": aid, "attr_type": t, "value": v})
                 has_attribute_edges.append({
@@ -87,6 +126,8 @@ def build_attribute_csvs(
                     "model": model,
                 })
         print(f"Loaded {len(has_attribute_edges):,} HAS_ATTRIBUTE edges from {product_attrs_path.name}")
+        if skipped_out_of_scope:
+            print(f"  Skipped {skipped_out_of_scope:,} products not present in nodes_products.csv")
     else:
         print(f"Warning: {product_attrs_path} not found, skipping HAS_ATTRIBUTE.")
 
@@ -105,6 +146,7 @@ def build_attribute_csvs(
                     continue
                 if sentiment not in {"positive", "negative", "neutral"}:
                     sentiment = "neutral"
+                t, v = canonicalize(t, v, canon)
                 aid = attr_id(t, v)
                 attribute_nodes.setdefault(aid, {"attribute_id": aid, "attr_type": t, "value": v})
                 mentions_edges.append({
@@ -140,11 +182,22 @@ def build_attribute_csvs(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Attribute node and edge CSVs from LLM extraction outputs.")
-    parser.add_argument("--config", type=Path, default=Path("../config.yaml"))
+    parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
     parser.add_argument("--product-attrs", type=Path, help="Path to product_attributes.jsonl")
     parser.add_argument("--review-mentions", type=Path, help="Path to review_mentions.jsonl")
     parser.add_argument("--output-dir", type=Path, help="Directory to write CSVs")
     parser.add_argument("--min-confidence", type=float, default=None)
+    parser.add_argument(
+        "--canonical-map", type=Path,
+        help="Path to attribute_canonical_map.json (from normalize_attributes.py). "
+             "Auto-detected in attributes_dir if omitted; skipped entirely if absent.",
+    )
+    parser.add_argument(
+        "--nodes-products", type=Path,
+        help="Path to nodes_products.csv (from build_kg_csvs.py), used to drop attributes for "
+             "products outside the current scale.max_meta selection. Auto-detected in output_dir "
+             "if omitted; if not found, no filtering is applied.",
+    )
     return parser.parse_args()
 
 
@@ -160,15 +213,29 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = args.output_dir or Path(data_cfg.get("output_dir", "kg_output/all_beauty"))
+    out_dir = args.output_dir or (args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/all_beauty"))
     attrs_dir = out_dir / "attributes"
 
     product_attrs_path = args.product_attrs or (attrs_dir / "product_attributes.jsonl")
     review_mentions_path = args.review_mentions or (attrs_dir / "review_mentions.jsonl")
     min_confidence = args.min_confidence if args.min_confidence is not None else float(llm_cfg.get("min_confidence", 0.6))
+    canonical_map_path = args.canonical_map or (attrs_dir / "attribute_canonical_map.json")
+    nodes_products_path = args.nodes_products or (out_dir / "nodes_products.csv")
+
+    canon = load_canonical_map(canonical_map_path)
+    if canon["attr_type_map"] or canon["value_map"]:
+        print(f"Applying canonicalization map from {canonical_map_path}")
+
+    valid_product_ids = load_valid_product_ids(nodes_products_path)
+    if valid_product_ids is not None:
+        print(f"Scoping to {len(valid_product_ids):,} products from {nodes_products_path.name}")
+    else:
+        print(f"Warning: {nodes_products_path} not found — no product scoping applied.")
 
     print(f"Building attribute CSVs in {out_dir}...")
-    counts = build_attribute_csvs(product_attrs_path, review_mentions_path, out_dir, min_confidence)
+    counts = build_attribute_csvs(
+        product_attrs_path, review_mentions_path, out_dir, min_confidence, canon, valid_product_ids
+    )
 
     print()
     for name, count in counts.items():

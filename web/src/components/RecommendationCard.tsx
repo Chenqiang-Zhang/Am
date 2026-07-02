@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Recommendation } from "../types/recommend";
 import { useI18n } from "../i18n";
 import type { Lang } from "../i18n";
-import { friendlyTags, evidenceQuote } from "../lib/explain";
+import { friendlyTags } from "../lib/explain";
 import { useUsdToJpy } from "../lib/exchangeRate";
 import { sendRecommendationFeedback } from "../api/client";
 import ReviewList from "./ReviewList";
@@ -16,9 +16,6 @@ function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
 }
 import RatingStars from "./RatingStars";
 import AttributeChips from "./AttributeChips";
-import TermChips from "./TermChips";
-import EvidenceList from "./EvidenceList";
-import ScoreBreakdown from "./ScoreBreakdown";
 import styles from "./RecommendationCard.module.css";
 
 interface Props {
@@ -31,7 +28,7 @@ interface Props {
 export default function RecommendationCard({ rec, rank, devMode }: Props) {
   const { t, lang } = useI18n();
   const jpyRate = useUsdToJpy();
-  const available = rec.availability_status === "available" || rec.price != null;
+  const available = rec.price != null;
   return (
     <article className={styles.card} style={{ animationDelay: `${(rank - 1) * 70}ms` }}>
       <ProductImage src={rec.image_url} alt={rec.title} />
@@ -49,7 +46,7 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
         </div>
 
         <div className={styles.meta}>
-          <RatingStars rating={rec.average_rating} count={rec.rating_number} />
+          <RatingStars rating={rec.avg_rating} count={rec.rating_count} />
           <span className={available ? styles.availabilityOk : styles.availabilityUnavailable}>
             {available ? t.availableLabel : t.unavailableLabel}
           </span>
@@ -63,7 +60,7 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
         <ReasonFeedback productId={rec.product_id} lang={lang} />
-        <ReviewList productId={rec.product_id} ratingNumber={rec.rating_number} />
+        <ReviewList productId={rec.product_id} ratingNumber={rec.rating_count} />
         <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
@@ -104,10 +101,8 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
 // ===== ユーザーモード：やさしい「おすすめポイント」 =====
 function UserExplanation({ rec }: { rec: Recommendation }) {
   const { lang } = useI18n();
-  const [expanded, setExpanded] = useState(false);
   const tags = friendlyTags(rec, lang);
-  const fullQuote = rec.matched_feature_evidence[0] ?? null;
-  const explanation = rec.display_explanation || rec.explanation;
+  const explanation = rec.explanation;
 
   return (
     <div className={styles.user}>
@@ -121,49 +116,20 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
         </div>
       )}
       {explanation && <p className={styles.localizedReason}>{explanation}</p>}
-      {fullQuote && (
-        <div className={styles.quoteBlock}>
-          {expanded && (
-            <p className={styles.userQuote}>{'"'}{fullQuote}{'"'}</p>
-          )}
-          <button
-            type="button"
-            className={styles.quoteToggle}
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded
-              ? (lang === "ja" ? "閉じる" : "Show less")
-              : (lang === "ja" ? "詳細を見る" : "Show more")}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
 // ===== 開発者モード：機械的な根拠データ（ガラス張り） =====
+// Text2Cypher: 一致した構造化属性 + LLMによる一文説明を主役にする。
 function DevExplanation({ rec }: { rec: Recommendation }) {
   const { t } = useI18n();
   return (
     <div className={styles.dev}>
-      <Section label={t.matchedAttributes}>
-        <AttributeChips attributes={rec.matched_attributes} />
-      </Section>
-      <Section label={t.matchedTerms}>
-        <TermChips terms={rec.matched_terms} />
-      </Section>
-      {rec.matched_feature_evidence.length > 0 && (
-        <Section label={t.evidence}>
-          <EvidenceList evidence={rec.matched_feature_evidence} />
-        </Section>
-      )}
-      <Section label={t.scoreBreakdown}>
-        <ScoreBreakdown breakdown={rec.score_breakdown} />
-      </Section>
-      <Section label={t.reasonQuantification}>
-        <ScoreBreakdown breakdown={rec.reason_quantification || rec.score_breakdown} />
-      </Section>
       {rec.explanation && <p className={styles.explanation}>{rec.explanation}</p>}
+      <Section label={t.matchedAttributes}>
+        <AttributeChips attributes={rec.matched_attrs} />
+      </Section>
     </div>
   );
 }

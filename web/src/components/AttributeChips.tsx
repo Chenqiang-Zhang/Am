@@ -1,9 +1,9 @@
-import type { MatchedAttribute } from "../types/recommend";
+import type { MatchedAttr } from "../types/recommend";
 import { useI18n } from "../i18n";
 import styles from "./AttributeChips.module.css";
 
 interface Props {
-  attributes: MatchedAttribute[];
+  attributes: MatchedAttr[];
 }
 
 // 推薦根拠として最も精密な「一致した構造化属性」。
@@ -16,22 +16,12 @@ export default function AttributeChips({ attributes }: Props) {
 
   return (
     <div className={styles.chips}>
-      {attributes.map((a, i) => {
-        const tooltip = a.evidence
-          ? `${a.evidence}（${a.confidence.toFixed(2)}）`
-          : a.confidence.toFixed(2);
-        return (
-          <span
-            key={`${a.attribute_type}-${a.value}-${i}`}
-            className={styles.chip}
-            title={tooltip}
-          >
-            <span className={styles.type}>{a.attribute_type}</span>
-            <span className={styles.value}>{a.value}</span>
-            <span className={styles.confidence}>{a.confidence.toFixed(2)}</span>
-          </span>
-        );
-      })}
+      {attributes.map((a, i) => (
+        <span key={`${a.attr_type}-${a.value}-${i}`} className={styles.chip}>
+          <span className={styles.type}>{a.attr_type}</span>
+          <span className={styles.value}>{a.value}</span>
+        </span>
+      ))}
     </div>
   );
 }

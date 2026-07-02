@@ -106,34 +106,31 @@ ATTRIBUTE_SCHEMA: dict[str, Any] = {
     "required": ["products"],
 }
 
-def build_system_prompt(genre: str, rule_attr_types: list[str]) -> str:
-    """
-    Build the LLM system prompt dynamically.
-
-    rule_attr_types: attr_types already confirmed by rule-based extraction
-    (derived from DETAIL_KEY_MAP.values()). These become the "prefer these"
-    list so the LLM reuses the same names and the prompt adapts to each genre.
-    """
-    known = "\n".join(f"  {t}" for t in sorted(rule_attr_types))
+def build_system_prompt(genre: str) -> str:
+    """Build the LLM system prompt. Static — per-product known attributes are
+    passed in the user payload (see product_payload()), not here."""
     return f"""\
 Extract product attributes for a knowledge graph of {genre}.
 
 Return valid JSON only. Output shape:
 {{"products":[{{"product_id":"...","attributes":[{{"attr_type":"...","value":"...","evidence":"short source phrase","confidence":0.0}}]}}]}}
 
-RULE-CONFIRMED attr_type names (already extracted from structured fields — reuse these exactly when the attribute fits):
-{known}
+Each product in the input includes a "known_attributes" list — attr_type/value pairs
+already extracted from structured metadata fields (zero-cost, rule-based). Do NOT
+re-extract these facts. Only return attributes for NEW information found in
+title/features/description that is not already covered by known_attributes.
+If a new fact fits the same concept as one of the known attr_type names, reuse
+that exact name instead of inventing a new one.
 
-ADDITIONAL attr_types for free-text content (use when the above don't apply):
+ADDITIONAL attr_types for free-text content (use when known_attributes don't apply):
   ingredient   specific actives only: vitamin c, retinol, hyaluronic acid, niacinamide
   target_area  e.g. face, hair, eyes, lips, body, nails
   product_type e.g. moisturizer, shampoo, serum, toner, cleanser, mask, conditioner
-  (You may invent new snake_case names only if none of the above truly fit)
+  (You may invent new snake_case names only if none of the above, and none of
+   known_attributes, truly fit)
 
 FORBIDDEN attr_type — never use these:
   brand           (brand is a separate node in the graph; do not extract it)
-  item_form       (→ use texture)
-  product_benefit (→ use benefit)
   feature, other  (too generic)
 
 Rules for value:
@@ -150,20 +147,29 @@ General rules:
 
 # ── structured fields → rule-based attributes ─────────────────────────────────
 
-DETAIL_KEY_MAP: dict[str, str] = {
-    # "Brand" excluded: brand is already a first-class KG node (MADE_BY relationship)
-    "Skin Type": "skin_type",
-    "Scent": "scent",
-    "Item Form": "texture",
-    "Product Benefits": "benefit",
-    "Material": "material",
-    "Material Type": "material",
-    "Color": "color",
-    "Hair Type": "hair_type",
-    "Unit Count": "size",
-    "Size": "size",
-    "Target Audience": "usage",
+# details キーはキュレーション無しで _key_to_attr_type() が全て自動的に
+# snake_case 化する（例: "Item Form" → "item_form"）。ジャンル（Amazon カテゴリ）
+# を切り替えても手で保守する対応表は不要。
+#
+# details キーのうち、ジャンルを問わず属性として無意味なものは共通で除外する。
+# "Brand" は既に一級のKGノード（MADE_BY関係）なので Attribute としては不要。
+IGNORED_DETAIL_KEYS = {
+    "Brand",
+    "UPC", "EAN", "ASIN", "Item model number", "Model Number", "Manufacturer",
+    "Item Weight", "Product Dimensions", "Package Dimensions", "Item Dimensions LxWxH",
+    "Date First Available", "Customer Reviews", "Best Sellers Rank",
+    "Is Discontinued By Manufacturer", "Batteries Required?", "Batteries Included?",
+    "Warranty Description", "Country of Origin", "Domestic Shipping",
+    "International Shipping", "Included Components", "Number of Items",
 }
+
+_KEY_TO_ATTR_TYPE_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _key_to_attr_type(raw_key: str) -> str:
+    """details の生キー（例: "Skin Type"）を snake_case の attr_type に変換する。"""
+    return _KEY_TO_ATTR_TYPE_RE.sub("_", raw_key.strip().lower()).strip("_")
+
 
 _SIZE_PAT = re.compile(
     r"\b\d+(?:\.\d+)?\s?(?:fl\.?\s?oz|oz|ounce|ounces|ml|g|gram|grams|inch|inches|mm|cm|pcs|pack)\b",
@@ -188,9 +194,13 @@ def rule_attributes(row: dict[str, Any]) -> list[dict[str, Any]]:
         attrs.append({"attr_type": t, "value": v, "evidence": evidence[:120], "confidence": confidence})
 
     details = row.get("details") if isinstance(row.get("details"), dict) else {}
-    for key, attr_type in DETAIL_KEY_MAP.items():
-        if key in details:
-            add(attr_type, details[key], f"{key}: {details[key]}", 0.9)
+    for key, raw_val in details.items():
+        if key in IGNORED_DETAIL_KEYS:
+            continue
+        attr_type = _key_to_attr_type(key)
+        if not attr_type:
+            continue
+        add(attr_type, raw_val, f"{key}: {raw_val}", 0.9)
 
     title = clean_text(row.get("title"))
     for match in _SIZE_PAT.findall(title):
@@ -208,22 +218,21 @@ def rule_attributes(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 # ── product payload builder ────────────────────────────────────────────────────
 
-def product_payload(row: dict[str, Any], max_chars: int) -> dict[str, Any]:
+def product_payload(row: dict[str, Any], max_chars: int, rule_attrs: list[dict[str, Any]]) -> dict[str, Any]:
     budget = max(120, max_chars // 4)
-    details = row.get("details") if isinstance(row.get("details"), dict) else {}
     return {
         "product_id": row.get("parent_asin"),
         "title": clean_text(row.get("title"))[:budget],
         "store": clean_text(row.get("store")),
         "features": [clean_text(x)[:budget] for x in as_list(row.get("features"))[:5] if clean_text(x)],
         "description": [clean_text(x)[:budget] for x in as_list(row.get("description"))[:3] if clean_text(x)],
-        "details": {k: details[k] for k in DETAIL_KEY_MAP if k in details and clean_text(details[k])},
+        "known_attributes": [{"attr_type": a["attr_type"], "value": a["value"]} for a in rule_attrs],
     }
 
 
 def is_sparse(payload: dict[str, Any]) -> bool:
-    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
-    return bool(payload.get("title")) and not payload.get("features") and not payload.get("description") and len(details) <= 1
+    known = payload.get("known_attributes") or []
+    return bool(payload.get("title")) and not payload.get("features") and not payload.get("description") and len(known) <= 1
 
 
 # ── API helpers ────────────────────────────────────────────────────────────────
@@ -398,7 +407,7 @@ def load_done_ids(output_path: Path) -> set[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract product attributes via LLM.")
-    parser.add_argument("--config", type=Path, default=Path("../config.yaml"))
+    parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
     parser.add_argument("--meta-path", type=Path)
     parser.add_argument("--output-path", type=Path)
     parser.add_argument("--provider", choices=["gemini", "groq", "deepseek", "openai", "ollama"], default=None)
@@ -433,9 +442,10 @@ def main() -> None:
 
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
+    config_dir = args.config.resolve().parent
 
-    meta_path = args.meta_path or Path(data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
-    out_dir = Path(data_cfg.get("output_dir", "kg_output/all_beauty"))
+    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
+    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/all_beauty")
     output_path = args.output_path or (out_dir / "attributes" / "product_attributes.jsonl")
 
     cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
@@ -450,11 +460,9 @@ def main() -> None:
         client, model = None, model_arg or "rules"
     use_responses_api = False  # use chat.completions for all providers
 
-    # Build system prompt dynamically from DETAIL_KEY_MAP (genre-adaptive)
     genre = cfg.get("genre", "products")
-    rule_attr_types = sorted(set(DETAIL_KEY_MAP.values()))
-    system_prompt = build_system_prompt(genre, rule_attr_types)
-    print(f"Prompt built for genre={genre!r}, rule-confirmed types: {rule_attr_types}")
+    system_prompt = build_system_prompt(genre)
+    print(f"Prompt built for genre={genre!r}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     done_ids = load_done_ids(output_path) if args.resume else set()
@@ -534,7 +542,7 @@ def main() -> None:
                     continue
 
                 rule_attrs = rule_attributes(row)
-                payload = product_payload(row, args.max_input_chars)
+                payload = product_payload(row, args.max_input_chars, rule_attrs)
 
                 if args.skip_sparse and is_sparse(payload):
                     with output_path.open("a", encoding="utf-8") as _out:

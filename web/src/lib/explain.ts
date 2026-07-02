@@ -64,10 +64,7 @@ function labelFor(term: string, lang: Lang): string {
 
 /** 「おすすめポイント」タグ（言語に応じたラベル・重複排除・上限あり） */
 export function friendlyTags(rec: Recommendation, lang: Lang, max = 6): string[] {
-  const raw = [
-    ...rec.matched_attributes.map((a) => a.value),
-    ...rec.matched_terms,
-  ];
+  const raw = rec.matched_attrs.map((a) => a.value);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const term of raw) {
@@ -79,11 +76,4 @@ export function friendlyTags(rec: Recommendation, lang: Lang, max = 6): string[]
     if (out.length >= max) break;
   }
   return out;
-}
-
-/** 商品説明からの根拠（実テキスト）。あれば1件を120文字で返す。 */
-export function evidenceQuote(rec: Recommendation, maxLen = 120): string | null {
-  const text = rec.matched_feature_evidence[0] ?? null;
-  if (!text) return null;
-  return text.length <= maxLen ? text : text.slice(0, maxLen).trimEnd() + "…";
 }

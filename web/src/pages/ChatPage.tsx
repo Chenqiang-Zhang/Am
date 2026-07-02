@@ -8,6 +8,7 @@ import PreferenceSummary from "../components/PreferenceSummary";
 import IntentPanel from "../components/IntentPanel";
 import RecommendationList from "../components/RecommendationList";
 import HelpModal from "../components/HelpModal";
+import TestUserSelect, { useStoredTestUserId } from "../components/TestUserSelect";
 import styles from "./ChatPage.module.css";
 
 const LIMIT = 8;
@@ -31,6 +32,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [userId, setUserId] = useStoredTestUserId();
 
   async function send(text: string) {
     const content = text.trim();
@@ -45,7 +47,7 @@ export default function ChatPage() {
     setStatus("loading");
 
     try {
-      const r = await chat(next, LIMIT, lang);
+      const r = await chat(next, LIMIT, lang, userId);
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
@@ -116,6 +118,7 @@ export default function ChatPage() {
             />
             {t.devView}
           </label>
+          <TestUserSelect userId={userId} onChange={setUserId} />
         </div>
         <div className={styles.headerText}>
           <h1 className={styles.title}>{t.appTitle}</h1>

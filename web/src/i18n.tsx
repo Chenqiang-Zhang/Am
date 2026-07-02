@@ -30,20 +30,10 @@ interface Dict {
   unavailableLabel: string;
   filteredEmpty: string;
   matchedAttributes: string;
-  matchedTerms: string;
-  evidence: string;
-  scoreBreakdown: string;
-  reasonQuantification: string;
   noAttributeMatch: string;
-  noTermMatch: string;
   intentHeading: string;
   intentWarning: string;
-  attrFilters: string;
-  keywords: string;
-  maxPrice: string;
-  minRating: string;
-  none: string;
-  notSet: string;
+  showCypher: string;
 }
 
 const ja: Dict = {
@@ -68,20 +58,10 @@ const ja: Dict = {
   unavailableLabel: "売り切れ・現在購入不可",
   filteredEmpty: "この表示条件に一致する商品はありません。",
   matchedAttributes: "一致した属性",
-  matchedTerms: "一致テキスト",
-  evidence: "根拠（特徴文）",
-  scoreBreakdown: "スコア内訳",
-  reasonQuantification: "推薦理由の定量化",
-  noAttributeMatch: "構造化属性の一致なし（テキスト一致のみ）",
-  noTermMatch: "一致テキストなし",
+  noAttributeMatch: "構造化属性の一致なし",
   intentHeading: "システムの解釈 (Intent)",
-  intentWarning: "クエリから検索条件を抽出できませんでした。表現を変えて再検索してみてください。",
-  attrFilters: "属性フィルタ",
-  keywords: "キーワード",
-  maxPrice: "価格上限",
-  minRating: "最低評価",
-  none: "なし",
-  notSet: "指定なし",
+  intentWarning: "検索条件の説明を取得できませんでした。",
+  showCypher: "実行されたクエリを見る",
 };
 
 const en: Dict = {
@@ -106,45 +86,13 @@ const en: Dict = {
   unavailableLabel: "Sold out / currently unavailable",
   filteredEmpty: "No products match this result filter.",
   matchedAttributes: "Matched attributes",
-  matchedTerms: "Matched terms",
-  evidence: "Evidence (from description)",
-  scoreBreakdown: "Score breakdown",
-  reasonQuantification: "Reason quantification",
-  noAttributeMatch: "No structured-attribute match (text match only)",
-  noTermMatch: "No matched terms",
+  noAttributeMatch: "No structured-attribute match",
   intentHeading: "System interpretation (Intent)",
-  intentWarning: "Couldn't extract search criteria from the query. Try rephrasing.",
-  attrFilters: "Attribute filters",
-  keywords: "Keywords",
-  maxPrice: "Max price",
-  minRating: "Min rating",
-  none: "none",
-  notSet: "not set",
+  intentWarning: "Couldn't retrieve an explanation for the search.",
+  showCypher: "Show the executed query",
 };
 
 const DICTS: Record<Lang, Dict> = { ja, en };
-
-// ScoreBreakdown の指標ラベル（言語別）
-export const METRIC_LABELS: Record<Lang, Record<string, string>> = {
-  ja: {
-    attribute_match: "属性一致",
-    feature_text_match: "特徴テキスト一致",
-    field_match: "フィールド一致",
-    query_coverage: "クエリ被覆率",
-    rating_quality: "評価品質",
-    popularity: "人気度",
-    price_availability: "価格あり",
-  },
-  en: {
-    attribute_match: "Attribute match",
-    feature_text_match: "Feature-text match",
-    field_match: "Field match",
-    query_coverage: "Query coverage",
-    rating_quality: "Rating quality",
-    popularity: "Popularity",
-    price_availability: "Price available",
-  },
-};
 
 interface Ctx {
   lang: Lang;

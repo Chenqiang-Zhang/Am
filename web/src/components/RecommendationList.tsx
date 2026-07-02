@@ -27,8 +27,7 @@ export default function RecommendationList({ items, devMode }: Props) {
     );
   }
 
-  const isAvailable = (rec: Recommendation) =>
-    rec.availability_status === "available" || rec.price != null;
+  const isAvailable = (rec: Recommendation) => rec.price != null;
   const availableCount = items.filter(isAvailable).length;
   const unavailableCount = items.length - availableCount;
   const visibleItems = items.filter((rec) => {

@@ -20,7 +20,7 @@ const STEPS_JA = [
   {
     icon: "✨",
     title: "おすすめ商品が表示される",
-    body: "条件が揃うと推薦リストが表示されます。「詳細を見る」でレビュー根拠、「レビューを見る」で実際の口コミを確認できます。",
+    body: "条件が揃うと推薦リストが表示されます。「レビューを見る」で実際の口コミを確認できます。",
   },
   {
     icon: "🔄",
@@ -43,7 +43,7 @@ const STEPS_EN = [
   {
     icon: "✨",
     title: "Recommendations appear",
-    body: 'Once it has enough info, a product list is shown. Use "Show more" for review evidence and "Show reviews" for actual customer reviews.',
+    body: 'Once it has enough info, a product list is shown. Use "Show reviews" for actual customer reviews.',
   },
   {
     icon: "🔄",

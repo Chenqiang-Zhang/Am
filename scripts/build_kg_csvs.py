@@ -4,8 +4,9 @@ Build Neo4j-ready CSV files for the knowledge graph.
 Nodes: Product / User / Review / Category / Brand
 Edges: RATED, WROTE, ABOUT, BELONGS_TO, SUBCATEGORY_OF, MADE_BY
 
-HAS_ATTRIBUTE (Product→Attribute) is built by extract_attributes.py.
-MENTIONS (Review→Attribute) is built by extract_mentions.py.
+HAS_ATTRIBUTE (Product→Attribute) is built by extract_product_attributes.py
++ build_attribute_csvs.py. MENTIONS (Review→Attribute) is built by
+extract_review_mentions.py + build_attribute_csvs.py.
 """
 from __future__ import annotations
 
@@ -387,8 +388,8 @@ def parse_args() -> argparse.Namespace:
         description="Build Neo4j-ready CSV files for the Amazon Reviews'23 knowledge graph."
     )
     parser.add_argument(
-        "--config", type=Path, default=Path("../config.yaml"),
-        help="Path to config.yaml (default: ../../config.yaml relative to this script)",
+        "--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml",
+        help="Path to config.yaml (default: Am/config.yaml, resolved from this script's location)",
     )
     parser.add_argument("--review-path", type=Path)
     parser.add_argument("--meta-path", type=Path)
@@ -411,10 +412,11 @@ def main() -> None:
 
     data_cfg = cfg.get("data", {})
     scale_cfg = cfg.get("scale", {})
+    config_dir = args.config.resolve().parent
 
-    review_path = args.review_path or Path(data_cfg.get("review_path", "data/All_Beauty.jsonl.gz"))
-    meta_path = args.meta_path or Path(data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
-    output_dir = args.output_dir or Path(data_cfg.get("output_dir", "kg_output/all_beauty"))
+    review_path = args.review_path or (config_dir / data_cfg.get("review_path", "data/All_Beauty.jsonl.gz"))
+    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
+    output_dir = args.output_dir or (config_dir / data_cfg.get("output_dir", "kg_output/all_beauty"))
 
     max_reviews_raw = args.max_reviews if args.max_reviews is not None else scale_cfg.get("max_reviews", 50000)
     max_meta_raw = args.max_meta if args.max_meta is not None else scale_cfg.get("max_meta", -1)

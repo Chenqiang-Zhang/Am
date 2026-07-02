@@ -21,11 +21,16 @@ Flow (home):
   3. Falls back to popular products when user has no history
 
 Flow (chat):
-  1. Python tracks which preference slots have been answered across turns
-     (stable ask/search decision, independent of LLM instruction-following)
-  2. While slots are missing, ask one clarifying question at a time
-  3. Once enough preferences are collected, delegate to the same Text2Cypher
-     search used by /recommend
+  1. The attr_type vocabulary actually present in the graph (queried once from
+     Neo4j and cached) plus config.yaml's genre are injected into the chat
+     prompt — no hardcoded categories/slots, so the flow adapts to whatever
+     catalog is loaded
+  2. The LLM decides itself (via "action"/"filled_slots" in its structured
+     response) whether to ask another clarifying question or move to search;
+     Python only enforces MAX_QUESTIONS as a hard cap and falls back to
+     searching immediately if the LLM call itself fails
+  3. Once search is triggered, delegate to the same Text2Cypher search used
+     by /recommend
 """
 from __future__ import annotations
 
@@ -49,16 +54,17 @@ from .models import MatchedAttr, Recommendation, SearchIntent
 
 _SCHEMA = """\
 Nodes:
-  Product   { product_id, title, price (float|null), avg_rating (float|null),
-               rating_count (int|null), description }
+  Product   { product_id, title, title_ja (string|null, Japanese translation of title),
+               price (float|null), avg_rating (float|null),
+               rating_count (int|null), description, image_url (string|null) }
   User      { user_id }
   Review    { review_id, rating (float 1-5), timestamp (int unix-ms),
                helpful_vote (int), verified (bool), title, text }
   Category  { category_id, name, level (int, 0=root) }
   Brand     { brand_id, name }
   Attribute { attribute_id, attr_type, value }
-    attr_type examples: scent, texture, ingredient, skin_type, benefit,
-                        product_type, hair_type, color, size, target_area, usage
+    attr_type is genre-dependent and open-ended (see "Attribute Types Currently
+    in the Graph" below for what's actually available in this catalog).
 
 Relationships:
   (User)-[:RATED {rating (float), timestamp}]->(Product)
@@ -75,13 +81,13 @@ _FEW_SHOT_EXAMPLES = """\
 ## Examples (for reference — invent your own approach as needed)
 
 User: "sunscreen for sensitive skin"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE (a.attr_type='skin_type' AND toLower(a.value) CONTAINS 'sensitive') OR (a.attr_type IN ['benefit','product_type'] AND (toLower(a.value) CONTAINS 'sun' OR toLower(a.value) CONTAINS 'spf')) WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS cs RETURN p.product_id AS product_id, p.title AS title, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, cs*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Sunscreen for sensitive skin' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Finds sunscreens matched to sensitive skin type"}
+{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE (a.attr_type='skin_type' AND toLower(a.value) CONTAINS 'sensitive') OR (a.attr_type IN ['benefit','product_type'] AND (toLower(a.value) CONTAINS 'sun' OR toLower(a.value) CONTAINS 'spf')) WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS cs RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, cs*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Sunscreen for sensitive skin' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Finds sunscreens matched to sensitive skin type"}
 
 User: "recommend something I would like" (user_id provided as $uid)
-{"cypher": "MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(rec:Product) WHERE r.rating>=4 AND NOT (u)-[:RATED]->(rec) WITH rec AS p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, count(DISTINCT a) AS shared RETURN p.product_id AS product_id, p.title AS title, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared)*1.5+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Similar to products you rated highly' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Attribute similarity from user's high-rated products"}
+{"cypher": "MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(rec:Product) WHERE r.rating>=4 AND NOT (u)-[:RATED]->(rec) WITH rec AS p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, count(DISTINCT a) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared)*1.5+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Similar to products you rated highly' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Attribute similarity from user's high-rated products"}
 
 User: "vitamin c serum well reviewed by users"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE a.attr_type='ingredient' AND toLower(a.value) CONTAINS 'vitamin c' WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS attr_score MATCH (p)<-[:ABOUT]-(rev:Review) WHERE rev.rating>=4 WITH p, matched_attrs, attr_score, count(DISTINCT rev) AS pos_reviews RETURN p.product_id AS product_id, p.title AS title, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, attr_score+toFloat(pos_reviews)*0.3+coalesce(p.avg_rating,3.5)*0.5+log(toFloat(coalesce(p.rating_count,1))+1)*0.2 AS score, 'Vitamin C serum with strong positive reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Vitamin C serums scored by attribute confidence and high-rated reviews"}
+{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE a.attr_type='ingredient' AND toLower(a.value) CONTAINS 'vitamin c' WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS attr_score MATCH (p)<-[:ABOUT]-(rev:Review) WHERE rev.rating>=4 WITH p, matched_attrs, attr_score, count(DISTINCT rev) AS pos_reviews RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, attr_score+toFloat(pos_reviews)*0.3+coalesce(p.avg_rating,3.5)*0.5+log(toFloat(coalesce(p.rating_count,1))+1)*0.2 AS score, 'Vitamin C serum with strong positive reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Vitamin C serums scored by attribute confidence and high-rated reviews"}
 """
 
 _RULES = """\
@@ -92,7 +98,7 @@ _RULES = """\
 - Price filter: toFloat(p.price) <= X  AND p.price IS NOT NULL
 - NEVER use CREATE, MERGE, DELETE, SET, or any write clause
 - Required RETURN aliases (exact names):
-    product_id, title, price, avg_rating, rating_count, score, explanation, matched_attrs
+    product_id, title, title_ja, price, avg_rating, rating_count, score, explanation, matched_attrs, image_url
 - matched_attrs: collect({attr_type: a.attr_type, value: a.value})  — use [] when no attrs
 
 ## Excluding already-rated/viewed products (CRITICAL)
@@ -113,7 +119,7 @@ _FALLBACK_CYPHER = (
     "  coalesce(p.avg_rating, 3.5) * 0.5 "
     "  + log(toFloat(p.rating_count) + 1) * 0.2 AS score, "
     "  [] AS matched_attrs "
-    "RETURN p.product_id AS product_id, p.title AS title, p.price AS price, "
+    "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, "
     "  p.avg_rating AS avg_rating, p.rating_count AS rating_count, score, "
     "  'Popular highly-rated product' AS explanation, matched_attrs "
     "ORDER BY score DESC LIMIT $limit"
@@ -127,45 +133,85 @@ Preserve the original intent and all required RETURN columns.
 Graph Schema:
 {_SCHEMA}
 
-Required RETURN: product_id, title, price, avg_rating, rating_count, score, explanation, matched_attrs
+Required RETURN: product_id, title, title_ja, image_url, price, avg_rating, rating_count, score, explanation, matched_attrs
 Always end with: ORDER BY score DESC LIMIT $limit
 
 Output JSON only: {{"cypher": "<fixed Cypher>", "explanation": "<one sentence>"}}
 """
 
 
-def _build_search_prompt(user_ctx: dict | None, dynamic_few_shot: list[dict] | None = None) -> str:
+def _format_attr_vocab(vocab: list[dict]) -> str:
+    if not vocab:
+        return ""
+    lines = ["## Attribute Types Currently in the Graph (attr_type: example values)"]
+    for v in vocab:
+        examples = ", ".join(str(x) for x in v["examples"][:6])
+        lines.append(f"  {v['attr_type']}: {examples}")
+    return "\n".join(lines)
+
+
+def _format_output_language(lang: str) -> str:
+    target = "Japanese" if lang == "ja" else "English"
+    return f'## Output Language\nWrite the "explanation" value in {target}. Keep it one sentence.'
+
+
+def _build_search_prompt(
+    genre: str,
+    user_ctx: dict | None,
+    dynamic_few_shot: list[dict] | None = None,
+    attr_vocab_text: str = "",
+    lang: str = "en",
+    has_uid: bool = False,
+) -> str:
+    """has_uid: True only when a user_id was given AND that user has actual rating/
+    attribute history — i.e. $uid will actually be bound AND worth personalizing with."""
     parts = [
-        "You are a Cypher query generator for a Neo4j beauty-product knowledge graph.\n"
+        f"You are a Cypher query generator for a Neo4j {genre} product knowledge graph.\n"
         "Given a user search query, generate ONE Cypher READ query that best answers it.\n"
         "Think freely — design the query that fits the request. "
         "You may traverse any relationships in the schema, combine multiple MATCH clauses, "
         "or invent a novel scoring expression. Do not limit yourself to a fixed set of patterns.",
         f"## Graph Schema\n{_SCHEMA}",
-        _FEW_SHOT_EXAMPLES,
     ]
+    if attr_vocab_text:
+        parts.append(attr_vocab_text)
+    parts.append(_FEW_SHOT_EXAMPLES)
     if dynamic_few_shot:
         parts.append(_format_dynamic_few_shot(dynamic_few_shot))
-    if user_ctx and any(user_ctx.values()):
-        parts.append(_format_user_ctx(user_ctx))
+    if has_uid:
+        parts.append(_format_user_ctx(user_ctx or {}))
         parts.append(
             "## Personalization\n"
             "Incorporate the user context above to personalize results.\n"
             "- Use $uid when referencing this user in Cypher\n"
             "- Exclude products the user already RATED or VIEWED when possible"
         )
+    else:
+        parts.append(
+            "## No User Context (CRITICAL)\n"
+            "$uid is NOT bound for this request — either this is an anonymous request, or "
+            "the user has no rating/attribute history yet. Do NOT reference $uid anywhere in "
+            "the query (ignore the $uid pattern in the examples above), and NEVER hardcode a "
+            "literal user_id string as a substitute for $uid.\n"
+            "You MAY still use aggregate patterns over OTHER users' RATED data not anchored to "
+            "a specific user — e.g. products frequently rated highly by users who also rated a "
+            "matching product highly. Just don't bind the query to one specific $uid."
+        )
+    parts.append(_format_output_language(lang))
     parts.append(_RULES)
     return "\n\n".join(parts)
 
 
-def _build_home_prompt(user_ctx: dict | None) -> str:
+def _build_home_prompt(genre: str, user_ctx: dict | None, attr_vocab_text: str = "", lang: str = "en") -> str:
     parts = [
-        "You are a Cypher query generator for a Neo4j beauty-product knowledge graph.\n"
+        f"You are a Cypher query generator for a Neo4j {genre} product knowledge graph.\n"
         "TASK: Generate home-page recommendations shown when the user opens the app (no search query).\n"
         "Think freely — invent the query approach that best serves the user based on their history.",
         f"## Graph Schema\n{_SCHEMA}",
-        _FEW_SHOT_EXAMPLES,
     ]
+    if attr_vocab_text:
+        parts.append(attr_vocab_text)
+    parts.append(_FEW_SHOT_EXAMPLES)
     if user_ctx and any(user_ctx.values()):
         parts.append(_format_user_ctx(user_ctx))
         parts.append(
@@ -175,10 +221,15 @@ def _build_home_prompt(user_ctx: dict | None) -> str:
         )
     else:
         parts.append(
-            "## Hint\n"
+            "## Hint (CRITICAL)\n"
             "No user history available. Show popular highly-rated products.\n"
-            "Do NOT reference $uid in the query."
+            "$uid is NOT bound for this request. Do NOT reference $uid anywhere in the query, "
+            "and NEVER hardcode a literal user_id string as a substitute for $uid.\n"
+            "You MAY still use aggregate patterns over OTHER users' RATED data not anchored to "
+            "a specific user — e.g. generally popular co-rated products. Just don't bind the "
+            "query to one specific $uid."
         )
+    parts.append(_format_output_language(lang))
     parts.append(_RULES)
     return "\n\n".join(parts)
 
@@ -409,16 +460,19 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-def _record_to_recommendation(record: Any) -> Recommendation:
+def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
     matched_attrs: list[MatchedAttr] = []
     for m in (record.get("matched_attrs") or []):
         if isinstance(m, dict) and m.get("attr_type") and m.get("value"):
             matched_attrs.append(
                 MatchedAttr(attr_type=str(m["attr_type"]), value=str(m["value"]))
             )
+    title_ja = record.get("title_ja") or None
     return Recommendation(
         product_id=str(record.get("product_id", "")),
         title=str(record.get("title", "")),
+        display_title=title_ja if (lang == "ja" and title_ja) else None,
+        image_url=record.get("image_url") or None,
         price=_to_float(record.get("price")),
         avg_rating=_to_float(record.get("avg_rating")),
         rating_count=_to_int(record.get("rating_count")),
@@ -430,397 +484,70 @@ def _record_to_recommendation(record: Any) -> Recommendation:
 
 # ── conversational recommendation (CRS) — chat constants ────────────────────────
 
-ATTRIBUTE_TYPES = [
-    "benefit", "skin_type", "scent", "texture", "ingredient",
-    "material", "color", "size", "target_area", "usage",
-    "brand", "product_type",
-]
-
-# 対話型推薦：聞き返しは最大この回数まで（しつこくしない）
-MAX_QUESTIONS = 5  # 無限ループ防止の安全網。通常は py_filled >= 2 で先に search になる。
-
-CHAT_SYSTEM_PROMPT = f"""You are a friendly beauty-product shopping assistant. The product catalog is in English (Amazon All_Beauty). The user may write in Japanese or English. Write everything you SHOW the user (questions, quick-reply options, preference_summary) in the TARGET LANGUAGE specified at the very end of these instructions.
-
-Through conversation, collect the user's preferences across these slots:
-- product_type (serum, moisturizer, cleanser, toner, sunscreen, shampoo, conditioner, hand wash, nail, perfume, makeup ...)
-- skin_type (dry, oily, sensitive, combination, acne-prone, normal, all)
-- hair_type (damaged, dry, oily, color-treated, curly, fine, normal, all)
-- scent (unscented/fragrance-free, floral, citrus, woody, fresh, sweet, musky)
-- benefit (moisturizing, brightening, anti-aging, soothing, volumizing, strengthening, long-lasting ...)
-- texture (cream, gel, lotion, powder, oil, balm, foam, mist ...)
-- ingredient to use (hyaluronic acid, vitamin c, retinol, niacinamide, argan oil ...) or avoid
-- price_max (USD number), min_rating (number), brand
-
-DECISION RULE — follow precisely:
-Count filled_slots = number of distinct answered slots from: skin_type, hair_type, scent, benefit, texture, ingredient, price_max, min_rating.
-NOTE: product_type alone does NOT count as a filled_slot.
-
-- action = "ask"    if product_type is unknown OR filled_slots < 2 (AND user has NOT said おまかせ AND questions asked < {MAX_QUESTIONS})
-- action = "search" if filled_slots >= 2 OR user said おまかせ/no preference OR questions >= {MAX_QUESTIONS}
-
-Ask ONE question at a time. Slot priority (first unanswered slot in the list):
-- skincare (cream, lotion, serum, toner, cleanser, sunscreen, eye cream):
-    skin_type → benefit → texture → ingredient → price_max
-- haircare (shampoo, conditioner, treatment, hair oil):
-    hair_type → benefit → scent → ingredient → price_max
-- fragrance / body mist / perfume:
-    scent → benefit → price_max
-- makeup (foundation, lipstick, mascara, eyeshadow, blush, concealer):
-    skin_type → benefit → texture → price_max
-- nail / other / unknown product_type:
-    product_type → benefit → texture → price_max
-
-Give 3-5 quick-reply options in the TARGET LANGUAGE. ALWAYS include one "no preference" option (こだわらない / Don't mind).
-
-IMPORTANT: "benefit" like "moisturizing" inferred from product name (e.g. 保湿クリーム) does NOT count as a filled benefit slot — the user must explicitly confirm it.
-
-Step-by-step example (skincare):
-  Turn 1 user: "保湿クリームが欲しい"
-    → product_type=moisturizer, filled_slots=0 → ask skin_type
-    → question: "肌タイプを教えてください", options: ["乾燥肌","脂性肌","敏感肌","混合肌","こだわらない"]
-  Turn 2 user: "乾燥肌です"
-    → filled_slots=1 (skin_type) → ask benefit (next in priority)
-    → question: "どんな効果を重視しますか？", options: ["高保湿","美白・ブライトニング","エイジングケア","鎮静・バリア強化","こだわらない"]
-  Turn 3 user: "高保湿がいい"
-    → filled_slots=2 (skin_type + benefit) → action = "search"
-
-Step-by-step example (fragrance):
-  Turn 1 user: "香水が欲しい"
-    → product_type=perfume, filled_slots=0 → ask scent
-    → options: ["フローラル","シトラス","ウッディ","フレッシュ","こだわらない"]
-  Turn 2 user: "フローラル"
-    → filled_slots=1 (scent) → ask benefit (price, mood, etc.)
-    → question: "予算や雰囲気の好みはありますか？", options: ["$30以下","$50以下","大人っぽい","軽くて爽やか","こだわらない"]
-  Turn 3 user: "$30以下"
-    → filled_slots=2 (scent + price_max) → action = "search"
-
-When action is "search", produce a structured intent summary (for reference only — the actual product search is performed separately via graph-path retrieval):
-- attribute_filters: list of {{"attribute_type": one of [{", ".join(ATTRIBUTE_TYPES)}], "value": ..., "weight": 1.0|0.7|0.4}}
-- Write ALL values and keywords in ENGLISH (the catalog is English): 敏感肌->"sensitive", 無香料->"unscented", ヒアルロン酸->"hyaluronic acid", 化粧水->"toner", 美容液->"serum".
-- keywords: English words. price_max/min_rating: number or null.
-
-Always include "preference_summary": the user's confirmed preferences as short labels for display, written in the TARGET LANGUAGE (do not mix other languages), e.g. (Japanese) ["化粧水","敏感肌","無香料"] or (English) ["toner","sensitive skin","fragrance-free"].
-
-CONVERSATION HISTORY NOTE: Previous assistant messages in the conversation history contain only the question text shown to the user (extracted from your prior JSON responses). This does NOT mean you should respond in plain text — you MUST ALWAYS respond with a valid JSON object.
-
-Return ONLY this JSON object (no other text before or after):
-{{
-  "action": "ask" | "search",
-  "question": "(ask時) 質問文 / それ以外は null",
-  "options": ["(ask時の選択肢)"],
-  "slot": "(今聞いているスロット名: skin_type / hair_type / scent / benefit / texture / ingredient / price_max / product_type) | null",
-  "filled_slots": <integer: count of distinct answered personalization slots so far, NOT counting product_type>,
-  "intent": {{"attribute_filters": [], "keywords": [], "price_max": null, "min_rating": null}},
-  "preference_summary": []
-}}"""
+# 対話型推薦：聞き返しは最大この回数まで（LLMがaction判断に失敗し続けた場合の安全網）
+MAX_QUESTIONS = 5
 
 FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
-
-
-# 製品カテゴリ別のスロット優先順位
-_SLOT_PRIORITY: dict[str, list[str]] = {
-    "skincare":   ["skin_type", "benefit", "texture", "ingredient", "price_max"],
-    "haircare":   ["hair_type", "benefit", "scent",   "ingredient", "price_max"],
-    "fragrance":  ["scent",     "benefit", "price_max"],
-    "makeup":     ["skin_type", "benefit", "texture", "price_max"],
-    "other":      ["benefit",   "texture", "price_max"],
-}
-
-# キーワード→製品カテゴリマッピング
-_PRODUCT_TYPE_MAP: list[tuple[list[str], str]] = [
-    (["serum", "moisturizer", "lotion", "cleanser", "toner", "sunscreen", "eye cream",
-      "美容液", "化粧水", "乳液", "保湿クリーム", "クレンザー", "日焼け止め", "洗顔"], "skincare"),
-    (["shampoo", "conditioner", "hair", "treatment", "シャンプー", "コンディショナー",
-      "ヘアオイル", "ヘアケア", "トリートメント"], "haircare"),
-    (["perfume", "fragrance", "cologne", "mist", "香水", "フレグランス", "ミスト"], "fragrance"),
-    (["foundation", "lipstick", "mascara", "eyeshadow", "blush", "concealer", "makeup",
-      "ファンデ", "リップ", "マスカラ", "アイシャドウ", "チーク", "コンシーラー", "メイク"], "makeup"),
-]
-
-# 質問テンプレート（lang → slot_key → {question, options}）
-_QUESTION_TEMPLATES: dict[str, dict[str, dict[str, Any]]] = {
-    "ja": {
-        "product_type": {
-            "question": "どんなアイテムをお探しですか？",
-            "options": ["スキンケア（化粧水・クリーム）", "ヘアケア（シャンプー等）", "フレグランス", "メイクアップ", "こだわらない"],
-            "slot": "product_type",
-        },
-        "skin_type": {
-            "question": "肌タイプを教えてください",
-            "options": ["乾燥肌", "脂性肌", "敏感肌", "混合肌", "こだわらない"],
-            "slot": "skin_type",
-        },
-        "hair_type": {
-            "question": "髪タイプを教えてください",
-            "options": ["ダメージ毛", "乾燥した髪", "細い髪", "カラー毛", "こだわらない"],
-            "slot": "hair_type",
-        },
-        "scent": {
-            "question": "香りの好みはありますか？",
-            "options": ["フローラル", "シトラス", "ウッディ", "フレッシュ", "こだわらない"],
-            "slot": "scent",
-        },
-        "benefit_skincare": {
-            "question": "どんな効果を重視しますか？",
-            "options": ["高保湿", "美白・ブライトニング", "エイジングケア", "鎮静・バリア強化", "こだわらない"],
-            "slot": "benefit",
-        },
-        "benefit_haircare": {
-            "question": "どんな効果を重視しますか？",
-            "options": ["補修・ダメージケア", "保湿・潤い", "ボリュームアップ", "頭皮ケア", "こだわらない"],
-            "slot": "benefit",
-        },
-        "benefit_fragrance": {
-            "question": "予算や雰囲気の好みはありますか？",
-            "options": ["$30以下", "$50以下", "大人っぽい", "爽やか・軽め", "こだわらない"],
-            "slot": "benefit",
-        },
-        "benefit_makeup": {
-            "question": "どんな仕上がりを求めますか？",
-            "options": ["カバー力重視", "自然な仕上がり", "長時間キープ", "ツヤ感", "こだわらない"],
-            "slot": "benefit",
-        },
-        "benefit_other": {
-            "question": "どんな効果を求めますか？",
-            "options": ["保湿", "美白", "エイジングケア", "センシティブ対応", "こだわらない"],
-            "slot": "benefit",
-        },
-        "texture": {
-            "question": "テクスチャの好みはありますか？",
-            "options": ["さっぱり（ジェル・ローション）", "しっとり（クリーム）", "軽め（ミルク）", "こだわらない"],
-            "slot": "texture",
-        },
-        "ingredient": {
-            "question": "特定の成分のご希望はありますか？",
-            "options": ["ヒアルロン酸", "ビタミンC", "レチノール", "ナイアシンアミド", "こだわらない"],
-            "slot": "ingredient",
-        },
-        "price_max": {
-            "question": "ご予算はいかがですか？",
-            "options": ["$20以下", "$30以下", "$50以下", "$100以下", "こだわらない"],
-            "slot": "price_max",
-        },
-    },
-    "en": {
-        "product_type": {
-            "question": "What type of product are you looking for?",
-            "options": ["Skincare (serum, moisturizer)", "Haircare (shampoo, conditioner)", "Fragrance", "Makeup", "Don't mind"],
-            "slot": "product_type",
-        },
-        "skin_type": {
-            "question": "What's your skin type?",
-            "options": ["Dry", "Oily", "Sensitive", "Combination", "Don't mind"],
-            "slot": "skin_type",
-        },
-        "hair_type": {
-            "question": "What's your hair type?",
-            "options": ["Damaged", "Dry", "Fine", "Color-treated", "Don't mind"],
-            "slot": "hair_type",
-        },
-        "scent": {
-            "question": "Any scent preference?",
-            "options": ["Floral", "Citrus", "Woody", "Fresh", "Don't mind"],
-            "slot": "scent",
-        },
-        "benefit_skincare": {
-            "question": "What effect do you want?",
-            "options": ["Deep moisturizing", "Brightening", "Anti-aging", "Soothing", "Don't mind"],
-            "slot": "benefit",
-        },
-        "benefit_haircare": {
-            "question": "What effect do you want?",
-            "options": ["Repair & strengthen", "Moisture & hydration", "Volume", "Scalp care", "Don't mind"],
-            "slot": "benefit",
-        },
-        "benefit_fragrance": {
-            "question": "Any budget or mood preference?",
-            "options": ["Under $30", "Under $50", "Sophisticated", "Fresh & light", "Don't mind"],
-            "slot": "benefit",
-        },
-        "benefit_makeup": {
-            "question": "What finish do you prefer?",
-            "options": ["Full coverage", "Natural look", "Long-lasting", "Dewy glow", "Don't mind"],
-            "slot": "benefit",
-        },
-        "benefit_other": {
-            "question": "What benefit are you looking for?",
-            "options": ["Moisturizing", "Brightening", "Anti-aging", "Sensitive-skin friendly", "Don't mind"],
-            "slot": "benefit",
-        },
-        "texture": {
-            "question": "Any texture preference?",
-            "options": ["Lightweight (gel/lotion)", "Rich (cream)", "Medium (milk)", "Don't mind"],
-            "slot": "texture",
-        },
-        "ingredient": {
-            "question": "Any key ingredient preference?",
-            "options": ["Hyaluronic acid", "Vitamin C", "Retinol", "Niacinamide", "Don't mind"],
-            "slot": "ingredient",
-        },
-        "price_max": {
-            "question": "What's your budget?",
-            "options": ["Under $20", "Under $30", "Under $50", "Under $100", "Don't mind"],
-            "slot": "price_max",
-        },
-    },
-}
-
-
-def _extract_asked_slots(messages: list[dict[str, Any]], lang: str) -> set[str]:
-    """会話履歴のassistantメッセージをテンプレートと照合し、既に聞いたスロットを返す。"""
-    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
-    asked: set[str] = set()
-    for m in messages:
-        if m.get("role") != "assistant":
-            continue
-        q_text = (m.get("content") or "").strip()
-        for tpl in tpls.values():
-            if tpl.get("question") == q_text:
-                slot = tpl.get("slot", "")
-                if slot:
-                    asked.add(slot)
-                break
-    return asked
-
-
-def _guess_product_type(text: str) -> str | None:
-    for keywords, category in _PRODUCT_TYPE_MAP:
-        if any(kw in text for kw in keywords):
-            return category
-    return None
-
-
-def _pick_next_question(product_type: str | None, filled: set[str], lang: str) -> dict[str, Any]:
-    """製品タイプと充填済みスロットから次の質問テンプレートを返す。"""
-    tpls = _QUESTION_TEMPLATES.get(lang, _QUESTION_TEMPLATES["ja"])
-    category = product_type or "other"
-    priority = _SLOT_PRIORITY.get(category, _SLOT_PRIORITY["other"])
-
-    if product_type is None:
-        return tpls["product_type"]
-
-    for slot in priority:
-        if slot in filled:
-            continue
-        # benefit は製品カテゴリ別テンプレートを使う
-        if slot == "benefit":
-            key = f"benefit_{category}" if f"benefit_{category}" in tpls else "benefit_other"
-            return tpls[key]
-        if slot in tpls:
-            return tpls[slot]
-
-    # すべてのスロットが埋まっていれば price_max（最後の手段）
-    return tpls.get("price_max", tpls["product_type"])
-
-
-_HEURISTIC_RULES: list[dict[str, Any]] = [
-    {
-        "slot": "product_type",
-        "value": "moisturizer",
-        "summary": {"en": "moisturizer", "ja": "保湿クリーム"},
-        "terms": ["moisturizer", "moisturiser", "face cream", "cream", "lotion", "保湿クリーム", "クリーム", "乳液"],
-    },
-    {
-        "slot": "product_type",
-        "value": "serum",
-        "summary": {"en": "serum", "ja": "美容液"},
-        "terms": ["serum", "essence", "美容液"],
-    },
-    {
-        "slot": "product_type",
-        "value": "toner",
-        "summary": {"en": "toner", "ja": "化粧水"},
-        "terms": ["toner", "化粧水"],
-    },
-    {
-        "slot": "product_type",
-        "value": "cleanser",
-        "summary": {"en": "cleanser", "ja": "洗顔料"},
-        "terms": ["cleanser", "face wash", "洗顔", "洗顔料"],
-    },
-    {
-        "slot": "skin_type",
-        "value": "dry",
-        "summary": {"en": "dry skin", "ja": "乾燥肌"},
-        "terms": ["dry skin", "dry", "乾燥肌", "乾燥"],
-    },
-    {
-        "slot": "skin_type",
-        "value": "sensitive",
-        "summary": {"en": "sensitive skin", "ja": "敏感肌"},
-        "terms": ["sensitive skin", "sensitive", "敏感肌", "敏感"],
-    },
-    {
-        "slot": "scent",
-        "value": "unscented",
-        "summary": {"en": "fragrance-free", "ja": "無香料"},
-        "terms": ["fragrance-free", "fragrance free", "unscented", "no fragrance", "無香料", "無香"],
-    },
-    {
-        "slot": "ingredient",
-        "value": "hyaluronic acid",
-        "summary": {"en": "hyaluronic acid", "ja": "ヒアルロン酸"},
-        "terms": ["hyaluronic acid", "ヒアルロン酸"],
-    },
-    {
-        "slot": "ingredient",
-        "value": "vitamin c",
-        "summary": {"en": "vitamin C", "ja": "ビタミンC"},
-        "terms": ["vitamin c", "ビタミンc", "ビタミンC"],
-    },
-    {
-        "slot": "ingredient",
-        "value": "retinol",
-        "summary": {"en": "retinol", "ja": "レチノール"},
-        "terms": ["retinol", "レチノール"],
-    },
-    {
-        "slot": "benefit",
-        "value": "moisturizing",
-        "summary": {"en": "moisturizing", "ja": "保湿"},
-        "terms": ["moisturizing", "hydrating", "hydration", "保湿", "うるおい", "潤い"],
-    },
-    {
-        "slot": "benefit",
-        "value": "soothing",
-        "summary": {"en": "soothing", "ja": "鎮静"},
-        "terms": ["soothing", "calming", "鎮静", "肌荒れ"],
-    },
-]
-
-
-def _matches_any(text: str, terms: list[str]) -> bool:
-    folded = text.lower()
-    return any(term.lower() in folded for term in terms)
-
-
-def _detect_filled_slots(text: str) -> set[str]:
-    slots: set[str] = set()
-    for rule in _HEURISTIC_RULES:
-        if rule["slot"] == "product_type":
-            continue
-        if _matches_any(text, rule["terms"]):
-            slots.add(rule["slot"])
-    if re.search(r"(?:under|below|less than)\s*\$?\d+|\$\d+|\d+\s*ドル|\d+\s*円", text, re.I):
-        slots.add("price_max")
-    if re.search(r"(?:rating|stars?|評価).*(?:[4-5](?:\.\d)?)", text, re.I):
-        slots.add("min_rating")
-    return slots
 
 
 def _normalize_lang(lang: str | None) -> str:
     return "ja" if (lang or "").lower().startswith("ja") else "en"
 
 
-def _heuristic_summary(text: str, lang: str) -> list[str]:
-    normalized_lang = _normalize_lang(lang)
-    summary: list[str] = []
-    for rule in _HEURISTIC_RULES:
-        if _matches_any(text, rule["terms"]):
-            label = rule["summary"][normalized_lang]
-            if label not in summary:
-                summary.append(label)
-    return summary
+def _build_chat_system_prompt(genre: str, attr_vocab_text: str, target_language: str) -> str:
+    """カテゴリ非依存のチャットプロンプト。
+
+    どんな属性を聞くべきかはハードコードせず、グラフに実際にある attr_type 語彙
+    (attr_vocab_text) から都度組み立てる。ask/search の判断・スロット追跡もすべて
+    LLM自身のfilled_slots/actionに委ね、Python側はMAX_QUESTIONSの安全網のみ持つ。
+    """
+    vocab_section = attr_vocab_text or (
+        "(no attribute data available yet in the graph — ask about general product preferences)"
+    )
+    return f"""You are a friendly shopping assistant for a catalog of {genre} products. \
+The catalog itself is in English; the user may write in Japanese or English. \
+Write everything you SHOW the user (question, options, preference_summary) in {target_language}.
+
+{vocab_section}
+
+Through conversation, ask about 2-4 clarifying preferences that would help narrow down a
+search in the catalog above. Infer the likely product category from the conversation and
+prioritize the attribute types most relevant to that category from the list above (plus
+price range or minimum rating if it seems relevant) — do not ask about an attribute type
+that clearly doesn't apply to what the user is looking for.
+
+Ask ONE question at a time, with 3-5 quick-reply options written in {target_language}.
+ALWAYS include one "no preference / skip this" option as the last option.
+
+DECISION RULE:
+- filled_slots = number of DISTINCT preferences the user has explicitly confirmed so far
+  (do not count the product category itself, and do not count a "no preference" answer).
+- action = "ask" while filled_slots < 2 AND fewer than {MAX_QUESTIONS} questions have been
+  asked so far AND the user hasn't said they have no preferences at all.
+- action = "search" once filled_slots >= 2, OR the user said they have no preference at
+  all, OR {MAX_QUESTIONS} questions have already been asked.
+- Use the full conversation history (including your own prior questions) to avoid asking
+  about something already answered or already skipped.
+
+Always include "preference_summary": ALL of the user's confirmed preferences accumulated
+across the ENTIRE conversation so far (not just this latest turn) as short labels for
+display, written in {target_language} only (do not mix languages). This MUST include
+the product category/type itself if it's known (e.g. what kind of product the user
+originally asked for), in addition to every other preference confirmed in any turn.
+
+CONVERSATION HISTORY NOTE: previous assistant messages in the history contain only the
+question text shown to the user. This does NOT mean you should respond in plain text —
+you MUST ALWAYS respond with a valid JSON object.
+
+Return ONLY this JSON object (no other text before or after):
+{{
+  "action": "ask" | "search",
+  "question": "(if action=ask) the question text, otherwise null",
+  "options": ["(if action=ask) quick-reply options"],
+  "slot": "(a short snake_case name for what this question is asking about) | null",
+  "filled_slots": <integer>,
+  "preference_summary": []
+}}"""
 
 
 def _strip_html(text: str | None) -> str | None:
@@ -868,27 +595,35 @@ class Recommender:
             raise RuntimeError("NEO4J_PASSWORD is not set in .env")
 
         self._driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+        self._genre: str = str(cfg.get("genre", "products"))
+        self._attr_vocab_text: str | None = None  # lazily populated, see _get_attr_vocab_text()
 
     # ── public API ──────────────────────────────────────────────────────────────
 
     def recommend(
-        self, query: str, user_id: str | None = None, limit: int = 10
+        self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en"
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
         search_id = str(uuid.uuid4())
         fallback = False
+        normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id) if user_id else None
+        # $uidが使えるのはuser_idがあり、かつ実際にRATED/属性の履歴がある場合のみ
+        # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
+        has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
         dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
-        system_prompt = _build_search_prompt(user_ctx, dynamic_few_shot)
+        system_prompt = _build_search_prompt(
+            self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+        )
         try:
-            cypher, explanation = self._generate_cypher(system_prompt, query, limit)
+            cypher, explanation = self._generate_cypher(system_prompt, query, limit, has_uid)
             params: dict[str, Any] = {"limit": limit}
-            if user_id:
+            if has_uid:
                 params["uid"] = user_id
-            results = self._execute_and_map(cypher, params)
+            results = self._execute_and_map(cypher, params, normalized_lang)
         except Exception as exc:
             print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
             cypher, explanation = _FALLBACK_CYPHER, _FALLBACK_EXPLANATION
-            results = self._execute_and_map(cypher, {"limit": limit})
+            results = self._execute_and_map(cypher, {"limit": limit}, normalized_lang)
             fallback = True
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         if user_id:
@@ -896,67 +631,56 @@ class Recommender:
         return search_id, intent, results, fallback
 
     def recommend_home(
-        self, user_id: str, limit: int = 10
+        self, user_id: str, limit: int = 10, lang: str = "en"
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
         search_id = str(uuid.uuid4())
         fallback = False
+        normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id)
         # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ
         has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
         try:
-            system_prompt = _build_home_prompt(user_ctx if has_history else None)
+            system_prompt = _build_home_prompt(
+                self._genre, user_ctx if has_history else None, self._get_attr_vocab_text(), normalized_lang
+            )
             user_msg = (
                 "Generate personalized home-page product recommendations based on user history."
                 if has_history
                 else "No user history. Show popular and highly-rated beauty products."
             )
-            cypher, explanation = self._generate_cypher(system_prompt, user_msg, limit)
+            cypher, explanation = self._generate_cypher(system_prompt, user_msg, limit, has_history)
             params: dict[str, Any] = {"limit": limit}
             if has_history:
                 params["uid"] = user_id
-            results = self._execute_and_map(cypher, params)
+            results = self._execute_and_map(cypher, params, normalized_lang)
         except Exception as exc:
             print(f"[recommender] recommend_home failed, using fallback: {exc}", file=sys.stderr)
             results = []
         if not results:
             cypher, explanation = _FALLBACK_CYPHER, _FALLBACK_EXPLANATION
-            results = self._execute_and_map(cypher, {"limit": limit})
+            results = self._execute_and_map(cypher, {"limit": limit}, normalized_lang)
             fallback = True
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
 
-    def chat(self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja") -> dict[str, Any]:
+    def chat(
+        self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja",
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         """対話型推薦の1ターン。
 
-        ask/search の判断を Python で担当し LLM の行動決定ルール遵守に依存しない安定動作を実現。
-        - detected_slots: 会話全文から検出した回答済みスロット（テンプレートマッチング）
-        - asked: これまでにassistantが発言した回数
+        どの属性について聞くか・いつ検索に切り替えるかはハードコードせず、LLM自身の
+        action/filled_slotsに委ねる（カテゴリ非依存）。Python側はMAX_QUESTIONSの
+        安全網と、LLM呼び出し自体が失敗した場合に検索へフォールバックする処理のみ持つ。
         search が決まった後の商品検索は self.recommend() 経由の Text2Cypher に委譲する。
         """
         all_user_msgs = [m for m in messages if m.get("role") == "user"]
         asked = sum(1 for m in messages if m.get("role") == "assistant")
+        normalized_lang = _normalize_lang(lang)
+        target_language = "Japanese" if normalized_lang == "ja" else "English"
 
-        user_said_no_pref = any(
-            kw in m.get("content", "")
-            for m in all_user_msgs
-            for kw in ("おまかせ", "なんでも", "no preference", "don't mind", "どちらでも")
-        )
-        asked_slots = _extract_asked_slots(messages, lang)
-
-        user_text = " ".join(m.get("content", "") for m in all_user_msgs).lower()
-        product_type = _guess_product_type(user_text)
-        detected_slots = _detect_filled_slots(user_text)
-        asked_slots |= detected_slots
-        py_filled = len(detected_slots)
-
-        should_search = py_filled >= 2 or user_said_no_pref or asked >= MAX_QUESTIONS
-
-        # ── LLM 呼び出し: preference_summary の生成 ─────────────────────────
-        target_language = "Japanese" if lang == "ja" else "English"
-        system = CHAT_SYSTEM_PROMPT + (
-            f"\n\nTARGET LANGUAGE = {target_language}. Write preference_summary ONLY in this language."
-        )
+        system = _build_chat_system_prompt(self._genre, self._get_attr_vocab_text(), target_language)
         llm_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         for m in messages:
             role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
@@ -968,16 +692,28 @@ class Recommender:
                 response_format={"type": "json_object"}, temperature=0,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
-        except Exception:
+        except Exception as exc:
+            print(f"[recommender] chat LLM call failed, forcing search: {exc}", file=sys.stderr)
             data = {}
+
         summary = data.get("preference_summary") or []
-        if not summary:
-            summary = _heuristic_summary(user_text, lang)
+        try:
+            filled_slots = int(data.get("filled_slots", 0))
+        except (TypeError, ValueError):
+            filled_slots = 0
+
+        # LLM呼び出し自体が失敗した場合(dataが空)は、聞き返しを続けられないので検索へ倒す
+        should_search = (
+            not data
+            or data.get("action") == "search"
+            or filled_slots >= 2
+            or asked >= MAX_QUESTIONS
+        )
 
         # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
         if should_search:
             query_text = " ".join(m.get("content", "") for m in all_user_msgs)
-            _search_id, intent, products, _fallback = self.recommend(query_text, None, limit)
+            _search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
             return {
                 "action": "search",
                 "question": None,
@@ -987,15 +723,48 @@ class Recommender:
                 "recommendations": products,
             }
 
-        next_q = _pick_next_question(product_type, asked_slots, lang)
+        fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
         return {
             "action": "ask",
-            "question": next_q["question"],
-            "options": next_q["options"],
+            "question": data.get("question") or fallback_question,
+            "options": data.get("options") or [],
             "preference_summary": summary,
             "intent": None,
             "recommendations": [],
         }
+
+    def _get_attr_vocab_text(self) -> str:
+        """グラフに実在するattr_typeの語彙をプロンプト用テキストにして返す（初回のみNeo4jに問い合わせてキャッシュ）。"""
+        if self._attr_vocab_text is not None:
+            return self._attr_vocab_text
+        vocab: list[dict[str, Any]] = []
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                res = session.run(
+                    "MATCH (a:Attribute) "
+                    "RETURN a.attr_type AS attr_type, "
+                    "       collect(DISTINCT a.value)[0..6] AS examples, "
+                    "       count(*) AS freq "
+                    "ORDER BY freq DESC LIMIT 20"
+                )
+                vocab = [{"attr_type": r["attr_type"], "examples": r["examples"]} for r in res]
+        except Exception as exc:
+            print(f"[recommender] attr vocabulary lookup failed: {exc}", file=sys.stderr)
+        self._attr_vocab_text = _format_attr_vocab(vocab)
+        return self._attr_vocab_text
+
+    def sample_users(self, limit: int = 10) -> list[dict[str, Any]]:
+        """パーソナライズのデモ用に、評価履歴を持つ実ユーザーを何件か返す。"""
+        with self._driver.session(database=self._neo4j_db) as session:
+            res = session.run(
+                "MATCH (u:User)-[r:RATED]->(:Product) "
+                "WITH u, count(r) AS rated_count "
+                "WHERE rated_count >= 3 "
+                "RETURN u.user_id AS user_id, rated_count "
+                "ORDER BY rated_count DESC LIMIT $limit",
+                limit=limit,
+            )
+            return [{"user_id": r["user_id"], "rated_count": r["rated_count"]} for r in res]
 
     def get_reviews(self, product_id: str, limit: int = 5) -> list[dict[str, Any]]:
         """商品IDに紐づくレビューをhelpful_vote降順で返す。(Review)-[:ABOUT]->(Product) エッジを使用。"""
@@ -1197,7 +966,7 @@ LIMIT $limit
     # ── Cypher generation with retry-on-error ───────────────────────────────────
 
     def _generate_cypher(
-        self, system_prompt: str, user_msg: str, limit: int
+        self, system_prompt: str, user_msg: str, limit: int, has_uid: bool = False
     ) -> tuple[str, str]:
         data = self._call_llm(system_prompt, user_msg)
         cypher: str = data.get("cypher", "").strip()
@@ -1205,7 +974,7 @@ LIMIT $limit
 
         for _ in range(1, self._max_attempts):
             try:
-                self._validate_cypher(cypher, limit)
+                self._validate_cypher(cypher, limit, has_uid)
                 return cypher, explanation
             except Exception as exc:
                 fix_user = (
@@ -1222,21 +991,36 @@ LIMIT $limit
 
         return cypher, explanation
 
-    def _validate_cypher(self, cypher: str, limit: int) -> None:
+    _UID_REF = re.compile(r"\$uid\b")
+    _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
+
+    def _validate_cypher(self, cypher: str, limit: int, has_uid: bool = False) -> None:
         if not cypher:
             raise ValueError("Empty Cypher query")
+        if self._HARDCODED_USER_ID.search(cypher):
+            raise ValueError(
+                "Query hardcodes a literal user_id string instead of using the $uid "
+                "parameter. NEVER hardcode a user_id — always reference $uid (only when "
+                "a user is actually bound for this request)."
+            )
+        if not has_uid and self._UID_REF.search(cypher):
+            raise ValueError(
+                "Query references $uid but no user_id was provided for this request — "
+                "$uid will not be bound. Rewrite the query without $uid or any pattern "
+                "that requires a specific User node."
+            )
         with self._driver.session(database=self._neo4j_db) as session:
             session.run(f"EXPLAIN {cypher}", limit=limit).consume()
 
     # ── query execution ──────────────────────────────────────────────────────────
 
-    def _execute_and_map(self, cypher: str, params: dict) -> list[Recommendation]:
+    def _execute_and_map(self, cypher: str, params: dict, lang: str = "en") -> list[Recommendation]:
         if not cypher:
             return []
         try:
             with self._driver.session(database=self._neo4j_db) as session:
                 result = session.run(cypher, **params)
-                return [_record_to_recommendation(dict(record)) for record in result]
+                return [_record_to_recommendation(dict(record), lang) for record in result]
         except Exception as exc:
             print(f"[recommender] Cypher execution failed: {exc}", file=sys.stderr)
             return []
