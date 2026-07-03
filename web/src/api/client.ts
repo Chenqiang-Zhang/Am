@@ -6,12 +6,14 @@
 import type {
   ChatMessage,
   ChatResponse,
+  HomeRecommendRequest,
   RecommendationFeedbackRequest,
   RecommendationFeedbackResponse,
   RecommendRequest,
   RecommendResponse,
   ReviewsResponse,
   SampleUsersResponse,
+  ViewLogRequest,
 } from "../types/recommend";
 
 // dev は vite.config.ts の proxy 経由で :8000 へ届く（CORS 不要）。
@@ -69,6 +71,70 @@ export async function recommend(
   return (await res.json()) as RecommendResponse;
 }
 
+/** 履歴ベースの初期推薦（POST /recommend/home） */
+export async function recommendHome(
+  req: HomeRecommendRequest,
+): Promise<RecommendResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/recommend/home`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
+  }
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = (await res.json()) as { detail?: string };
+      detail = body.detail ? `: ${body.detail}` : "";
+    } catch {
+      /* JSON でないレスポンスは無視 */
+    }
+    throw new ApiError(res.status, `APIエラー (${res.status})${detail}`);
+  }
+
+  return (await res.json()) as RecommendResponse;
+}
+
+/**
+ * タブを閉じる/バックグラウンドに回した時に呼ぶfire-and-forget（POST /recommend/home/warm）。
+ * 次回開いた時にrecommendHome()が即座に返せるよう、バックエンド側でホーム推薦を
+ * 先読みキャッシュしておく。応答は使わないので navigator.sendBeacon を優先する
+ * （ページ破棄中でも送信を続けてくれるため、await可能なfetchより確実）。
+ */
+export function warmHomeCache(req: HomeRecommendRequest): void {
+  const url = `${BASE}/recommend/home/warm`;
+  const body = JSON.stringify(req);
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    return;
+  }
+  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(
+    () => {
+      /* fire-and-forgetなので失敗しても何もしない */
+    },
+  );
+}
+
+/** 個人化不要な人気商品（GET /recommend/trending）。LLMを呼ばないためラグがほぼ無い。 */
+export async function recommendTrending(
+  limit = 10,
+  lang: "ja" | "en" = "en",
+): Promise<RecommendResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/recommend/trending?limit=${limit}&lang=${lang}`);
+  } catch {
+    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
+  }
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as RecommendResponse;
+}
+
 /** 対話型推薦の1ターン（POST /chat） */
 export async function chat(
   messages: ChatMessage[],
@@ -121,4 +187,17 @@ export async function sendRecommendationFeedback(
   });
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as RecommendationFeedbackResponse;
+}
+
+/** 商品閲覧ログ（POST /behavior/view）。失敗しても画面には影響させない（fire-and-forget）。 */
+export async function logView(req: ViewLogRequest): Promise<void> {
+  try {
+    await fetch(`${BASE}/behavior/view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    /* 行動ログの送信失敗はユーザー操作をブロックしない */
+  }
 }

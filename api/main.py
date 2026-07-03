@@ -51,6 +51,19 @@ async def recommend(req: RecommendRequest) -> RecommendResponse:
     )
 
 
+@app.get("/recommend/trending", response_model=RecommendResponse)
+async def recommend_trending(limit: int = 10, lang: str = "en") -> RecommendResponse:
+    """LLMを呼ばない高速パス。個人化する材料が無いと分かっている初期表示（匿名ユーザーが
+    画面を開いた瞬間など）向け。人気・高評価商品を直接クエリするのでラグがほぼ無い。"""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    search_id, intent, results = _recommender.recommend_trending(limit, lang)
+    return RecommendResponse(
+        query="[trending]", mode="home", intent=intent, recommendations=results,
+        search_id=search_id, fallback=False,
+    )
+
+
 @app.post("/recommend/home", response_model=RecommendResponse)
 async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
     if _recommender is None:
@@ -60,6 +73,15 @@ async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
         query="[home]", mode="home", intent=intent, recommendations=results,
         search_id=search_id, fallback=fallback,
     )
+
+
+@app.post("/recommend/home/warm", status_code=204)
+async def recommend_home_warm(req: HomeRecommendRequest) -> None:
+    """fire-and-forget用: タブを閉じる/バックグラウンドに回した時などに呼び、次回
+    recommend_home()が即座に返せるようホーム推薦を先読みキャッシュしておく。"""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    _recommender.warm_home_cache(req.user_id, req.limit, req.lang)
 
 
 @app.post("/behavior/view", status_code=204)
@@ -102,7 +124,7 @@ async def recommendation_feedback(
 ) -> RecommendationFeedbackResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    _recommender.save_feedback(product_id, req.model_dump())
+    _recommender.save_feedback(req.user_id, product_id, req.helpful, req.search_id, req.lang)
     return RecommendationFeedbackResponse(status="ok", product_id=product_id)
 
 

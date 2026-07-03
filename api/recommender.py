@@ -3,7 +3,9 @@ LLM-driven autonomous Text2Cypher recommender.
 
 Endpoints served:
   POST /recommend                        — keyword search with optional personalization
+  GET  /recommend/trending               — popular products, no LLM call (fast path, no personalization)
   POST /recommend/home                   — behavior-based recommendations (no query text)
+  POST /recommend/home/warm              — fire-and-forget cache warm-up (call on tab close/hide)
   POST /behavior/view                    — log product view to Neo4j
   POST /chat                             — multi-turn conversational recommendation (CRS)
   GET  /products/{product_id}/reviews    — top reviews for a product
@@ -17,8 +19,10 @@ Flow (search):
 
 Flow (home):
   1. Build user context
-  2. LLM generates personalized Cypher (collaborative filtering or attribute similarity)
-  3. Falls back to popular products when user has no history
+  2. If the user has no RATED/attribute history, skip the LLM entirely and return
+     popular products directly (same fast path as /recommend/trending)
+  3. Otherwise, LLM generates personalized Cypher (collaborative filtering or
+     attribute similarity); falls back to popular products if that fails or is empty
 
 Flow (chat):
   1. The attr_type vocabulary actually present in the graph (queried once from
@@ -41,7 +45,6 @@ import re
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +115,8 @@ Output — JSON only, no markdown fences:
 {"cypher": "<valid Cypher>", "explanation": "<one sentence>"}
 """
 
+# $explanationはパラメータ化されており、LLMを介さずに言語ごとの文言をPython側で決めて
+# 渡せる（フォールバック時・パーソナライズ不要時の両方で共有する）。
 _FALLBACK_CYPHER = (
     "MATCH (p:Product) "
     "WHERE p.avg_rating IS NOT NULL AND p.rating_count >= 50 "
@@ -121,12 +126,17 @@ _FALLBACK_CYPHER = (
     "  [] AS matched_attrs "
     "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, "
     "  p.avg_rating AS avg_rating, p.rating_count AS rating_count, score, "
-    "  'Popular highly-rated product' AS explanation, matched_attrs "
+    "  $explanation AS explanation, matched_attrs "
     "ORDER BY score DESC LIMIT $limit"
 )
-_FALLBACK_EXPLANATION = "Popular highly-rated products (fallback)"
 
-_FIX_PROMPT = f"""\
+
+def _popular_explanation(lang: str) -> str:
+    return "評価の高い人気商品" if lang == "ja" else "Popular highly-rated products"
+
+def _build_fix_prompt(lang: str) -> str:
+    target = "Japanese" if lang == "ja" else "English"
+    return f"""\
 You are a Cypher expert. Fix the broken query so it runs correctly in Neo4j 5.
 Preserve the original intent and all required RETURN columns.
 
@@ -135,6 +145,9 @@ Graph Schema:
 
 Required RETURN: product_id, title, title_ja, image_url, price, avg_rating, rating_count, score, explanation, matched_attrs
 Always end with: ORDER BY score DESC LIMIT $limit
+
+Write the top-level "explanation" AND the per-product `'...' AS explanation` string literal inside
+the Cypher in {target} — do not silently revert either one to English while fixing the query.
 
 Output JSON only: {{"cypher": "<fixed Cypher>", "explanation": "<one sentence>"}}
 """
@@ -152,7 +165,14 @@ def _format_attr_vocab(vocab: list[dict]) -> str:
 
 def _format_output_language(lang: str) -> str:
     target = "Japanese" if lang == "ja" else "English"
-    return f'## Output Language\nWrite the "explanation" value in {target}. Keep it one sentence.'
+    return (
+        "## Output Language (CRITICAL)\n"
+        f"Write ALL user-facing text in {target}, one sentence each:\n"
+        '- the top-level "explanation" field in the JSON output\n'
+        "- the per-product `'...' AS explanation` string literal inside the Cypher's RETURN clause\n"
+        f"The examples above show these in English for illustration only — the actual wording you "
+        f"write must be in {target} regardless of what language the examples use."
+    )
 
 
 def _build_search_prompt(
@@ -202,7 +222,9 @@ def _build_search_prompt(
     return "\n\n".join(parts)
 
 
-def _build_home_prompt(genre: str, user_ctx: dict | None, attr_vocab_text: str = "", lang: str = "en") -> str:
+def _build_home_prompt(genre: str, user_ctx: dict, attr_vocab_text: str = "", lang: str = "en") -> str:
+    """呼び出し元(recommend_home())は履歴が無いユーザーにはLLMを呼ばず直接人気商品を
+    返すため、このプロンプトは常に実履歴のあるuser_ctxが渡される前提で組み立てる。"""
     parts = [
         f"You are a Cypher query generator for a Neo4j {genre} product knowledge graph.\n"
         "TASK: Generate home-page recommendations shown when the user opens the app (no search query).\n"
@@ -212,23 +234,12 @@ def _build_home_prompt(genre: str, user_ctx: dict | None, attr_vocab_text: str =
     if attr_vocab_text:
         parts.append(attr_vocab_text)
     parts.append(_FEW_SHOT_EXAMPLES)
-    if user_ctx and any(user_ctx.values()):
-        parts.append(_format_user_ctx(user_ctx))
-        parts.append(
-            "## Hint\n"
-            "User history exists. Generate a personalized query using $uid.\n"
-            "Exclude products the user already RATED or VIEWED."
-        )
-    else:
-        parts.append(
-            "## Hint (CRITICAL)\n"
-            "No user history available. Show popular highly-rated products.\n"
-            "$uid is NOT bound for this request. Do NOT reference $uid anywhere in the query, "
-            "and NEVER hardcode a literal user_id string as a substitute for $uid.\n"
-            "You MAY still use aggregate patterns over OTHER users' RATED data not anchored to "
-            "a specific user — e.g. generally popular co-rated products. Just don't bind the "
-            "query to one specific $uid."
-        )
+    parts.append(_format_user_ctx(user_ctx))
+    parts.append(
+        "## Hint\n"
+        "User history exists. Generate a personalized query using $uid.\n"
+        "Exclude products the user already RATED or VIEWED."
+    )
     parts.append(_format_output_language(lang))
     parts.append(_RULES)
     return "\n\n".join(parts)
@@ -487,8 +498,6 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
 # 対話型推薦：聞き返しは最大この回数まで（LLMがaction判断に失敗し続けた場合の安全網）
 MAX_QUESTIONS = 5
 
-FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
-
 
 def _normalize_lang(lang: str | None) -> str:
     return "ja" if (lang or "").lower().startswith("ja") else "en"
@@ -597,6 +606,7 @@ class Recommender:
         self._driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
         self._genre: str = str(cfg.get("genre", "products"))
         self._attr_vocab_text: str | None = None  # lazily populated, see _get_attr_vocab_text()
+        self._home_cache: dict[str, dict[str, Any]] = {}  # see _get_or_generate_home()
 
     # ── public API ──────────────────────────────────────────────────────────────
 
@@ -615,51 +625,104 @@ class Recommender:
             self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
         )
         try:
-            cypher, explanation = self._generate_cypher(system_prompt, query, limit, has_uid)
+            cypher, explanation = self._generate_cypher(system_prompt, query, limit, has_uid, normalized_lang)
             params: dict[str, Any] = {"limit": limit}
             if has_uid:
                 params["uid"] = user_id
             results = self._execute_and_map(cypher, params, normalized_lang)
         except Exception as exc:
             print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
-            cypher, explanation = _FALLBACK_CYPHER, _FALLBACK_EXPLANATION
-            results = self._execute_and_map(cypher, {"limit": limit}, normalized_lang)
+            cypher, explanation, results = "", "", []
+        # _execute_and_map()は実行時エラーを内部で握りつぶして[]を返す(例外を投げない)ため、
+        # except節だけでは「生成/実行はエラーにならなかったが0件だった」ケースを拾えない。
+        # recommend_home()と同じく、結果が空なら常にここでフォールバックする。
+        if not results:
+            cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
+            results = self._run_popular(limit, normalized_lang)
             fallback = True
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         if user_id:
             self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
 
+    def recommend_trending(self, limit: int = 10, lang: str = "en") -> tuple[str, SearchIntent, list[Recommendation]]:
+        """パーソナライズ不要な人気・高評価商品を返す（LLMを呼ばない高速パス）。
+
+        匿名ユーザーの初期表示など、個人化する材料が無いことが最初から分かっている
+        場合に使う。LLM呼び出しが無いのでラグがほぼ無い。
+        """
+        search_id = str(uuid.uuid4())
+        normalized_lang = _normalize_lang(lang)
+        results = self._run_popular(limit, normalized_lang)
+        explanation = _popular_explanation(normalized_lang)
+        intent = SearchIntent(cypher=_FALLBACK_CYPHER, cypher_explanation=explanation)
+        return search_id, intent, results
+
+    _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
+
+    def _get_or_generate_home(
+        self, user_id: str, limit: int, lang: str
+    ) -> tuple[str, str, list[Recommendation]] | None:
+        """履歴のあるユーザー向けホーム推薦をキャッシュ優先で返す（生成に失敗したらNone）。
+
+        recommend_home()（通常の表示・SearchLogに残る）とwarm_home_cache()（タブを
+        バックグラウンドに回した時などの先読み・ログに残さない）の両方から使う共通ロジック。
+        """
+        cache_key = f"{user_id}:{lang}:{limit}"
+        cached = self._home_cache.get(cache_key)
+        if cached and (time.time() - cached["cached_at"]) < self._HOME_CACHE_TTL_SECONDS:
+            return cached["cypher"], cached["explanation"], cached["results"]
+
+        user_ctx = self._get_user_context(user_id)
+        try:
+            system_prompt = _build_home_prompt(
+                self._genre, user_ctx, self._get_attr_vocab_text(), lang
+            )
+            user_msg = "Generate personalized home-page product recommendations based on user history."
+            cypher, explanation = self._generate_cypher(system_prompt, user_msg, limit, True, lang)
+            results = self._execute_and_map(cypher, {"limit": limit, "uid": user_id}, lang)
+        except Exception as exc:
+            print(f"[recommender] home generation failed: {exc}", file=sys.stderr)
+            return None
+        if not results:
+            return None
+        self._home_cache[cache_key] = {
+            "cypher": cypher, "explanation": explanation, "results": results, "cached_at": time.time(),
+        }
+        return cypher, explanation, results
+
+    def warm_home_cache(self, user_id: str, limit: int = 10, lang: str = "en") -> None:
+        """タブを閉じる/バックグラウンドに回した時などに呼ばれるfire-and-forget用途。
+
+        次回開いた時にrecommend_home()が即座に返せるよう、ホーム推薦を先読みして
+        キャッシュしておく。応答を待つ相手がいないのでSearchLogには残さない。
+        キャッシュが既に新しければ_get_or_generate_home()内で即returnされ、LLMは呼ばれない。
+        """
+        normalized_lang = _normalize_lang(lang)
+        user_ctx = self._get_user_context(user_id)
+        has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
+        if not has_history:
+            return  # 履歴が無いユーザーはrecommend_trending()相当の高速パスで十分、キャッシュ不要
+        self._get_or_generate_home(user_id, limit, normalized_lang)
+
     def recommend_home(
         self, user_id: str, limit: int = 10, lang: str = "en"
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
         search_id = str(uuid.uuid4())
-        fallback = False
         normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id)
         # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ
         has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
-        try:
-            system_prompt = _build_home_prompt(
-                self._genre, user_ctx if has_history else None, self._get_attr_vocab_text(), normalized_lang
-            )
-            user_msg = (
-                "Generate personalized home-page product recommendations based on user history."
-                if has_history
-                else "No user history. Show popular and highly-rated beauty products."
-            )
-            cypher, explanation = self._generate_cypher(system_prompt, user_msg, limit, has_history)
-            params: dict[str, Any] = {"limit": limit}
-            if has_history:
-                params["uid"] = user_id
-            results = self._execute_and_map(cypher, params, normalized_lang)
-        except Exception as exc:
-            print(f"[recommender] recommend_home failed, using fallback: {exc}", file=sys.stderr)
-            results = []
-        if not results:
-            cypher, explanation = _FALLBACK_CYPHER, _FALLBACK_EXPLANATION
-            results = self._execute_and_map(cypher, {"limit": limit}, normalized_lang)
-            fallback = True
+        generated = self._get_or_generate_home(user_id, limit, normalized_lang) if has_history else None
+        if generated:
+            cypher, explanation, results = generated
+            fallback = False
+        else:
+            # has_history=Falseなら想定内（個人化する材料が無いだけ）、
+            # has_history=Trueなのに生成に失敗した場合だけ本当のフォールバック扱いにする。
+            cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
+            results = self._run_popular(limit, normalized_lang)
+            fallback = has_history
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
@@ -713,7 +776,7 @@ class Recommender:
         # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
         if should_search:
             query_text = " ".join(m.get("content", "") for m in all_user_msgs)
-            _search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
+            search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
             return {
                 "action": "search",
                 "question": None,
@@ -721,6 +784,7 @@ class Recommender:
                 "preference_summary": summary,
                 "intent": intent,
                 "recommendations": products,
+                "search_id": search_id,
             }
 
         fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
@@ -731,6 +795,7 @@ class Recommender:
             "preference_summary": summary,
             "intent": None,
             "recommendations": [],
+            "search_id": None,
         }
 
     def _get_attr_vocab_text(self) -> str:
@@ -789,19 +854,49 @@ LIMIT $limit
                 rows.append(r)
             return rows
 
-    def save_feedback(self, product_id: str, payload: dict[str, Any]) -> None:
-        """推薦理由のユーザーフィードバックをJSONLで保存する。"""
-        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        row = {
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "product_id": product_id,
-            **payload,
-        }
-        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    def save_feedback(
+        self,
+        user_id: str | None,
+        product_id: str,
+        helpful: bool,
+        search_id: str | None,
+        lang: str,
+    ) -> None:
+        """推薦理由へのフィードバックをGAVE_FEEDBACKエッジとしてNeo4jに記録する。
+
+        VIEWEDと同じ形（User→Productへのタイムスタンプ付きエッジ、search_idで
+        SearchLogと紐付け）にすることで、将来_get_dynamic_few_shot()等から
+        「役に立たなかった検索を避ける」ように参照できるようにしておく。
+        匿名ユーザー(user_id無し)はUserノードに紐付けられないため記録しない。
+        """
+        if not user_id:
+            return
+        ts = int(time.time() * 1000)
+        write_cypher = (
+            "MERGE (u:User {user_id: $uid}) "
+            "WITH u "
+            "MATCH (p:Product {product_id: $pid}) "
+            "CREATE (u)-[:GAVE_FEEDBACK {helpful: $helpful, search_id: $sid, lang: $lang, timestamp: $ts}]->(p)"
+        )
+        trim_cypher = (
+            "MATCH (u:User {user_id: $uid})-[f:GAVE_FEEDBACK]->() "
+            "WITH f ORDER BY f.timestamp DESC "
+            "WITH collect(f) AS fs "
+            "FOREACH (old IN fs[$keep..] | DELETE old)"
+        )
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                session.run(
+                    write_cypher,
+                    uid=user_id, pid=product_id, helpful=helpful, sid=search_id, lang=lang, ts=ts,
+                )
+                session.run(trim_cypher, uid=user_id, keep=self._MAX_FEEDBACK)
+        except Exception as exc:
+            print(f"[recommender] save_feedback failed: {exc}", file=sys.stderr)
 
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30
+    _MAX_FEEDBACK: int = 20
 
     def log_search(
         self,
@@ -966,30 +1061,37 @@ LIMIT $limit
     # ── Cypher generation with retry-on-error ───────────────────────────────────
 
     def _generate_cypher(
-        self, system_prompt: str, user_msg: str, limit: int, has_uid: bool = False
+        self, system_prompt: str, user_msg: str, limit: int, has_uid: bool = False, lang: str = "en"
     ) -> tuple[str, str]:
         data = self._call_llm(system_prompt, user_msg)
         cypher: str = data.get("cypher", "").strip()
         explanation: str = data.get("explanation", "")
+        fix_prompt = _build_fix_prompt(lang)
 
-        for _ in range(1, self._max_attempts):
+        # 最後の試行でのfixは再検証されないまま返すと、_execute_and_map()が実行時エラーを
+        # 内部で握りつぶして[]を返すだけになり、呼び出し元のフォールバックが働かない
+        # （壊れたcypherが「検証済み」であるかのように返ってしまうため）。
+        # 最後の試行は検証だけ行い、そこで失敗したら fix はせず ("", "") で明示的に諦める。
+        for attempt in range(self._max_attempts):
             try:
                 self._validate_cypher(cypher, limit, has_uid)
                 return cypher, explanation
             except Exception as exc:
+                if attempt >= self._max_attempts - 1:
+                    break
                 fix_user = (
                     f"Original request: {user_msg}\n\n"
                     f"Broken Cypher:\n{cypher}\n\n"
                     f"Neo4j error:\n{exc}"
                 )
                 try:
-                    fix_data = self._call_llm(_FIX_PROMPT, fix_user)
+                    fix_data = self._call_llm(fix_prompt, fix_user)
                     cypher = fix_data.get("cypher", cypher).strip()
                     explanation = fix_data.get("explanation", explanation)
                 except Exception:
                     break
 
-        return cypher, explanation
+        return "", ""
 
     _UID_REF = re.compile(r"\$uid\b")
     _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
@@ -1024,3 +1126,10 @@ LIMIT $limit
         except Exception as exc:
             print(f"[recommender] Cypher execution failed: {exc}", file=sys.stderr)
             return []
+
+    def _run_popular(self, limit: int, lang: str) -> list[Recommendation]:
+        """LLMを介さず、人気・高評価商品を直接クエリする（フォールバック用途と、
+        パーソナライズ不要な初期表示の高速パス用途で共有する）。"""
+        return self._execute_and_map(
+            _FALLBACK_CYPHER, {"limit": limit, "explanation": _popular_explanation(lang)}, lang
+        )

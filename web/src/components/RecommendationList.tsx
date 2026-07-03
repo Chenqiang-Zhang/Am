@@ -7,9 +7,11 @@ import styles from "./RecommendationList.module.css";
 interface Props {
   items: Recommendation[];
   devMode: boolean;
+  userId: string | null;
+  searchId: string | null;
 }
 
-export default function RecommendationList({ items, devMode }: Props) {
+export default function RecommendationList({ items, devMode, userId, searchId }: Props) {
   const { t, lang } = useI18n();
   const [filter, setFilter] = useState<"available" | "all" | "unavailable">("available");
 
@@ -79,7 +81,14 @@ export default function RecommendationList({ items, devMode }: Props) {
       ) : (
         <div className={styles.list}>
           {visibleItems.map((rec, i) => (
-            <RecommendationCard key={rec.product_id} rec={rec} rank={i + 1} devMode={devMode} />
+            <RecommendationCard
+              key={rec.product_id}
+              rec={rec}
+              rank={i + 1}
+              devMode={devMode}
+              userId={userId}
+              searchId={searchId}
+            />
           ))}
         </div>
       )}

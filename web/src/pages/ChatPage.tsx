@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { chat, ApiError } from "../api/client";
+import { useEffect, useState } from "react";
+import { chat, recommendHome, recommendTrending, warmHomeCache, ApiError } from "../api/client";
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
@@ -17,6 +17,7 @@ interface Result {
   recommendations: Recommendation[];
   preference_summary: string[];
   intent: SearchIntent | null;
+  searchId: string | null;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -33,6 +34,66 @@ export default function ChatPage() {
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [userId, setUserId] = useStoredTestUserId();
+  const [initialLoading, setInitialLoading] = useState(false);
+  // reset()を「会話が既に空(0件)のとき」に押しても再取得が走るよう、conversation.lengthの
+  // 変化だけに頼らず明示的に発火させるためのカウンタ。
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // 会話を始める前は、ひとまず何かしらのおすすめを表示しておく
+  // （テストユーザーが選ばれていれば履歴ベース、なければ一般的な人気商品）。
+  // これはユーザーの発話に対する応答ではないので、チャットの「入力中...」表示
+  // (status/loading)とは別のローディング状態にする — 会話が勝手に動いたように
+  // 見えないようにするため。
+  useEffect(() => {
+    if (conversation.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      setInitialLoading(true);
+      setError(null);
+      try {
+        // 匿名(テストユーザー未選択)のときはLLMを呼ばない/recommend/trendingを使う
+        // ことで、開いた瞬間の表示にラグが出ないようにする。
+        const r = userId
+          ? await recommendHome({ user_id: userId, limit: LIMIT, lang })
+          : await recommendTrending(LIMIT, lang);
+        if (cancelled) return;
+        setResult({
+          recommendations: r.recommendations,
+          preference_summary: [],
+          intent: r.intent,
+          searchId: r.search_id,
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof ApiError ? e.message : "Error");
+      } finally {
+        if (!cancelled) setInitialLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.length, userId, lang, reloadKey]);
+
+  // タブを閉じる/バックグラウンドに回した時に、次回開いた時のためのホーム推薦を
+  // バックエンド側で先読みキャッシュしておく（履歴のあるテストユーザーが対象。
+  // 履歴が無い場合はrecommendTrending()相当の高速パスで十分なのでバックエンド側で無視される）。
+  useEffect(() => {
+    if (!userId) return;
+    const uid = userId;
+    function warm() {
+      warmHomeCache({ user_id: uid, limit: LIMIT, lang });
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") warm();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", warm);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", warm);
+    };
+  }, [userId, lang]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -56,6 +117,7 @@ export default function ChatPage() {
           recommendations: r.recommendations,
           preference_summary: r.preference_summary,
           intent: r.intent,
+          searchId: r.search_id,
         });
       }
       setStatus("idle");
@@ -72,6 +134,7 @@ export default function ChatPage() {
     setError(null);
     setInput("");
     setStatus("idle");
+    setReloadKey((k) => k + 1);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -135,7 +198,7 @@ export default function ChatPage() {
         {!loading && options.length > 0 && (
           <QuickReplies options={options} onPick={send} allowOther disabled={loading} />
         )}
-        {status === "error" && error && (
+        {error && (
           <div className={styles.error} role="alert">
             {error}
           </div>
@@ -170,19 +233,30 @@ export default function ChatPage() {
         )}
       </form>
 
+      {initialLoading && !result && (
+        <p className={styles.initialLoading}>{lang === "ja" ? "おすすめを読み込み中…" : "Loading recommendations…"}</p>
+      )}
+
       {result && (
         <section className={styles.results}>
           <PreferenceSummary items={result.preference_summary} />
           {devMode && result.intent && <IntentPanel intent={result.intent} />}
-          <RecommendationList items={result.recommendations} devMode={devMode} />
-          <div className={styles.restartBanner}>
-            <span className={styles.restartText}>
-              {lang === "ja" ? "他の商品を探しますか？" : "Looking for something else?"}
-            </span>
-            <button type="button" className={styles.restartBtn} onClick={reset}>
-              {lang === "ja" ? "最初からやり直す" : "Start over"}
-            </button>
-          </div>
+          <RecommendationList
+            items={result.recommendations}
+            devMode={devMode}
+            userId={userId}
+            searchId={result.searchId}
+          />
+          {conversation.length > 0 && (
+            <div className={styles.restartBanner}>
+              <span className={styles.restartText}>
+                {lang === "ja" ? "他の商品を探しますか？" : "Looking for something else?"}
+              </span>
+              <button type="button" className={styles.restartBtn} onClick={reset}>
+                {lang === "ja" ? "最初からやり直す" : "Start over"}
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>

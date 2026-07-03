@@ -86,6 +86,7 @@ class ChatResponse(BaseModel):
     preference_summary: list[str] = Field(default_factory=list)
     intent: SearchIntent | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
+    search_id: str | None = None  # action="search"のとき、VIEWED/feedbackと紐付けるためのSearchLog ID
 
 
 # ===== レビュー取得 =====
@@ -104,12 +105,10 @@ class ReviewsResponse(BaseModel):
 
 # ===== レコメンド理由フィードバック =====
 class RecommendationFeedbackRequest(BaseModel):
-    query: str | None = None
+    helpful: bool
+    user_id: str | None = None  # 匿名(None)の場合は記録しない（Userノードに紐付けられないため）
+    search_id: str | None = None  # どの検索結果に対する反応かをSearchLogと紐付ける
     lang: str = "ja"
-    helpful: bool | None = None
-    reason_rating: int | None = None
-    selected_reasons: list[str] = Field(default_factory=list)
-    comment: str | None = None
 
 
 class RecommendationFeedbackResponse(BaseModel):

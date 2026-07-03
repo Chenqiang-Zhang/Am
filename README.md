@@ -21,14 +21,21 @@ Neo4j Knowledge Graph
 REST API (FastAPI)
     ├── Text2Cypher search      (LLM writes and runs a Cypher query per request; graph schema and the
     │                            attr_type vocabulary are read from the live graph, so the prompt adapts
-    │                            to whatever genre/catalog is actually loaded — no hardcoded categories)
+    │                            to whatever genre/catalog is actually loaded — no hardcoded categories;
+    │                            falls back to a popularity query whenever generation/execution fails
+    │                            OR legitimately returns zero rows)
     ├── Personalization         (user rating/attribute history + past successful queries as few-shot;
     │                            $uid is only ever bound when a user_id has real RATED/attribute history)
-    ├── Home recommendations    (behavior-based, no query text)
+    ├── Home recommendations    (behavior-based, no query text; skips the LLM entirely for users with
+    │                            no history, and caches each personalized user's generated query in
+    │                            memory so a background "warm" call — fired when the tab is hidden/
+    │                            closed — can make the next page open instant)
+    ├── Trending (no-LLM path)  (GET /recommend/trending — popularity query only, used for anonymous
+    │                            visitors so the first paint has no LLM latency)
     ├── Conversational chat     (LLM decides what to ask and when to search, based on the same live
     │                            attr_type vocabulary — genre-agnostic; Python only enforces a hard cap
     │                            on the number of questions and a fallback if the LLM call itself fails)
-    └── Review lookup & reason feedback logging
+    └── Review lookup, view logging, and reason feedback logging (all written to Neo4j)
 ```
 
 ## Graph Schema
@@ -55,6 +62,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 | `ABOUT` | Review → Product | — |
 | `RATED` | User → Product | `rating`, `timestamp` |
 | `VIEWED` | User → Product | `timestamp`, `search_id` |
+| `GAVE_FEEDBACK` | User → Product | `helpful`, `search_id`, `lang`, `timestamp` |
 | `SEARCHED` | User → SearchLog | — |
 | `BELONGS_TO` | Product → Category | — |
 | `SUBCATEGORY_OF` | Category → Category | — |
@@ -218,19 +226,34 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
 
 ### 7. Try It Out
 
-1. In the top of the chat UI, pick a **test user** from the dropdown (`TestUserSelect`) — either
+1. On open, the chat page immediately shows a first batch of recommendations before you type
+   anything — this is not a chat turn (no "assistant is typing" bubble), just a lightweight background
+   fetch. Anonymous visitors get `GET /recommend/trending` (no LLM call, near-instant). If a test user
+   with rating history is selected, `POST /recommend/home` is used instead, and gets faster on repeat
+   visits — see the caching note below.
+2. In the top of the chat UI, pick a **test user** from the dropdown (`TestUserSelect`) — either
    "匿名" (anonymous, no personalization), the built-in "オリジナルテストユーザー" demo ID, or one of
    the real `user_id`s fetched live from `GET /users/sample` (these are real users with ≥3 ratings
    in the current graph, so their picks will actually show personalized results/home recommendations).
-2. Type a query in natural language (Japanese or English), e.g. "乾燥肌向けの保湿クリームが欲しい"
+3. Type a query in natural language (Japanese or English), e.g. "乾燥肌向けの保湿クリームが欲しい"
    or "a gentle fragrance-free moisturizer for dry skin".
-3. The assistant will either ask a clarifying question (answer it, or pick "こだわらない" / "no
+4. The assistant will either ask a clarifying question (answer it, or pick "こだわらない" / "no
    preference" to skip) or go straight to search once it has enough signal.
-4. Recommendations show the LLM's one-sentence `explanation`, and (in dev mode) the matched
-   attributes and the raw generated Cypher (`intent.cypher`) so every recommendation reason is
-   inspectable, not a black box.
-5. Click 👍/👎 under a recommendation to send `/recommendations/{id}/feedback` (logged to
-   `logs/recommendation_feedback.jsonl` for offline review — it does not yet feed back into ranking).
+5. Recommendations show the LLM's one-sentence `explanation` — written in the UI's current language
+   (toggle "日本語"/"EN" at the top) — and, in dev mode, the matched attributes and the raw generated
+   Cypher (`intent.cypher`) so every recommendation reason is inspectable, not a black box. If Text2Cypher
+   generation/execution fails, or the query legitimately matches nothing, the list falls back to popular
+   highly-rated products instead of showing an empty screen (`fallback: true` in the response).
+6. Click 👍/👎 under a recommendation (only shown when a test user is selected — anonymous feedback
+   can't be attached to a `User` node) to send `/recommendations/{id}/feedback`, stored as a
+   `GAVE_FEEDBACK` edge in Neo4j alongside the other behavior logs. Clicking "Amazon.comで見る" also
+   logs a `VIEWED` edge via `/behavior/view`. Neither currently feeds back into ranking, but both are
+   now durable and linked to the originating `search_id`, so a future pass can use them (e.g. weight
+   `_get_dynamic_few_shot()` by explicit feedback, not just clicks).
+7. Once a test user with history has loaded home recommendations, switching tabs away or closing the
+   tab fires a beacon to `POST /recommend/home/warm`, which regenerates and caches that user's
+   personalized query server-side in the background. The next time the page is opened (within the
+   1-hour cache TTL), `/recommend/home` returns instantly from that cache instead of waiting on the LLM.
 
 If step 4 in the pipeline (Neo4j import) hasn't been run, or Neo4j is unreachable, `/health` will
 still return `ok` but `/recommend`/`/chat` calls will fail — check the API process's stderr output
@@ -283,17 +306,25 @@ Accepts a natural-language query. The LLM generates one Cypher query against the
 }
 ```
 
-`lang` ("ja" | "en", default "en") controls the language of the generated `explanation` text, and — if `translate_titles.py` has been run — populates `display_title` with the cached Japanese translation when `lang="ja"` (`null` otherwise; the frontend falls back to `title`).
+`lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `translate_titles.py` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
 
-If Cypher generation/execution fails after retries, `fallback: true` and the response falls back to a popularity-based query.
+If Cypher generation/execution fails after retries, **or the generated query runs successfully but returns zero rows**, the response falls back to a popularity-based query (`fallback: true`) instead of showing an empty result.
+
+### `GET /recommend/trending`
+
+No request body — query params `limit` (default 10) and `lang` (default "en"). Returns popular, highly-rated products directly from Neo4j with no LLM call at all, so it has effectively no latency beyond the database round-trip. Used for the initial recommendations shown to anonymous visitors before they've typed anything, and reused internally as the fallback query everywhere else.
 
 ### `POST /recommend/home`
 
-Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). Falls back to popular products for users with no history.
+Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). For a user with no `RATED`/attribute history, this skips the LLM entirely and is equivalent to `/recommend/trending`. For a user with history, the LLM generates a personalized Cypher query on first call and the result is cached server-side (per `user_id`+`lang`+`limit`, 1-hour TTL) — later calls return instantly from that cache. See `/recommend/home/warm` below for how the cache gets pre-populated before the user even asks.
+
+### `POST /recommend/home/warm`
+
+Fire-and-forget: takes the same body as `/recommend/home` and always returns `204` immediately. Triggers the same cache-populating generation as `/recommend/home` in the background, but doesn't wait for it or write a `SearchLog` entry (so switching tabs repeatedly doesn't spam search history). The web UI calls this via `navigator.sendBeacon` on `visibilitychange`/`pagehide`, so a user's personalized home recommendations are typically already cached by the time they reopen the app.
 
 ### `POST /behavior/view`
 
-Logs that a user viewed a product (`user_id`, `product_id`, optional `search_id`), used as a personalization signal.
+Logs that a user viewed a product (`user_id`, `product_id`, optional `search_id`) as a `VIEWED` edge, used as a personalization signal. The web UI calls this when a test user clicks "Amazon.comで見る" on a recommendation card.
 
 ### `POST /chat`
 
@@ -311,8 +342,9 @@ Runs one turn of conversational recommendation. Each turn, the LLM is given the 
 ```
 
 The response has either:
-- `action: "ask"` with one question and quick-reply options
-- `action: "search"` with `preference_summary`, `intent` (cypher/explanation), and recommendations
+- `action: "ask"` with one question and quick-reply options (`search_id: null`)
+- `action: "search"` with `preference_summary`, `intent` (cypher/explanation), recommendations, and
+  `search_id` (so a later `/behavior/view` or feedback call can be linked back to this search)
 
 ### `GET /users/sample`
 
@@ -324,16 +356,17 @@ Returns top reviews for a product, ordered by helpful votes.
 
 ### `POST /recommendations/{product_id}/feedback`
 
-Stores user feedback on whether a recommendation reason was useful, appended to `logs/recommendation_feedback.jsonl` (git-ignored).
+Stores user feedback on whether a recommendation reason was useful, as a `GAVE_FEEDBACK` edge from
+`User` to `Product` in Neo4j (not a local file — a local file wouldn't survive a redeploy on most
+PaaS hosts). Requires `user_id`; silently no-ops for anonymous requests since there's no `User` node
+to attach the edge to (the web UI hides the feedback buttons in that case).
 
 ```json
 {
-  "query": "dry sensitive skin moisturizer",
-  "lang": "en",
   "helpful": true,
-  "reason_rating": 5,
-  "selected_reasons": ["reason_helpful"],
-  "comment": "The explanation was clear."
+  "user_id": "AFXF3EGQTQDXMRLDWFU7UBFQZB7Q",
+  "search_id": "37cde655-2495-4270-aa07-eb558eb4c573",
+  "lang": "en"
 }
 ```
 
@@ -346,4 +379,13 @@ Data scale is controlled by `config.yaml`'s `scale` section (`max_meta` = number
 - Expand LLM attribute extraction coverage to the full product set
 - Add a collaborative-filtering few-shot path using shared rating history across users
 - Add a multi-step graph exploration endpoint (`GET /product/{id}/related`)
-- Wire `/recommend/home` and `/behavior/view` into the web frontend (currently backend-only)
+- `VIEWED` and `GAVE_FEEDBACK` are now written to Neo4j and linked to `search_id`, but nothing reads
+  them back into ranking yet — e.g. `_get_dynamic_few_shot()` could prefer past searches with positive
+  feedback, or downweight attribute matches a user explicitly marked unhelpful
+- The home-recommendation cache (`Recommender._home_cache`) lives in process memory — it resets on
+  restart and wouldn't be shared if the API were ever scaled to multiple instances; move it to Neo4j
+  or a shared store (e.g. Redis) if that becomes an issue
+- Free-tier LLM providers (Groq in particular) have a low daily token quota that a class demo can burn
+  through quickly — `config.yaml`'s `llm.provider` can be switched to `gemini` as a higher-quota
+  fallback if `/recommend`/`/chat` start returning `fallback: true` unexpectedly (check the API
+  process's stderr for a `429`/`rate_limit_exceeded` error to confirm)

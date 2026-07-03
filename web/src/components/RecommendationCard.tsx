@@ -4,7 +4,7 @@ import { useI18n } from "../i18n";
 import type { Lang } from "../i18n";
 import { friendlyTags } from "../lib/explain";
 import { useUsdToJpy } from "../lib/exchangeRate";
-import { sendRecommendationFeedback } from "../api/client";
+import { logView, sendRecommendationFeedback } from "../api/client";
 import ReviewList from "./ReviewList";
 
 function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
@@ -22,10 +22,12 @@ interface Props {
   rec: Recommendation;
   rank: number;
   devMode: boolean;
+  userId: string | null;
+  searchId: string | null;
 }
 
 // 1 商品の説明カード。既定（ユーザーモード）はやさしい表示、devMode で機械的な根拠データ。
-export default function RecommendationCard({ rec, rank, devMode }: Props) {
+export default function RecommendationCard({ rec, rank, devMode, userId, searchId }: Props) {
   const { t, lang } = useI18n();
   const jpyRate = useUsdToJpy();
   const available = rec.price != null;
@@ -59,13 +61,16 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
         </div>
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
-        <ReasonFeedback productId={rec.product_id} lang={lang} />
+        <ReasonFeedback productId={rec.product_id} lang={lang} userId={userId} searchId={searchId} />
         <ReviewList productId={rec.product_id} ratingNumber={rec.rating_count} />
         <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => {
+            if (userId) logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
+          }}
         >
           {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}
         </a>
@@ -134,16 +139,30 @@ function DevExplanation({ rec }: { rec: Recommendation }) {
   );
 }
 
-function ReasonFeedback({ productId, lang }: { productId: string; lang: Lang }) {
+function ReasonFeedback({
+  productId,
+  lang,
+  userId,
+  searchId,
+}: {
+  productId: string;
+  lang: Lang;
+  userId: string | null;
+  searchId: string | null;
+}) {
   const [state, setState] = useState<"idle" | "sent" | "error">("idle");
+
+  // 匿名ユーザーのフィードバックはUserノードに紐付けられず記録されないため、
+  // 「送信できたように見えて実は保存されない」誤解を避けるためボタン自体を出さない。
+  if (!userId) return null;
 
   async function send(helpful: boolean) {
     try {
       await sendRecommendationFeedback(productId, {
-        lang,
         helpful,
-        reason_rating: helpful ? 5 : 2,
-        selected_reasons: helpful ? ["reason_helpful"] : ["reason_unclear"],
+        user_id: userId,
+        search_id: searchId,
+        lang,
       });
       setState("sent");
     } catch {

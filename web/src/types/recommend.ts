@@ -13,6 +13,13 @@ export interface RecommendRequest {
   lang?: "ja" | "en";
 }
 
+/** POST /recommend/home のリクエスト body */
+export interface HomeRecommendRequest {
+  user_id: string;
+  limit: number;
+  lang?: "ja" | "en";
+}
+
 /** クエリの「システムによる解釈」（Text2Cypher: LLMが生成したCypherとその一文説明） */
 export interface SearchIntent {
   cypher: string;
@@ -77,16 +84,23 @@ export interface ChatResponse {
   preference_summary: string[];
   intent: SearchIntent | null;
   recommendations: Recommendation[];
+  search_id: string | null;
 }
 
 // ===== レコメンド理由フィードバック =====
 export interface RecommendationFeedbackRequest {
-  query?: string | null;
+  helpful: boolean;
+  user_id?: string | null;
+  search_id?: string | null;
   lang?: "ja" | "en";
-  helpful?: boolean | null;
-  reason_rating?: number | null;
-  selected_reasons?: string[];
-  comment?: string | null;
+}
+
+// ===== 行動ログ =====
+/** POST /behavior/view のリクエスト body */
+export interface ViewLogRequest {
+  user_id: string;
+  product_id: string;
+  search_id?: string | null;
 }
 
 export interface RecommendationFeedbackResponse {
