@@ -37,14 +37,15 @@ export default function ChatPage() {
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const { userId, setUserId, resetUserId } = useUserIdentity();
+  const [generalMode, setGeneralMode] = useState(false);
+  const effectiveUserId = generalMode ? null : userId;
 
   useEffect(() => {
     let cancelled = false;
     async function loadHome() {
-      if (!userId) return;
       setHomeStatus("loading");
       try {
-        const data = await recommendHome({ user_id: userId, limit: LIMIT, lang });
+        const data = await recommendHome({ user_id: effectiveUserId, limit: LIMIT, lang });
         if (cancelled) return;
         setHomeResult({
           recommendations: data.recommendations,
@@ -61,7 +62,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId, lang]);
+  }, [effectiveUserId, lang]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -76,7 +77,7 @@ export default function ChatPage() {
     setStatus("loading");
 
     try {
-      const r = await chat(next, LIMIT, lang, userId);
+      const r = await chat(next, LIMIT, lang, effectiveUserId);
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
@@ -151,17 +152,27 @@ export default function ChatPage() {
             />
             {t.devView}
           </label>
-          <label className={styles.userControl}>
-            <span>{lang === "ja" ? "ユーザー" : "User"}</span>
+          <label className={styles.devToggle}>
             <input
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              aria-label="user id"
+              type="checkbox"
+              checked={generalMode}
+              onChange={(e) => setGeneralMode(e.target.checked)}
             />
-            <button type="button" onClick={resetUserId} title={lang === "ja" ? "匿名IDを再生成" : "Reset anonymous ID"}>
-              ↻
-            </button>
+            {lang === "ja" ? "汎用モード" : "General"}
           </label>
+          {!generalMode && (
+            <label className={styles.userControl}>
+              <span>{lang === "ja" ? "ユーザー" : "User"}</span>
+              <input
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                aria-label="user id"
+              />
+              <button type="button" onClick={resetUserId} title={lang === "ja" ? "匿名IDを再生成" : "Reset anonymous ID"}>
+                ↻
+              </button>
+            </label>
+          )}
         </div>
         <div className={styles.headerText}>
           <h1 className={styles.title}>{t.appTitle}</h1>
@@ -197,14 +208,6 @@ export default function ChatPage() {
         />
         <button className={styles.send} type="submit" disabled={loading || !input.trim()}>
           {t.send}
-        </button>
-        <button
-          className={styles.omakase}
-          type="button"
-          onClick={() => send(lang === "ja" ? "特にこだわりはありません。おまかせで。" : "No particular preference. Surprise me.")}
-          disabled={loading}
-        >
-          {t.omakase}
         </button>
         {conversation.length > 0 && (
           <button className={styles.reset} type="button" onClick={reset} disabled={loading}>

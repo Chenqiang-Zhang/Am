@@ -35,7 +35,6 @@ interface Props {
 export default function RecommendationCard({ rec, rank, devMode, userId, query, source = "chat" }: Props) {
   const { t, lang } = useI18n();
   const jpyRate = useUsdToJpy();
-  const available = rec.availability_status === "available" || rec.price != null;
   function track(eventType: string, metadata: Record<string, string | number | boolean | null> = {}) {
     trackBehavior({
       userId,
@@ -73,9 +72,6 @@ export default function RecommendationCard({ rec, rank, devMode, userId, query, 
 
         <div className={styles.meta}>
           <RatingStars rating={rec.average_rating} count={rec.rating_number} />
-          <span className={available ? styles.availabilityOk : styles.availabilityUnavailable}>
-            {available ? t.availableLabel : t.unavailableLabel}
-          </span>
           <span className={rec.price != null ? styles.price : styles.priceUnknown}>
             {rec.price != null
               ? formatPrice(rec.price, lang, jpyRate)
@@ -87,7 +83,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, query, 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} onExpand={() => track("product_click", { area: "reason_expand" })} />}
         <ReasonFeedback productId={rec.product_id} lang={lang} onSend={(helpful) => track(helpful ? "feedback_yes" : "feedback_no")} />
         <ReviewList productId={rec.product_id} ratingNumber={rec.rating_number} onOpen={() => track("review_open")} />
-        <a
+        {/* <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
           target="_blank"
@@ -95,7 +91,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, query, 
           onClick={() => track("amazon_click")}
         >
           {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}
-        </a>
+        </a> */}
       </div>
     </article>
   );
@@ -144,7 +140,6 @@ function UserExplanation({ rec, onExpand }: { rec: Recommendation; onExpand: () 
           ))}
         </div>
       )}
-      {explanation && <p className={styles.localizedReason}>{explanation}</p>}
       {fullQuote && (
         <div className={styles.quoteBlock}>
           {expanded && (

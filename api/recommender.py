@@ -52,79 +52,85 @@ Return JSON with this exact structure:
 # 対話型推薦：聞き返しは最大この回数まで（しつこくしない）
 MAX_QUESTIONS = 5  # 無限ループ防止の安全網。通常はLLMが先にsearchを選ぶ。
 
-CHAT_SYSTEM_PROMPT = f"""You are a friendly beauty-product shopping assistant. The product catalog is in English (Amazon All_Beauty). The user may write in Japanese or English. Write everything you SHOW the user (questions, quick-reply options, preference_summary) in the TARGET LANGUAGE specified at the very end of these instructions.
+CHAT_SYSTEM_PROMPT = f"""You are a warm, friendly beauty-product shopping assistant. The catalog is English (Amazon All_Beauty). The user may write in Japanese or English — always respond in the TARGET LANGUAGE at the end of these instructions.
 
-Through conversation, collect the user's preferences across these slots:
-- product_type (serum, moisturizer, cleanser, toner, sunscreen, shampoo, conditioner, hand wash, nail, perfume, makeup ...)
-- skin_type (dry, oily, sensitive, combination, acne-prone, normal, all)
-- hair_type (damaged, dry, oily, color-treated, curly, fine, normal, all)
-- scent (unscented/fragrance-free, floral, citrus, woody, fresh, sweet, musky)
-- benefit (moisturizing, brightening, anti-aging, soothing, volumizing, strengthening, long-lasting ...)
-- texture (cream, gel, lotion, powder, oil, balm, foam, mist ...)
-- ingredient to use (hyaluronic acid, vitamin c, retinol, niacinamide, argan oil ...) or avoid
-- price_max (USD number), min_rating (number), brand
+## SLOTS to collect
+- product_type: serum, moisturizer, cleanser, toner, sunscreen, shampoo, conditioner, perfume, makeup ...
+- skin_type: dry, oily, sensitive, combination, acne-prone, normal
+- hair_type: damaged, dry, oily, color-treated, curly, fine
+- scent: unscented, floral, citrus, woody, fresh, sweet, musky
+- benefit: moisturizing, brightening, anti-aging, soothing, volumizing, strengthening ...
+- texture: cream, gel, lotion, oil, balm, foam, mist ...
+- ingredient: hyaluronic acid, vitamin c, retinol, niacinamide ... (or to avoid)
+- price_max (USD), min_rating, brand
 
-DECISION RULE — follow precisely:
-Count filled_slots = number of distinct answered slots from: skin_type, hair_type, scent, benefit, texture, ingredient, price_max, min_rating.
-NOTE: product_type alone does NOT count as a filled_slot.
+## DECISION RULE
+filled_slots = distinct answered slots from: skin_type, hair_type, scent, benefit, texture, ingredient, price_max, min_rating. (product_type does NOT count)
+- action="ask"    if product_type unknown OR filled_slots < 2 AND questions < {MAX_QUESTIONS}
+- action="search" if filled_slots >= 2 OR no-preference stated OR questions >= {MAX_QUESTIONS}
 
-- action = "ask"    if product_type is unknown OR filled_slots < 2 (AND user has NOT said おまかせ AND questions asked < {MAX_QUESTIONS})
-- action = "search" if filled_slots >= 2 OR user said おまかせ/no preference OR questions >= {MAX_QUESTIONS}
+## QUESTION STYLE — most important rule
+Always echo the user's own words or concern in your question. Never ask a generic question that ignores what they said.
+- user: "髪ダメージが多い"  → "髪のダメージケアに、どんなアイテムをお探しですか？" ✓
+- user: "髪ダメージが多い"  → "どんなアイテムをお探しですか？" ✗
+- user: "肌荒れが気になる"  → "肌荒れのケアには、どんな効果を重視しますか？" ✓
+- user: "プレゼントに"      → "素敵ですね！誰へのプレゼントですか？" ✓
+Keep tone warm and natural — not robotic.
 
-Ask ONE question at a time. Slot priority (first unanswered slot in the list):
-- skincare (cream, lotion, serum, toner, cleanser, sunscreen, eye cream):
-    skin_type → benefit → texture → ingredient → price_max
-- haircare (shampoo, conditioner, treatment, hair oil):
-    hair_type → benefit → scent → ingredient → price_max
-- fragrance / body mist / perfume:
-    scent → benefit → price_max
-- makeup (foundation, lipstick, mascara, eyeshadow, blush, concealer):
-    skin_type → benefit → texture → price_max
-- nail / other / unknown product_type:
-    product_type → benefit → texture → price_max
+## CONTEXT QUESTIONS (ask before normal slots, max 1 per conversation)
+If a context clue would meaningfully narrow the search, ask ONE follow-up. Otherwise infer and add keywords.
+- プレゼント/gift → ask recipient if unknown ("お母さん・年配", "彼女", "友人", "男性", "こだわらない") → then ask budget if unknown
+- 旅行/travel/出張 → ask duration ("数日→travel size", "1週間以上→通常サイズ", "こだわらない")
+- 運動/スポーツ → ask type ("屋外ランニング", "ジム", "水泳", "こだわらない")
+- ご褒美/特別な日/luxury → no question, add keywords: luxury, premium
+- 夏 → no question: lightweight, oil-free, SPF | 冬 → rich, nourishing
+- 職場/オフィス → no question: subtle, light, professional
+- Other contexts: use judgment — ask if it clearly helps, otherwise infer keywords
 
-Give 3-5 quick-reply options in the TARGET LANGUAGE. ALWAYS include one "no preference" option (こだわらない / Don't mind).
+## SLOT PRIORITY (after context resolved)
+- skincare: skin_type → benefit → texture → ingredient → price_max
+- haircare:  hair_type → benefit → scent → ingredient → price_max
+- fragrance: scent → benefit → price_max
+- makeup:    skin_type → benefit → texture → price_max
+- other:     product_type → benefit → price_max
 
-IMPORTANT: "benefit" like "moisturizing" inferred from product name (e.g. 保湿クリーム) does NOT count as a filled benefit slot — the user must explicitly confirm it.
+When action="ask": "options" MUST contain 3–5 short quick-reply strings in TARGET LANGUAGE (NEVER an empty array). Always include "こだわらない" / "No preference" as the last option.
+NOTE: benefit inferred from product name alone (e.g. 保湿クリーム) does NOT count as filled — user must confirm.
 
-Step-by-step example (skincare):
-  Turn 1 user: "保湿クリームが欲しい"
-    → product_type=moisturizer, filled_slots=0 → ask skin_type
-    → question: "肌タイプを教えてください", options: ["乾燥肌","脂性肌","敏感肌","混合肌","こだわらない"]
-  Turn 2 user: "乾燥肌です"
-    → filled_slots=1 (skin_type) → ask benefit (next in priority)
-    → question: "どんな効果を重視しますか？", options: ["高保湿","美白・ブライトニング","エイジングケア","鎮静・バリア強化","こだわらない"]
-  Turn 3 user: "高保湿がいい"
-    → filled_slots=2 (skin_type + benefit) → action = "search"
+## SEARCH INTENT (when action="search")
+- attribute_filters: [{{"attribute_type": one of [{", ".join(ATTRIBUTE_TYPES)}], "value": "...", "weight": 1.0|0.7|0.4}}]
+- keywords: translate ALL context and slot values to English catalog terms.
+  Examples: 敏感肌→sensitive, 無香料→unscented, プレゼント→gift gift-set, 旅行→travel-size portable,
+  ご褒美→luxury premium, 夏→lightweight SPF, 職場→subtle professional, メンズ→men for-him,
+  お母さん向け→anti-aging mature-skin, 水泳→waterproof chlorine-resistant
+- preference_summary: confirmed preferences as short labels in TARGET LANGUAGE. e.g. ["化粧水","敏感肌","無香料"]
+- price_max, min_rating: number or null
 
-Step-by-step example (fragrance):
-  Turn 1 user: "香水が欲しい"
-    → product_type=perfume, filled_slots=0 → ask scent
-    → options: ["フローラル","シトラス","ウッディ","フレッシュ","こだわらない"]
-  Turn 2 user: "フローラル"
-    → filled_slots=1 (scent) → ask benefit (price, mood, etc.)
-    → question: "予算や雰囲気の好みはありますか？", options: ["$30以下","$50以下","大人っぽい","軽くて爽やか","こだわらない"]
-  Turn 3 user: "$30以下"
-    → filled_slots=2 (scent + price_max) → action = "search"
+## PRODUCT CATEGORY
+Classify the user's request into ONE of: skincare, haircare, fragrance, makeup, other.
+Use this to catch cases a simple keyword list would miss — e.g. "肌荒れ", "頭皮が乾燥", "唇が荒れる", synonyms, typos, or indirect descriptions of a concern.
+If genuinely unclear from the conversation so far, use null.
 
-When action is "search", produce a structured intent:
-- attribute_filters: list of {{"attribute_type": one of [{", ".join(ATTRIBUTE_TYPES)}], "value": ..., "weight": 1.0|0.7|0.4}}
-- Write ALL values and keywords in ENGLISH (the catalog is English): 敏感肌->"sensitive", 無香料->"unscented", ヒアルロン酸->"hyaluronic acid", 化粧水->"toner", 美容液->"serum".
-- keywords: English words. price_max/min_rating: number or null.
-
-Always include "preference_summary": the user's confirmed preferences as short labels for display, written in the TARGET LANGUAGE (do not mix other languages), e.g. (Japanese) ["化粧水","敏感肌","無香料"] or (English) ["toner","sensitive skin","fragrance-free"].
-
-CONVERSATION HISTORY NOTE: Previous assistant messages in the conversation history contain only the question text shown to the user (extracted from your prior JSON responses). This does NOT mean you should respond in plain text — you MUST ALWAYS respond with a valid JSON object.
-
-Return ONLY this JSON object (no other text before or after):
+ALWAYS return ONLY valid JSON — no text before or after. Example for action="ask" (options non-empty):
 {{
-  "action": "ask" | "search",
-  "question": "(ask時) 質問文 / それ以外は null",
-  "options": ["(ask時の選択肢)"],
-  "slot": "(今聞いているスロット名: skin_type / hair_type / scent / benefit / texture / ingredient / price_max / product_type) | null",
-  "filled_slots": <integer: count of distinct answered personalization slots so far, NOT counting product_type>,
+  "action": "ask",
+  "question": "髪のダメージケアに、どんなアイテムをお探しですか？",
+  "options": ["シャンプー", "トリートメント", "ヘアオイル", "コンディショナー", "こだわらない"],
+  "slot": "product_type",
+  "filled_slots": 0,
   "intent": {{"attribute_filters": [], "keywords": [], "price_max": null, "min_rating": null}},
+  "preference_summary": [],
+  "product_category": "haircare"
+}}
+Field reference:
+  "action": "ask" | "search"
+  "question": "質問文" or null (null only when action="search")
+  "options": non-empty array when action="ask", [] when action="search"
+  "slot": slot_name or null
+  "filled_slots": <int>
+  "intent": {{"attribute_filters": [], "keywords": [], "price_max": null, "min_rating": null}}
   "preference_summary": []
+  "product_category": "skincare" | "haircare" | "fragrance" | "makeup" | "other" | null
 }}"""
 
 # Attribute recall: precise, explainable matches from LLM-extracted product attributes.
@@ -280,8 +286,9 @@ _CHAT_JSON_SCHEMA = {
                 "filled_slots":       {"type": "integer"},
                 "intent":             {"type": ["object", "null"]},
                 "preference_summary": {"type": "array", "items": {"type": "string"}},
+                "product_category":   {"type": ["string", "null"]},
             },
-            "required": ["action", "question", "options", "slot", "filled_slots", "intent", "preference_summary"],
+            "required": ["action", "question", "options", "slot", "filled_slots", "intent", "preference_summary", "product_category"],
         },
     },
 }
@@ -309,12 +316,13 @@ _SLOT_PRIORITY: dict[str, list[str]] = {
 # キーワード→製品カテゴリマッピング
 _PRODUCT_TYPE_MAP: list[tuple[list[str], str]] = [
     (["serum", "moisturizer", "lotion", "cleanser", "toner", "sunscreen", "eye cream",
-      "美容液", "化粧水", "乳液", "保湿クリーム", "クレンザー", "日焼け止め", "洗顔"], "skincare"),
+      "美容液", "化粧水", "乳液", "保湿クリーム", "クレンザー", "日焼け止め", "洗顔",
+      "肌", "顔", "肌荒れ", "毛穴", "しわ", "たるみ", "くすみ", "ニキビ", "目元"], "skincare"),
     (["shampoo", "conditioner", "hair", "treatment", "シャンプー", "コンディショナー",
-      "ヘアオイル", "ヘアケア", "トリートメント"], "haircare"),
-    (["perfume", "fragrance", "cologne", "mist", "香水", "フレグランス", "ミスト"], "fragrance"),
+      "ヘアオイル", "ヘアケア", "トリートメント", "髪", "頭皮", "枝毛"], "haircare"),
+    (["perfume", "fragrance", "cologne", "mist", "香水", "フレグランス", "ミスト", "香り"], "fragrance"),
     (["foundation", "lipstick", "mascara", "eyeshadow", "blush", "concealer", "makeup",
-      "ファンデ", "リップ", "マスカラ", "アイシャドウ", "チーク", "コンシーラー", "メイク"], "makeup"),
+      "ファンデ", "リップ", "マスカラ", "アイシャドウ", "チーク", "コンシーラー", "メイク", "唇"], "makeup"),
 ]
 
 # 質問テンプレート（lang → slot_key → {question, options}）
@@ -491,6 +499,40 @@ def _pick_next_question(product_type: str | None, filled: set[str], lang: str) -
 
     # すべてのスロットが埋まっていれば price_max（最後の手段）
     return tpls.get("price_max", tpls["product_type"])
+
+
+def _phrase_question(llm: OpenAI, model: str, user_text: str, base: dict[str, Any], lang: str) -> dict[str, Any] | None:
+    """product_type不明時の最初の質問だけ、ユーザーの発言を踏まえて自然な言い回しに変換する。
+    このスロットは _extract_asked_slots の追跡対象外なので、言い換えても質問の重複バグが起きない。
+    失敗時は None を返し、呼び出し元は既存テンプレートにフォールバックする。"""
+    target_language = "Japanese" if lang == "ja" else "English"
+    prompt = (
+        f"Rephrase this shopping-assistant question so it naturally acknowledges what the user just said, "
+        f"in {target_language}. Keep the same meaning. You may lightly rephrase the options too, but keep the same count and intent. "
+        f'Return ONLY JSON: {{"question": "...", "options": ["...", "..."]}}\n\n'
+        f"User said: {user_text!r}\n"
+        f"Original question: {base['question']!r}\n"
+        f"Original options: {base['options']!r}"
+    )
+    try:
+        response = llm.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=300,
+        )
+        data = _safe_json(response.choices[0].message.content)
+        if not data:
+            return None
+        question = data.get("question")
+        options = data.get("options")
+        if not isinstance(question, str) or not question.strip():
+            return None
+        if not isinstance(options, list) or len(options) < 2:
+            return None
+        return {"question": question.strip(), "options": [str(o) for o in options[:5]]}
+    except Exception:
+        return None
 
 
 def _parse_attribute_filters(raw: list[Any]) -> list[AttributeFilter]:
@@ -930,6 +972,13 @@ class Recommender:
         if not summary:
             summary = _heuristic_summary(user_text, lang)
 
+        # キーワード辞書に無い言い回し（頭皮・肌荒れ等の未登録語彙）を LLM 分類で補完。
+        # LLM が失敗/nullを返した場合は元のキーワード判定のまま安定動作を維持する。
+        if product_type is None:
+            llm_category = data.get("product_category")
+            if llm_category in ("skincare", "haircare", "fragrance", "makeup"):
+                product_type = llm_category
+
         # ── 結果を返す ────────────────────────────────────────────────────────
         if should_search:
             intent = self._intent_from_data(intent_data if intent_data else None, messages)
@@ -944,6 +993,10 @@ class Recommender:
             }
 
         next_q = _pick_next_question(product_type, asked_slots, lang)
+        if product_type is None:
+            phrased = _phrase_question(self.llm, self.model, user_text, next_q, lang)
+            if phrased:
+                next_q = phrased
         return {
             "action": "ask",
             "question": next_q["question"],

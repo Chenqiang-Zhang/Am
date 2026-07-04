@@ -15,7 +15,7 @@ export interface RecommendRequest {
 
 /** POST /recommend/home のリクエスト body */
 export interface HomeRecommendRequest {
-  user_id: string;
+  user_id: string | null;
   limit: number;
   lang?: "ja" | "en";
 }
