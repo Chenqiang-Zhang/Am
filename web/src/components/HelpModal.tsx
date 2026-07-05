@@ -53,14 +53,10 @@ const STEPS_EN = [
 ];
 
 const TIPS_JA = [
-  "「おまかせ」ボタンで条件なしにランダム推薦もできます",
-  "価格が未登録の商品は「売り切れ・現在購入不可」として表示され、表示フィルタで切り替えられます",
   "レビューはデータセットに取り込んだ件数のみ表示されます",
 ];
 
 const TIPS_EN = [
-  'Use the "Surprise me" button to get recommendations without any constraints',
-  "Products without a dataset price are marked sold out / currently unavailable and can be filtered",
   "Reviews shown are limited to what was imported into our dataset",
 ];
 
