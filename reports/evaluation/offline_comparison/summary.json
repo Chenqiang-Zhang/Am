@@ -1,7 +1,9 @@
 {
   "charts": {
     "data_readiness": "reports/evaluation/offline_comparison/charts/data_readiness.png",
-    "metrics": "reports/evaluation/offline_comparison/charts/metrics_comparison.png"
+    "operational_metrics": "reports/evaluation/offline_comparison/charts/operational_metrics.png",
+    "ranking_metrics": "reports/evaluation/offline_comparison/charts/ranking_metrics.png",
+    "semantic_metrics": "reports/evaluation/offline_comparison/charts/kg_semantic_metrics.png"
   },
   "config": {
     "candidate_catalog_limit": 8000,
@@ -19,167 +21,1970 @@
     "skip_catalog_snapshot": false,
     "strict_readiness": false
   },
-  "created_at": "2026-07-05T19:49:19.492980+00:00",
+  "created_at": "2026-07-05T20:23:52.264671+00:00",
   "data_readiness": {
     "ratios": {
-      "attribute_coverage": 0.015765,
+      "attribute_coverage": 0.971756,
       "feature_coverage": 0.210045,
       "price_coverage": 0.157243,
-      "recommendable_attribute_coverage": 0.027604,
+      "recommendable_attribute_coverage": 0.989525,
       "recommendable_rate": 0.153477
     },
-    "ready_for_experiment": false,
+    "ready_for_experiment": true,
     "stats": {
-      "attributes_total": 6359,
+      "attributes_total": 49253,
       "eligible_eval_users": 45,
       "mentions_total": 0,
       "products_total": 112590,
-      "products_with_attributes": 1775,
+      "products_with_attributes": 109410,
       "products_with_features": 23649,
       "products_with_image": 112590,
       "products_with_price": 17704,
       "products_with_title": 112578,
       "rated_edges": 199059,
       "recommendable_products": 17280,
-      "recommendable_with_attributes": 477,
+      "recommendable_with_attributes": 17099,
       "reviews_total": 200000,
       "users_total": 168664
     },
-    "warnings": [
-      "recommendable_attribute_coverage_below_20_percent"
-    ]
+    "warnings": []
   },
   "effective_min_reviews": 5,
   "evaluated_users": 30,
   "examples": [
     {
       "bm25_history_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9533349098002918,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.006492248062015505
+        "semantic_ndcg": 0.02927353705794345,
+        "semantic_recall": 0.15566712980506084,
+        "title_overlap": 0.03113342596101217
       },
       "history_products": [
-        "B07VGBBNTH",
-        "B09GNXK3N1",
-        "B09XX4VR4Y"
+        "B07CCZH87X",
+        "B0891M9C1W",
+        "B09J5TZ7HL"
       ],
       "holdout_products": [
-        "B08WPXVK2P",
-        "B0B5X48DZR"
+        "B08KWN77LW",
+        "B08SQZ1B3W"
       ],
       "hybrid_rrf": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9561333390695113,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.006492248062015505
+        "semantic_ndcg": 0.027283772436163096,
+        "semantic_recall": 0.13854903663062965,
+        "title_overlap": 0.02728727211485832
       },
       "kg_attribute_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9625006706787808,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.005886970172684458
+        "semantic_ndcg": 0.00936112152023003,
+        "semantic_recall": 0.04549264147536055,
+        "title_overlap": 0.006828703703703703
+      },
+      "kg_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "skin_type",
+            "value": "sensitive",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "dermaclara",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "sensitive",
+          "dermaclara"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.009896616476674886,
+        "semantic_recall": 0.05298913043478261,
+        "title_overlap": 0.010597826086956521
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9629236802581744,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.01839098762756355,
+        "semantic_recall": 0.10527328859195056,
+        "title_overlap": 0.02007656695156695
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "skin_type",
+            "value": "sensitive",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "dermaclara",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "sensitive",
+          "dermaclara",
+          "beautybio",
+          "glopro",
+          "massager",
+          "facial",
+          "attachment",
+          "heads",
+          "regeneration",
+          "tools"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "popularity_baseline": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.009896616476674886,
+        "semantic_recall": 0.05298913043478261,
+        "title_overlap": 0.010597826086956521
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B00HJD0MYA",
+          "B089F9YNTZ",
+          "B093RW9YM2",
+          "B09L14SGKQ",
+          "B09B7J4TDS",
+          "B08N4DC776",
+          "B07K4TXQKP",
+          "B093D9LR1K",
+          "B07H3BD7ZG",
+          "B0924GT395"
+        ],
+        "hybrid_rrf": [
+          "B00HJD0MYA",
+          "B089F9YNTZ",
+          "B093RW9YM2",
+          "B09L14SGKQ",
+          "B09B7J4TDS",
+          "B08N4DC776",
+          "B07K4TXQKP",
+          "B0924GT395",
+          "B005DT7YP2",
+          "B01LYQLV0X"
+        ],
+        "kg_attribute_history": [
+          "B005DT7YP2",
+          "B01LYQLV0X",
+          "B079NV9PBG",
+          "B07R3BMYBG",
+          "B014I0FDVI",
+          "B075FWJ91F",
+          "B09QXSH5Y2",
+          "B07NDH7GK6",
+          "B0012LVXU2",
+          "B07W867GKX"
+        ],
+        "kg_no_history_home": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B005DT7YP2",
+          "B00HJD0MYA",
+          "B01LYQLV0X",
+          "B089F9YNTZ",
+          "B079NV9PBG",
+          "B093RW9YM2",
+          "B07R3BMYBG",
+          "B09L14SGKQ",
+          "B014I0FDVI",
+          "B09B7J4TDS"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B00HJD0MYA",
+          "B093RW9YM2",
+          "B089F9YNTZ",
+          "B09L14SGKQ",
+          "B09B7J4TDS",
+          "B08N4DC776",
+          "B07K4TXQKP",
+          "B0924GT395",
+          "B07HS15WV6",
+          "B0BLJ29VW7"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "beautybio",
+          "glopro",
+          "massager",
+          "facial",
+          "attachment",
+          "heads",
+          "regeneration",
+          "tools"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9582314497471859,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.028508779476061896,
+        "semantic_recall": 0.15310302724095828,
+        "title_overlap": 0.030620605448191656
+      },
+      "user_id": "AE3PLZHW6NXWBMZ76TDVFQG2MJFA"
+    },
+    {
+      "bm25_history_profile": {
+        "attribute_overlap": 0.030952380952380953,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9187621647244554,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.03468268128404304,
+        "semantic_recall": 0.14262647475763673,
+        "title_overlap": 0.024833333333333332
+      },
+      "history_products": [
+        "B076TFQL1J",
+        "B07DFM7D4Y",
+        "B07Q5HDJYX"
+      ],
+      "holdout_products": [
+        "B07S9R1XSB",
+        "B07SSFL9T5"
+      ],
+      "hybrid_rrf": {
+        "attribute_overlap": 0.03333333333333333,
+        "catalog_coverage": 0.0,
+        "diversity": 0.932959755623471,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.027097236292291462,
+        "semantic_recall": 0.15947121212121212,
+        "title_overlap": 0.02737794612794613
+      },
+      "kg_attribute_history": {
+        "attribute_overlap": 0.11583333333333332,
+        "catalog_coverage": 0.0,
+        "diversity": 0.974652583762395,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.05910566641557869,
+        "semantic_recall": 0.2864083949592404,
+        "title_overlap": 0.04305777068934964
+      },
+      "kg_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "texture",
+            "value": "powder",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1.00 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "jeffree star cosmetics",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "blue, ice",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "blue",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "crayon",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "10g",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "canmake",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "powder",
+          "1.00 fl oz",
+          "jeffree star cosmetics",
+          "blue, ice",
+          "blue",
+          "crayon",
+          "10g",
+          "canmake"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0026417658072801164,
+        "semantic_recall": 0.017356515304602055,
+        "title_overlap": 0.0
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.04583333333333333,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9810416079495033,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.04719601163865416,
+        "semantic_recall": 0.19005075757575757,
+        "title_overlap": 0.03237794612794613
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "texture",
+            "value": "powder",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "mermaids heart",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "makeup revolution",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1.00 count",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "jeffree star cosmetics",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "blue, ice",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "blue",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "10g",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "powder",
+          "mermaids heart",
+          "makeup revolution",
+          "1.00 count",
+          "jeffree star cosmetics",
+          "blue, ice",
+          "blue",
+          "10g",
+          "makeup",
+          "heart",
+          "revolution",
+          "highlighter",
+          "mermaids",
+          "jeffree",
+          "star"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "popularity_baseline": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0026417658072801164,
+        "semantic_recall": 0.017356515304602055,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B07QCZRC4L",
+          "B08G6NFGNM",
+          "B07G3LBGJB",
+          "B079SY4HZQ",
+          "B08JCV51TF",
+          "B08JCQZW79",
+          "B07QF3J61F",
+          "B00ZD58Z3Q",
+          "B06XR7C5NZ",
+          "B08JD1TRMM"
+        ],
+        "hybrid_rrf": [
+          "B08G6NFGNM",
+          "B07QCZRC4L",
+          "B079SY4HZQ",
+          "B08JCV51TF",
+          "B08JCQZW79",
+          "B07QF3J61F",
+          "B08JD1TRMM",
+          "B07G3LBGJB",
+          "B0BHPF8HJG",
+          "B08MCK1R8T"
+        ],
+        "kg_attribute_history": [
+          "B0BHPF8HJG",
+          "B08MCK1R8T",
+          "B085BB7B1M",
+          "B07VFXC7QW",
+          "B082MRDK5M",
+          "B07JF4C4C2",
+          "B00NW3F6T2",
+          "B073SBNLJJ",
+          "B07MD79GK8",
+          "B0C52PWCV2"
+        ],
+        "kg_no_history_home": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B0BHPF8HJG",
+          "B07QCZRC4L",
+          "B08MCK1R8T",
+          "B08G6NFGNM",
+          "B085BB7B1M",
+          "B07G3LBGJB",
+          "B07VFXC7QW",
+          "B079SY4HZQ",
+          "B082MRDK5M",
+          "B08JCV51TF"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B08G6NFGNM",
+          "B079SY4HZQ",
+          "B08JCV51TF",
+          "B08JCQZW79",
+          "B07QF3J61F",
+          "B08JD1TRMM",
+          "B07QCZRC4L",
+          "B07DZ1Y5TN",
+          "B09P8SWB68",
+          "B07VZHNXPP"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "makeup",
+          "heart",
+          "revolution",
+          "highlighter",
+          "mermaids",
+          "10g",
+          "jeffree",
+          "star"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "attribute_overlap": 0.02,
+        "catalog_coverage": 0.0,
+        "diversity": 0.8941128963283007,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.010763316755558364,
+        "semantic_recall": 0.07787037037037037,
+        "title_overlap": 0.008333333333333333
+      },
+      "user_id": "AE5YGSWQJFOVOQBX7TVX3GYBPIGQ"
+    },
+    {
+      "bm25_history_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.88310890540615,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0013488554113444753,
+        "semantic_recall": 0.007350361023010999,
+        "title_overlap": 0.0
+      },
+      "history_products": [
+        "B0752ZGG15",
+        "B08RRSPNWV",
+        "B0B2L218H2"
+      ],
+      "holdout_products": [
+        "B0793JDW3W",
+        "B07C64FR2F"
+      ],
+      "hybrid_rrf": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9360012142165924,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0031715771533773014,
+        "semantic_recall": 0.020860046705770675,
+        "title_overlap": 0.0
+      },
+      "kg_attribute_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9680644812859966,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.011405952264423504,
+        "semantic_recall": 0.05479203517401779,
+        "title_overlap": 0.004
+      },
+      "kg_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "size",
+            "value": "90ml",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "swiss arabian",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1.00 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "beautystat",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "30ml",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "oil",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "pinrose",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "floral",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "90ml",
+          "swiss arabian",
+          "1.00 fl oz",
+          "beautystat",
+          "30ml",
+          "oil",
+          "pinrose",
+          "floral"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "attribute_overlap": 0.014285714285714285,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.013301004012818045,
+        "semantic_recall": 0.08369563371876962,
+        "title_overlap": 0.013095238095238094
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9512810923223398,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.006375192242019082,
+        "semantic_recall": 0.0372886181343421,
+        "title_overlap": 0.004
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "texture",
+            "value": "spray",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "bold soul",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "floral",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "90ml",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "swiss arabian",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1.00 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "beautystat",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "pinrose",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "spray",
+          "bold soul",
+          "floral",
+          "90ml",
+          "swiss arabian",
+          "1.00 fl oz",
+          "beautystat",
+          "pinrose",
+          "eau",
+          "parfum",
+          "notes",
+          "perfumes",
+          "bold",
+          "soul",
+          "petals"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "popularity_baseline": {
+        "attribute_overlap": 0.014285714285714285,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.013301004012818045,
+        "semantic_recall": 0.08369563371876962,
+        "title_overlap": 0.013095238095238094
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B0718Z1K15",
+          "B0CHXWTSM6",
+          "B015QYD1EQ",
+          "B07WC43HHD",
+          "B01LYR65T0",
+          "B08PPX8MBY",
+          "B07FLRCGJ2",
+          "B00KIWYPX8",
+          "B08NBC2RR8",
+          "B01EKXMBYA"
+        ],
+        "hybrid_rrf": [
+          "B015QYD1EQ",
+          "B07WC43HHD",
+          "B0CHXWTSM6",
+          "B00KIWYPX8",
+          "B08NBC2RR8",
+          "B0718Z1K15",
+          "B08R5FCWJ8",
+          "B07BCNYBSS",
+          "B07JZKQZ3G",
+          "B091MBLJB1"
+        ],
+        "kg_attribute_history": [
+          "B08R5FCWJ8",
+          "B07JZKQZ3G",
+          "B091MBLJB1",
+          "B019E61G1W",
+          "B00CNKSEN0",
+          "B078X79HG5",
+          "B06ZZ8G6BJ",
+          "B0BP2VSDN5",
+          "B00BH4N3OI",
+          "B08DJ8RK2L"
+        ],
+        "kg_no_history_home": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B00BH4N3OI",
+          "B08R5FCWJ8",
+          "B0718Z1K15",
+          "B07JZKQZ3G",
+          "B0CHXWTSM6",
+          "B091MBLJB1",
+          "B015QYD1EQ",
+          "B019E61G1W",
+          "B07WC43HHD",
+          "B00CNKSEN0"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B015QYD1EQ",
+          "B07BCNYBSS",
+          "B07WC43HHD",
+          "B00KIWYPX8",
+          "B08NBC2RR8",
+          "B085PS91MY",
+          "B08N9L8SZD",
+          "B0CHXWTSM6",
+          "B016TNVK4Q",
+          "B085PSQYWM"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "eau",
+          "parfum",
+          "notes",
+          "pinrose",
+          "perfumes",
+          "bold",
+          "soul",
+          "petals"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.8792396457741718,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0015265155202376919,
+        "semantic_recall": 0.009793127928734735,
+        "title_overlap": 0.0
+      },
+      "user_id": "AEAXAJACFMXIAAH4WOHRMXPSZWFA"
+    },
+    {
+      "bm25_history_profile": {
+        "attribute_overlap": 0.053869047619047615,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9508538804683379,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.042159882194737985,
+        "semantic_recall": 0.24674114616590317,
+        "title_overlap": 0.03352397602397602
+      },
+      "history_products": [
+        "B07Q1DC383",
+        "B08F7KXD84",
+        "B0BG6WX4DH"
+      ],
+      "holdout_products": [
+        "B096S4RQNH",
+        "B09KX5N1DR"
+      ],
+      "hybrid_rrf": {
+        "attribute_overlap": 0.04434523809523809,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9566595994642202,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.04373175916540006,
+        "semantic_recall": 0.2654405916975405,
+        "title_overlap": 0.0420954045954046
+      },
+      "kg_attribute_history": {
+        "attribute_overlap": 0.033358395989974934,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9637595863073198,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.06130110344541516,
+        "semantic_recall": 0.26328425141683126,
+        "title_overlap": 0.04397468743594999
+      },
+      "kg_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "benefit",
+            "value": "exfoliating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "dry",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "8 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "coconut, floral",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "other",
+            "value": "oily",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "350ml",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "snow buddy",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "south of france natural body care",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "exfoliating",
+          "dry",
+          "8 oz",
+          "coconut, floral",
+          "oily",
+          "350ml",
+          "snow buddy",
+          "south of france natural body care"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "attribute_overlap": 0.07428571428571429,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.02558656852748751,
+        "semantic_recall": 0.14329452086977726,
+        "title_overlap": 0.009615258784270104
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.049608395989974935,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9624324608938076,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.05466380659381357,
+        "semantic_recall": 0.23469297123225866,
+        "title_overlap": 0.033686740089179115
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "other",
+            "value": "all, color treated",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "spray",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "south of france natural body care",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "exfoliating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "dry",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "8 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "coconut, floral",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "ag care",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "all, color treated",
+          "spray",
+          "south of france natural body care",
+          "exfoliating",
+          "dry",
+          "8 oz",
+          "coconut, floral",
+          "ag care",
+          "natural",
+          "care",
+          "sugar",
+          "body",
+          "kids",
+          "shampoo",
+          "wash",
+          "free"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "popularity_baseline": {
+        "attribute_overlap": 0.07428571428571429,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.02558656852748751,
+        "semantic_recall": 0.14329452086977726,
+        "title_overlap": 0.009615258784270104
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B08CB22Q6L",
+          "B09C6SQ1DM",
+          "B09648ZSBN",
+          "B085LT5DZ4",
+          "B07Z2BFVXT",
+          "B08KLNFFQT",
+          "B06XF8JTY6",
+          "B098VHD353",
+          "B07XKCBF5Q",
+          "B07ZS2Z9C8"
+        ],
+        "hybrid_rrf": [
+          "B08CB22Q6L",
+          "B09648ZSBN",
+          "B085LT5DZ4",
+          "B07XKCBF5Q",
+          "B08KLNFFQT",
+          "B06XF8JTY6",
+          "B098VHD353",
+          "B09C6SQ1DM",
+          "B07Z2BFVXT",
+          "B08MSXLK3Y"
+        ],
+        "kg_attribute_history": [
+          "B07XKCBF5Q",
+          "B08MSXLK3Y",
+          "B0C7WQK2QW",
+          "B01F9AWHME",
+          "B00IVZDCP6",
+          "B093JW2RVF",
+          "B08MJVVWLV",
+          "B08FKPLJFS",
+          "B08W36QJ4B",
+          "B08YNNPJXQ"
+        ],
+        "kg_no_history_home": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B07XKCBF5Q",
+          "B08CB22Q6L",
+          "B08MSXLK3Y",
+          "B09C6SQ1DM",
+          "B0C7WQK2QW",
+          "B09648ZSBN",
+          "B01F9AWHME",
+          "B085LT5DZ4",
+          "B00IVZDCP6",
+          "B07Z2BFVXT"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B09648ZSBN",
+          "B085LT5DZ4",
+          "B08CB22Q6L",
+          "B08KLNFFQT",
+          "B06XF8JTY6",
+          "B098VHD353",
+          "B09ZFFN5Z5",
+          "B08KTYTJ2W",
+          "B09BJKG8HQ",
+          "B09KZRXC2W"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "natural",
+          "care",
+          "sugar",
+          "body",
+          "kids",
+          "shampoo",
+          "wash",
+          "free"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "attribute_overlap": 0.020535714285714286,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9399958179527546,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.03929232100763055,
+        "semantic_recall": 0.21949698875793364,
+        "title_overlap": 0.03951985514485514
+      },
+      "user_id": "AEE4M36AZAKURLEYGV23TM3BE7OQ"
+    },
+    {
+      "bm25_history_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.872459291478672,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.003344481157543334,
+        "semantic_recall": 0.025,
+        "title_overlap": 0.004
+      },
+      "history_products": [
+        "B08M3Y94KW",
+        "B08YJV9YL2",
+        "B0B2L218H2"
+      ],
+      "holdout_products": [
+        "B088X67C26",
+        "B08KWN77LW"
+      ],
+      "hybrid_rrf": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9171006243683619,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0013600215915309873,
+        "semantic_recall": 0.009619758351101635,
+        "title_overlap": 0.0
+      },
+      "kg_attribute_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9601341444954916,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.009209878786703244,
+        "semantic_recall": 0.05779389522089068,
+        "title_overlap": 0.009347826086956522
+      },
+      "kg_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "texture",
+            "value": "spray",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "bold soul",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "bouquet garni",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "white",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "garni",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "gel",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "17.85 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "pinrose",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "spray",
+          "bold soul",
+          "bouquet garni",
+          "white",
+          "garni",
+          "gel",
+          "17.85 fl oz",
+          "pinrose"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "attribute_overlap": 0.025396825396825397,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.01860953135736655,
+        "semantic_recall": 0.11684343434343433,
+        "title_overlap": 0.01534090909090909
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9497979911931396,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0012747407903989695,
+        "semantic_recall": 0.007000710732054015,
+        "title_overlap": 0.0
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "color",
+            "value": "white",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "garni",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "gel",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "17.85 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "all, dry",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "pinrose",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "spray",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "bouquet garni",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "white",
+          "garni",
+          "gel",
+          "17.85 fl oz",
+          "all, dry",
+          "pinrose",
+          "spray",
+          "bouquet garni",
+          "fragrance",
+          "body",
+          "bouquet",
+          "shower",
+          "musk",
+          "unique"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "popularity_baseline": {
+        "attribute_overlap": 0.025396825396825397,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.01860953135736655,
+        "semantic_recall": 0.11684343434343433,
+        "title_overlap": 0.01534090909090909
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B097L3C61P",
+          "B08KHQ5PDX",
+          "B07D3LZ8RB",
+          "B085PSQYWM",
+          "B06XP4N4YN",
+          "B094GZW7KD",
+          "B07W7W2KQM",
+          "B092Y6QP3J",
+          "B07YXDPQDF",
+          "B08P5Z7FP5"
+        ],
+        "hybrid_rrf": [
+          "B097L3C61P",
+          "B08KHQ5PDX",
+          "B085PSQYWM",
+          "B07D3LZ8RB",
+          "B06XP4N4YN",
+          "B094GZW7KD",
+          "B092Y6QP3J",
+          "B01N5P12CM",
+          "B08LXJYHSN",
+          "B08MCLM9V7"
+        ],
+        "kg_attribute_history": [
+          "B01N5P12CM",
+          "B08LXJYHSN",
+          "B074WHV122",
+          "B085B5S92V",
+          "B097L3C61P",
+          "B08MCLM9V7",
+          "B00GX1RFEY",
+          "B07KWKVCMG",
+          "B08TCBP8HV",
+          "B00P4OFQ2Y"
+        ],
+        "kg_no_history_home": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B097L3C61P",
+          "B08MCLM9V7",
+          "B01N5P12CM",
+          "B08LXJYHSN",
+          "B08KHQ5PDX",
+          "B074WHV122",
+          "B07D3LZ8RB",
+          "B085B5S92V",
+          "B085PSQYWM",
+          "B06XP4N4YN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B08KHQ5PDX",
+          "B097L3C61P",
+          "B085PSQYWM",
+          "B09PZ9HX6W",
+          "B06XP4N4YN",
+          "B07D3LZ8RB",
+          "B094GZW7KD",
+          "B092Y6QP3J",
+          "B072N95X6P",
+          "B09RGJLVDF"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "fragrance",
+          "body",
+          "bouquet",
+          "garni",
+          "shower",
+          "white",
+          "musk",
+          "unique"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.8755735416108138,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0036825601373481746,
+        "semantic_recall": 0.026851851851851852,
+        "title_overlap": 0.0037037037037037034
+      },
+      "user_id": "AEH7RAIDBU7QALXTMWAA73PTL4JA"
+    },
+    {
+      "bm25_history_profile": {
+        "attribute_overlap": 0.1488095238095238,
+        "catalog_coverage": 0.0,
+        "diversity": 0.4609316772552067,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.07458592378547492,
+        "semantic_recall": 0.3546537110529857,
+        "title_overlap": 0.04886325662641452
+      },
+      "history_products": [
+        "B00XYLX25C",
+        "B01C04Z4SG",
+        "B0773VWSZY"
+      ],
+      "holdout_products": [
+        "B082P5W1XB",
+        "B08K9B8B4X"
+      ],
+      "hybrid_rrf": {
+        "attribute_overlap": 0.12658730158730158,
+        "catalog_coverage": 0.0,
+        "diversity": 0.6628534472127224,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.0731837074581174,
+        "semantic_recall": 0.34195169085096555,
+        "title_overlap": 0.04886325662641452
+      },
+      "kg_attribute_history": {
+        "attribute_overlap": 0.14158730158730157,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9014971255841657,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.07744591199756033,
+        "semantic_recall": 0.40158931561940253,
+        "title_overlap": 0.054339447102605
       },
       "kg_intent": {
         "attribute_filters": [
           {
             "attribute_type": "brand",
-            "value": "smpl objects",
+            "value": "bargz",
             "weight": 0.7
           },
           {
-            "attribute_type": "material",
-            "value": "polyester",
+            "attribute_type": "texture",
+            "value": "oil",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "balm",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "all",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "3 pack",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "soothing",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "labello",
             "weight": 0.7
           }
         ],
         "keywords": [
-          "smpl objects",
-          "polyester"
+          "bargz",
+          "oil",
+          "1 oz",
+          "balm",
+          "all",
+          "3 pack",
+          "soothing",
+          "labello"
         ],
         "min_rating": null,
         "price_max": null
       },
       "kg_no_history_home": {
+        "attribute_overlap": 0.04523809523809523,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.01269140989729225
+        "semantic_ndcg": 0.024284732479122592,
+        "semantic_recall": 0.1539004598201606,
+        "title_overlap": 0.01719298245614035
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.12063492063492062,
+        "catalog_coverage": 0.0,
+        "diversity": 0.8537558413887605,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.07434329591458039,
+        "semantic_recall": 0.3565228993708963,
+        "title_overlap": 0.051948051948051945
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "texture",
+            "value": "oil",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "bargz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "labello",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "orange",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "soothing",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "balm",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "color",
+            "value": "pink",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "oil",
+          "1 oz",
+          "bargz",
+          "labello",
+          "orange",
+          "soothing",
+          "balm",
+          "pink",
+          "light",
+          "perfume",
+          "body",
+          "women",
+          "scented",
+          "fragrance"
+        ],
+        "min_rating": null,
+        "price_max": null
       },
       "popularity_baseline": {
+        "attribute_overlap": 0.04523809523809523,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.006666666666666666
+        "semantic_ndcg": 0.024284732479122592,
+        "semantic_recall": 0.1539004598201606,
+        "title_overlap": 0.01719298245614035
       },
       "recommendations": {
         "bm25_history_profile": [
-          "B094Y89D7D",
-          "B08GM478PP",
-          "B005FAP51Y",
-          "B01M1E5I89",
-          "B07B8X6ZCR",
-          "B08H536QPH",
-          "B08HMWMHQ2",
-          "B07KJWQ3Y8",
-          "B0BJ6J83XR",
-          "B082XHLYZ5"
+          "B00XYLWH26",
+          "B00XYM7M6G",
+          "B00XYLS1MQ",
+          "B00XYLNYN2",
+          "B00XYMILHU",
+          "B00XYM2MZM",
+          "B00XYLNFNG",
+          "B00XYLLQAU",
+          "B00XYM1MV2",
+          "B00XYKSI66"
         ],
         "hybrid_rrf": [
-          "B08VJDQ36P",
-          "B01M1E5I89",
-          "B082XHLYZ5",
-          "B094Y89D7D",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B08GM478PP",
-          "B093SKZQBX",
-          "B087BC1TRW",
-          "B00DSPD1Q4"
+          "B00XYLWH26",
+          "B00XYM7M6G",
+          "B00XYLNYN2",
+          "B00XYLS1MQ",
+          "B00XYM2MZM",
+          "B00XYLNFNG",
+          "B00XYLLQAU",
+          "B00XYMILHU",
+          "B01C052LVS",
+          "B0CBKZS7X2"
         ],
         "kg_attribute_history": [
-          "B09GNXK3N1",
-          "B08VJDQ36P",
-          "B08FQ2Y5LC",
-          "B082XHLYZ5",
-          "B0BYFD9TRL",
-          "B09RRQHDRC",
-          "B01M1E5I89",
-          "B08F4Q8ZBR",
-          "B086BZ7ZRX",
-          "B00IUXS3S0"
+          "B01C052LVS",
+          "B0CBKZS7X2",
+          "B01C055IFY",
+          "B004MBNJIS",
+          "B0798FPXVX",
+          "B01IM7LGSW",
+          "B00XYLDMUC",
+          "B00XYMCZ7W",
+          "B00XYLIQLC",
+          "B00XYLNWS4"
         ],
         "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B01C052LVS",
+          "B00XYLWH26",
+          "B0CBKZS7X2",
+          "B00XYM7M6G",
+          "B01C055IFY",
+          "B00XYLS1MQ",
+          "B004MBNJIS",
+          "B00XYLNYN2",
+          "B0798FPXVX",
+          "B00XYMILHU"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -194,835 +1999,67 @@
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
-          "B09GNXK3N1",
-          "B093SKZQBX",
-          "B093SKV91M",
-          "B09XX4VR4Y",
-          "B08GHS3TZL",
-          "B0784C2CKL",
-          "B08VJDQ36P",
-          "B01H6ZM6TE",
-          "B08YYKC4RW",
-          "B091TDLRVW"
+          "B00XYLWH26",
+          "B00XYLNYN2",
+          "B00XYM7M6G",
+          "B00XYLS1MQ",
+          "B00XYM2MZM",
+          "B00XYLNFNG",
+          "B00XYLLQAU",
+          "B00XYLUCN2",
+          "B00XYLPQDI",
+          "B00XYLPB5Q"
         ]
       },
       "title_intent": {
         "attribute_filters": [],
         "keywords": [
-          "shower",
-          "machine",
-          "pen",
-          "cap",
-          "kit",
-          "reusable",
+          "light",
+          "bargz",
+          "perfume",
+          "body",
+          "oil",
           "women",
-          "caps"
+          "scented",
+          "fragrance"
         ],
         "min_rating": null,
         "price_max": null
       },
       "title_keyword_profile": {
+        "attribute_overlap": 0.1488095238095238,
+        "catalog_coverage": 0.0,
+        "diversity": 0.4911385781974017,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.004341736694677871
+        "semantic_ndcg": 0.07487980817094202,
+        "semantic_recall": 0.3539279662095938,
+        "title_overlap": 0.04860351636667426
       },
-      "user_id": "AFXF3EGQTQDXMRLDWFU7UBFQZB7Q"
+      "user_id": "AEHNRIRHKXUWYPIEPZ3HTSJQUAYA"
     },
     {
       "bm25_history_profile": {
+        "attribute_overlap": 0.03611111111111111,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9528084622071533,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.01973887470381159
-      },
-      "history_products": [
-        "B07JDKTKPW",
-        "B09NCJHDX3",
-        "B0B8SFDJN9"
-      ],
-      "holdout_products": [
-        "B09JNRPRKT",
-        "B09NCDK9T1"
-      ],
-      "hybrid_rrf": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.02076812252334074
-      },
-      "kg_attribute_history": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
-      },
-      "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
-        "min_rating": null,
-        "price_max": null
-      },
-      "kg_no_history_home": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.015702945244541168
-      },
-      "popularity_baseline": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.005
-      },
-      "recommendations": {
-        "bm25_history_profile": [
-          "B08HSH335C",
-          "B0B2YHWC65",
-          "B08N4DC776",
-          "B01M5H7UNB",
-          "B01KYYNLTS",
-          "B00HQP8ZBI",
-          "B09TKTSWGN",
-          "B09D435KXF",
-          "B072KL7L31",
-          "B07SQ44FD6"
-        ],
-        "hybrid_rrf": [
-          "B01KYYNLTS",
-          "B07SQ44FD6",
-          "B08HSH335C",
-          "B08HZ8DYLQ",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B0B2YHWC65",
-          "B093H8ZWM9",
-          "B087BC1TRW",
-          "B00DSPD1Q4"
-        ],
-        "kg_attribute_history": [],
-        "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
-        ],
-        "popularity_baseline": [
-          "B07J6PNGGM",
-          "B00DSPD1Q4",
-          "B01IA9D3OC",
-          "B01MXC2N1L",
-          "B01I9ZA6C4",
-          "B01N26L078",
-          "B016V17FMW",
-          "B07GLC13Y9",
-          "B01I0QW7QK",
-          "B07N4DDF7K"
-        ],
-        "title_keyword_profile": [
-          "B08HZ8DYLQ",
-          "B093H8ZWM9",
-          "B084MBQ45S",
-          "B01KYYNLTS",
-          "B07SQ44FD6",
-          "B07SSWWR3N",
-          "B09NCJHDX3",
-          "B07JDKTKPW",
-          "B079KW81R1",
-          "B07PWZFLW3"
-        ]
-      },
-      "title_intent": {
-        "attribute_filters": [],
-        "keywords": [
-          "serum",
-          "eye",
-          "roller",
-          "lash",
-          "growth",
-          "natural",
-          "rba",
-          "firming"
-        ],
-        "min_rating": null,
-        "price_max": null
-      },
-      "title_keyword_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.022413273001508298
-      },
-      "user_id": "AF4UB2PGVLHK45WF7I6OED36OQDA"
-    },
-    {
-      "bm25_history_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.005798319327731093
-      },
-      "history_products": [
-        "B08FBSCQ71",
-        "B08VJ7CZW3",
-        "B09C5NQSC5"
-      ],
-      "holdout_products": [
-        "B09G3KBK7Y",
-        "B0BC87LQ7Q"
-      ],
-      "hybrid_rrf": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.026287041132242374
-      },
-      "kg_attribute_history": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
-      },
-      "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
-        "min_rating": null,
-        "price_max": null
-      },
-      "kg_no_history_home": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.026638086128760445
-      },
-      "popularity_baseline": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.01
-      },
-      "recommendations": {
-        "bm25_history_profile": [
-          "B0B2YHWC65",
-          "B0B2Q37VJR",
-          "B01F6BEV2A",
-          "B07TBVCHSS",
-          "B0974GWS7Z",
-          "B08HZ8DYLQ",
-          "B09D435KXF",
-          "B07DBFVSPN",
-          "B0BLJ29VW7",
-          "B08HSH335C"
-        ],
-        "hybrid_rrf": [
-          "B09D435KXF",
-          "B0B2YHWC65",
-          "B09NCDK9T1",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B0B2Q37VJR",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
-          "B01F6BEV2A",
-          "B07GJ2SSQW"
-        ],
-        "kg_attribute_history": [],
-        "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
-        ],
-        "popularity_baseline": [
-          "B07J6PNGGM",
-          "B00DSPD1Q4",
-          "B01IA9D3OC",
-          "B01MXC2N1L",
-          "B01I9ZA6C4",
-          "B01N26L078",
-          "B016V17FMW",
-          "B07GLC13Y9",
-          "B01I0QW7QK",
-          "B07N4DDF7K"
-        ],
-        "title_keyword_profile": [
-          "B09NCDK9T1",
-          "B09D435KXF",
-          "B07GJ2SSQW",
-          "B09K9JHDNX",
-          "B0737V44WK",
-          "B012MCRSOY",
-          "B07MCPR163",
-          "B07R3BMYBG",
-          "B071S98JST",
-          "B079NV9PBG"
-        ]
-      },
-      "title_intent": {
-        "attribute_filters": [],
-        "keywords": [
-          "face",
-          "roller",
-          "caxiro",
-          "ipl",
-          "removal",
-          "device",
-          "women",
-          "man"
-        ],
-        "min_rating": null,
-        "price_max": null
-      },
-      "title_keyword_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.020467975649171126
-      },
-      "user_id": "AELHYMCYVS6T35HA3UH5UGFWTK6Q"
-    },
-    {
-      "bm25_history_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.0
-      },
-      "history_products": [
-        "B079R2VWNX",
-        "B07LCF4BK5",
-        "B09J5TZ7HL"
-      ],
-      "holdout_products": [
-        "B07R3BMYBG",
-        "B07X4J45PS"
-      ],
-      "hybrid_rrf": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.012142857142857143
-      },
-      "kg_attribute_history": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
-      },
-      "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
-        "min_rating": null,
-        "price_max": null
-      },
-      "kg_no_history_home": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.02172077922077922
-      },
-      "popularity_baseline": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.02153846153846154
-      },
-      "recommendations": {
-        "bm25_history_profile": [
-          "B019TAEA3Y",
-          "B019TAEA3E",
-          "B019TAEA0W",
-          "B017KVZSAI",
-          "B014TQ8LCO",
-          "B017KVZS44",
-          "B019TAEA5M",
-          "B019TAEA0M",
-          "B019TAEA52",
-          "B07TN7W8ZK"
-        ],
-        "hybrid_rrf": [
-          "B019TAEA3Y",
-          "B07SX54LGB",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B019TAEA3E",
-          "B07SSVSYLZ",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
-          "B019TAEA0W",
-          "B07DLS3Z7Q"
-        ],
-        "kg_attribute_history": [],
-        "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
-        ],
-        "popularity_baseline": [
-          "B07J6PNGGM",
-          "B00DSPD1Q4",
-          "B01IA9D3OC",
-          "B01MXC2N1L",
-          "B01I9ZA6C4",
-          "B01N26L078",
-          "B016V17FMW",
-          "B07GLC13Y9",
-          "B01I0QW7QK",
-          "B07N4DDF7K"
-        ],
-        "title_keyword_profile": [
-          "B07SX54LGB",
-          "B07SSVSYLZ",
-          "B09J5TZ7HL",
-          "B019GBG0IE",
-          "B07SSVQ3BL",
-          "B08HZ8DYLQ",
-          "B09GKV39YF",
-          "B0C8NMSN3M",
-          "B074M88MK2",
-          "B01M1OFZOG"
-        ]
-      },
-      "title_intent": {
-        "attribute_filters": [],
-        "keywords": [
-          "twist",
-          "natural",
-          "roller",
-          "beautybio",
-          "glopro",
-          "attachment",
-          "heads",
-          "spring"
-        ],
-        "min_rating": null,
-        "price_max": null
-      },
-      "title_keyword_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.007564102564102565
-      },
-      "user_id": "AG73BVBKUOH22USSFJA5ZWL7AKXA"
-    },
-    {
-      "bm25_history_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.06386869646771731
-      },
-      "history_products": [
-        "B0B3NCXPVF",
-        "B0B5XFVSXY",
-        "B0B64PMWPH"
-      ],
-      "holdout_products": [
-        "B0B8DGRJZP",
-        "B0BPC2QG37"
-      ],
-      "hybrid_rrf": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.020247605363984674
-      },
-      "kg_attribute_history": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
-      },
-      "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
-        "min_rating": null,
-        "price_max": null
-      },
-      "kg_no_history_home": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.003125
-      },
-      "popularity_baseline": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.0037037037037037034
-      },
-      "recommendations": {
-        "bm25_history_profile": [
-          "B0B5YVX9YY",
-          "B07SQDSJ4F",
-          "B093CR9LRS",
-          "B079ZMLQ62",
-          "B098VHD353",
-          "B08LP4HWH6",
-          "B09QW7BPMJ",
-          "B07Z8XFFNV",
-          "B07VZGR5RX",
-          "B0B96MFXSJ"
-        ],
-        "hybrid_rrf": [
-          "B0B5YVX9YY",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B07SQDSJ4F",
-          "B00MBYAPD0",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
-          "B093CR9LRS",
-          "B06XBHF42Q",
-          "B07DLS3Z7Q"
-        ],
-        "kg_attribute_history": [],
-        "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
-        ],
-        "popularity_baseline": [
-          "B07J6PNGGM",
-          "B00DSPD1Q4",
-          "B01IA9D3OC",
-          "B01MXC2N1L",
-          "B01I9ZA6C4",
-          "B01N26L078",
-          "B016V17FMW",
-          "B07GLC13Y9",
-          "B01I0QW7QK",
-          "B07N4DDF7K"
-        ],
-        "title_keyword_profile": [
-          "B0B5YVX9YY",
-          "B00MBYAPD0",
-          "B06XBHF42Q",
-          "B0BN12F234",
-          "B0BNWSR278",
-          "B00Z5VI9MK",
-          "B0BN113VWD",
-          "B08F2ZJP48",
-          "B08S3Q2Z8C",
-          "B00GX1RFEY"
-        ]
-      },
-      "title_intent": {
-        "attribute_filters": [],
-        "keywords": [
-          "lashes",
-          "vegan",
-          "natural",
-          "celleanser",
-          "clean",
-          "serum100",
-          "ingredients",
-          "quick"
-        ],
-        "min_rating": null,
-        "price_max": null
-      },
-      "title_keyword_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.013738584968167544
-      },
-      "user_id": "AGG5SZ7EMJI66IQ6E3Z3YJKQD56A"
-    },
-    {
-      "bm25_history_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.014312169312169313
-      },
-      "history_products": [
-        "B07LCF4BK5",
-        "B0859CYSTM",
-        "B0BG6WX4DH"
-      ],
-      "holdout_products": [
-        "B07DFNPVSF",
-        "B08YJV9YL2"
-      ],
-      "hybrid_rrf": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.017084826762246118
-      },
-      "kg_attribute_history": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
-      },
-      "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
-        "min_rating": null,
-        "price_max": null
-      },
-      "kg_no_history_home": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.008225806451612904
-      },
-      "popularity_baseline": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.02041816009557945
-      },
-      "recommendations": {
-        "bm25_history_profile": [
-          "B01AO7CNN0",
-          "B01AO7CL1Y",
-          "B098JXHFJJ",
-          "B07CZMGZQJ",
-          "B071RP7F98",
-          "B0851V7B9S",
-          "B01IAETZ12",
-          "B01I9TNMUI",
-          "B013THQAAO",
-          "B00ITX69CS"
-        ],
-        "hybrid_rrf": [
-          "B01AO7CNN0",
-          "B00MBYAPD0",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B01AO7CL1Y",
-          "B08HZ8DYLQ",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
-          "B098JXHFJJ",
-          "B00YPA854Y"
-        ],
-        "kg_attribute_history": [],
-        "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
-        ],
-        "popularity_baseline": [
-          "B07J6PNGGM",
-          "B00DSPD1Q4",
-          "B01IA9D3OC",
-          "B01MXC2N1L",
-          "B01I9ZA6C4",
-          "B01N26L078",
-          "B016V17FMW",
-          "B07GLC13Y9",
-          "B01I0QW7QK",
-          "B07N4DDF7K"
-        ],
-        "title_keyword_profile": [
-          "B00MBYAPD0",
-          "B08HZ8DYLQ",
-          "B00YPA854Y",
-          "B008OYBTXG",
-          "B00DGXXPF0",
-          "B07HL953F8",
-          "B08ZBCGXSS",
-          "B079M24W38",
-          "B078845YCW",
-          "B08FR3QXYY"
-        ]
-      },
-      "title_intent": {
-        "attribute_filters": [],
-        "keywords": [
-          "natural",
-          "roller",
-          "cream",
-          "irritated",
-          "care",
-          "remedy",
-          "apple",
-          "cider"
-        ],
-        "min_rating": null,
-        "price_max": null
-      },
-      "title_keyword_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.03643558726220016
-      },
-      "user_id": "AGYVC7KVHP2AWM7BDCEYNHFA6F3Q"
-    },
-    {
-      "bm25_history_profile": {
-        "hit_rate": 0.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "precision": 0.0,
-        "price_coverage": 1.0,
-        "reason_coverage": 1.0,
-        "sellable_rate": 1.0,
-        "title_overlap": 0.007814303199860114
+        "semantic_ndcg": 0.03293199815581511,
+        "semantic_recall": 0.1651400351686039,
+        "title_overlap": 0.022567953397421882
       },
       "history_products": [
         "B07L9H27SH",
@@ -1034,88 +2071,265 @@
         "B08PLFZB89"
       ],
       "hybrid_rrf": {
+        "attribute_overlap": 0.043194444444444445,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9574835209974338,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.008521973698999662
+        "semantic_ndcg": 0.023493788927347655,
+        "semantic_recall": 0.12064371610159953,
+        "title_overlap": 0.010385426955194397
       },
       "kg_attribute_history": {
+        "attribute_overlap": 0.04458333333333333,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9529221103995296,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
-        "price_coverage": 0.0,
-        "reason_coverage": 0.0,
-        "sellable_rate": 0.0,
-        "title_overlap": 0.0
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.035685255530740034,
+        "semantic_recall": 0.17345139176145347,
+        "title_overlap": 0.020884193835540223
       },
       "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
+        "attribute_filters": [
+          {
+            "attribute_type": "skin_type",
+            "value": "all",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "tangerine",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "8 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "foam",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "hydrating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "other",
+            "value": "color treated",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "o!geti",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "4.23 oz",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "all",
+          "tangerine",
+          "8 oz",
+          "foam",
+          "hydrating",
+          "color treated",
+          "o!geti",
+          "4.23 oz"
+        ],
         "min_rating": null,
         "price_max": null
       },
       "kg_no_history_home": {
+        "attribute_overlap": 0.02857142857142857,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.010309139784946237
+        "semantic_ndcg": 0.01758982474514382,
+        "semantic_recall": 0.08131244356725222,
+        "title_overlap": 0.0032258064516129032
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.05569444444444445,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9566357378021297,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.03211545429478734,
+        "semantic_recall": 0.13944232754180136,
+        "title_overlap": 0.010385426955194397
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "skin_type",
+            "value": "all",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "hydrating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "eye-bag depuffer",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "aloe",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "gentlehomme",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "other",
+            "value": "color treated",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "8 oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "10ml",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "all",
+          "hydrating",
+          "eye-bag depuffer",
+          "aloe",
+          "gentlehomme",
+          "color treated",
+          "8 oz",
+          "10ml",
+          "eye",
+          "roller",
+          "free",
+          "serum",
+          "vitamin",
+          "made",
+          "usa",
+          "color"
+        ],
+        "min_rating": null,
+        "price_max": null
       },
       "popularity_baseline": {
+        "attribute_overlap": 0.02857142857142857,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
+        "semantic_ndcg": 0.01758982474514382,
+        "semantic_recall": 0.08131244356725222,
         "title_overlap": 0.0032258064516129032
       },
       "recommendations": {
         "bm25_history_profile": [
-          "B096DM63T9",
           "B07P56BYX8",
-          "B08T6NZCMR",
-          "B0B2YHWC65",
-          "B01G4DK01U",
-          "B0B2Q37VJR",
+          "B01KS18BV0",
+          "B07Z9LPTLR",
+          "B0815VY23F",
+          "B096DM63T9",
           "B08HSH335C",
-          "B07DV4WG46",
-          "B09PTZ3XRM",
-          "B072KL7L31"
+          "B096YHL82K",
+          "B07QGSFN15",
+          "B08KW8TCK3",
+          "B01LXQTVNE"
         ],
         "hybrid_rrf": [
-          "B096DM63T9",
-          "B09MS8N42F",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
           "B07P56BYX8",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
+          "B096DM63T9",
+          "B08HSH335C",
+          "B01KS18BV0",
+          "B07Z9LPTLR",
+          "B0815VY23F",
+          "B07KBFQ588",
+          "B08X7JHQG5",
           "B08T6NZCMR",
-          "B00Z5VI9MK",
-          "B07DLS3Z7Q"
+          "B014I0FDVI"
         ],
-        "kg_attribute_history": [],
+        "kg_attribute_history": [
+          "B07KBFQ588",
+          "B08X7JHQG5",
+          "B014I0FDVI",
+          "B09KNNC73P",
+          "B08W58HSZQ",
+          "B08VRXNFNH",
+          "B0CCSW2DL9",
+          "B075S27J6Z",
+          "B0C7WQK2QW",
+          "B0BV1FPZY6"
+        ],
         "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B07KBFQ588",
+          "B07P56BYX8",
+          "B08X7JHQG5",
+          "B01KS18BV0",
+          "B014I0FDVI",
+          "B07Z9LPTLR",
+          "B09KNNC73P",
+          "B0815VY23F",
+          "B08W58HSZQ",
+          "B096DM63T9"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -1130,16 +2344,16 @@
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
-          "B09MS8N42F",
-          "B0B8SFDJN9",
-          "B00Z5VI9MK",
-          "B01IT9P9FO",
-          "B08HZ8DYLQ",
-          "B086QB1YL8",
-          "B07SQ44FD6",
-          "B06ZZ8G6BJ",
-          "B0115YS3OE",
-          "B09L1CTZGJ"
+          "B096DM63T9",
+          "B07P56BYX8",
+          "B08T6NZCMR",
+          "B0B2YHWC65",
+          "B01G4DK01U",
+          "B0B2Q37VJR",
+          "B08HSH335C",
+          "B07DV4WG46",
+          "B09PTZ3XRM",
+          "B072KL7L31"
         ]
       },
       "title_intent": {
@@ -1158,120 +2372,249 @@
         "price_max": null
       },
       "title_keyword_profile": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9596908258078201,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.0147342974566308
+        "semantic_ndcg": 0.009477367183697532,
+        "semantic_recall": 0.047523895315524284,
+        "title_overlap": 0.007814303199860114
       },
       "user_id": "AEHWKRPNWNMOAJSMO2F6O7RFRTNA"
     },
     {
       "bm25_history_profile": {
+        "attribute_overlap": 0.0125,
+        "catalog_coverage": 0.0,
+        "diversity": 0.930309912998009,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.02414862914862915
+        "semantic_ndcg": 0.02072720010010023,
+        "semantic_recall": 0.08465288202476826,
+        "title_overlap": 0.005798319327731093
       },
       "history_products": [
-        "B07L9H27SH",
-        "B084ZHP45Y",
-        "B08KGVBW41"
+        "B08FBSCQ71",
+        "B08VJ7CZW3",
+        "B09C5NQSC5"
       ],
       "holdout_products": [
-        "B08TR1MKHD",
-        "B0BTJ6SYKB"
+        "B09G3KBK7Y",
+        "B0BC87LQ7Q"
       ],
       "hybrid_rrf": {
+        "attribute_overlap": 0.0125,
+        "catalog_coverage": 0.0,
+        "diversity": 0.930309912998009,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.020188997993876044
+        "semantic_ndcg": 0.02072720010010023,
+        "semantic_recall": 0.08465288202476826,
+        "title_overlap": 0.005798319327731093
       },
       "kg_attribute_history": {
+        "attribute_overlap": 0.0,
+        "catalog_coverage": 0.0,
+        "diversity": 0.0,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 0.0,
         "reason_coverage": 0.0,
+        "recall": 0.0,
         "sellable_rate": 0.0,
+        "semantic_ndcg": 0.0,
+        "semantic_recall": 0.0,
         "title_overlap": 0.0
       },
       "kg_intent": {
-        "attribute_filters": [],
-        "keywords": [],
+        "attribute_filters": [
+          {
+            "attribute_type": "brand",
+            "value": "caxiro",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "cuckoo",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "anghie",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "green-shader&liner",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "caxiro",
+          "cuckoo",
+          "anghie",
+          "green-shader&liner"
+        ],
         "min_rating": null,
         "price_max": null
       },
       "kg_no_history_home": {
+        "attribute_overlap": 0.02857142857142857,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.02138980067551496
+        "semantic_ndcg": 0.020622204930692625,
+        "semantic_recall": 0.09915266798418973,
+        "title_overlap": 0.01
+      },
+      "kg_semantic_history": {
+        "attribute_overlap": 0.0125,
+        "catalog_coverage": 0.0,
+        "diversity": 0.930309912998009,
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "recall": 0.0,
+        "sellable_rate": 1.0,
+        "semantic_ndcg": 0.02072720010010023,
+        "semantic_recall": 0.08465288202476826,
+        "title_overlap": 0.005798319327731093
+      },
+      "kg_semantic_intent": {
+        "attribute_filters": [
+          {
+            "attribute_type": "brand",
+            "value": "caxiro",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "anghie",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "green-shader&liner",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "cuckoo",
+            "weight": 0.7
+          }
+        ],
+        "keywords": [
+          "caxiro",
+          "anghie",
+          "green-shader&liner",
+          "cuckoo",
+          "face",
+          "roller",
+          "ipl",
+          "removal",
+          "device",
+          "women",
+          "man"
+        ],
+        "min_rating": null,
+        "price_max": null
       },
       "popularity_baseline": {
+        "attribute_overlap": 0.02857142857142857,
+        "catalog_coverage": 0.0,
+        "diversity": 0.9888495407347219,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.014860368389780155
+        "semantic_ndcg": 0.020622204930692625,
+        "semantic_recall": 0.09915266798418973,
+        "title_overlap": 0.01
       },
       "recommendations": {
         "bm25_history_profile": [
-          "B09527LPT3",
-          "B092WP37LX",
-          "B000H8DUG6",
-          "B08NJ5BTWG",
-          "B084YSKC7F",
-          "B074P9BTPG",
-          "B09KQXHLKJ",
-          "B00J5P2IXI",
-          "B07B8N2BNC",
-          "B07YYDX492"
+          "B0B2YHWC65",
+          "B0B2Q37VJR",
+          "B01F6BEV2A",
+          "B07TBVCHSS",
+          "B0974GWS7Z",
+          "B08HZ8DYLQ",
+          "B09D435KXF",
+          "B07DBFVSPN",
+          "B0BLJ29VW7",
+          "B08HSH335C"
         ],
         "hybrid_rrf": [
-          "B09527LPT3",
-          "B07Z2QTWSW",
-          "B07J6PNGGM",
-          "B092WP37LX",
-          "B07Q3ZF4XT",
-          "B087BC1TRW",
-          "B00DSPD1Q4",
-          "B000H8DUG6",
-          "B06ZZ8G6BJ",
-          "B07DLS3Z7Q"
+          "B0B2YHWC65",
+          "B0B2Q37VJR",
+          "B01F6BEV2A",
+          "B07TBVCHSS",
+          "B0974GWS7Z",
+          "B08HZ8DYLQ",
+          "B09D435KXF",
+          "B07DBFVSPN",
+          "B0BLJ29VW7",
+          "B08HSH335C"
         ],
         "kg_attribute_history": [],
         "kg_no_history_home": [
-          "B07Z2QTWSW",
-          "B087BC1TRW",
-          "B07DLS3Z7Q",
-          "B07TTPGW82",
-          "B0BPGR3F5W",
-          "B072379PFP",
-          "B09KVBFVFX",
-          "B0998YBC4T",
-          "B09QJNKJXK",
-          "B07RPDHQNN"
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "kg_semantic_history": [
+          "B0B2YHWC65",
+          "B0B2Q37VJR",
+          "B01F6BEV2A",
+          "B07TBVCHSS",
+          "B0974GWS7Z",
+          "B08HZ8DYLQ",
+          "B09D435KXF",
+          "B07DBFVSPN",
+          "B0BLJ29VW7",
+          "B08HSH335C"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -1286,44 +2629,50 @@
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
-          "B084ZHP45Y",
-          "B07Q3ZF4XT",
-          "B06ZZ8G6BJ",
-          "B08R8XM54F",
-          "B0888XZVP6",
-          "B01H2J3HGA",
-          "B006GDB518",
-          "B07SQB13BY",
-          "B07CKTWB2N",
-          "B09X9BG4FC"
+          "B0B2YHWC65",
+          "B0B2Q37VJR",
+          "B01F6BEV2A",
+          "B07TBVCHSS",
+          "B0974GWS7Z",
+          "B08HZ8DYLQ",
+          "B09D435KXF",
+          "B07DBFVSPN",
+          "B0BLJ29VW7",
+          "B08HSH335C"
         ]
       },
       "title_intent": {
         "attribute_filters": [],
         "keywords": [
-          "sunscreen",
-          "kids",
-          "spf",
-          "water",
-          "color",
-          "free",
-          "coppertone",
-          "clear"
+          "face",
+          "roller",
+          "caxiro",
+          "ipl",
+          "removal",
+          "device",
+          "women",
+          "man"
         ],
         "min_rating": null,
         "price_max": null
       },
       "title_keyword_profile": {
+        "attribute_overlap": 0.0125,
+        "catalog_coverage": 0.0,
+        "diversity": 0.930309912998009,
         "hit_rate": 0.0,
         "mrr": 0.0,
         "ndcg": 0.0,
         "precision": 0.0,
         "price_coverage": 1.0,
         "reason_coverage": 1.0,
+        "recall": 0.0,
         "sellable_rate": 1.0,
-        "title_overlap": 0.03436843922534324
+        "semantic_ndcg": 0.02072720010010023,
+        "semantic_recall": 0.08465288202476826,
+        "title_overlap": 0.005798319327731093
       },
-      "user_id": "AFZGS7XLGLJFUSUWNX4XA6SGEZQA"
+      "user_id": "AELHYMCYVS6T35HA3UH5UGFWTK6Q"
     }
   ],
   "intermediate_files": {
@@ -1334,64 +2683,116 @@
   },
   "methods": {
     "bm25_history_profile": {
+      "attribute_overlap": 0.0753,
+      "catalog_coverage": 0.0331,
+      "diversity": 0.8592,
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "recall": 0.0,
+      "sellable_rate": 1.0,
+      "semantic_ndcg": 0.0794,
+      "semantic_recall": 0.1993,
+      "title_overlap": 0.0719
+    },
+    "hybrid_rrf": {
+      "attribute_overlap": 0.0788,
+      "catalog_coverage": 0.0331,
+      "diversity": 0.8674,
       "hit_rate": 0.0333,
       "mrr": 0.0042,
       "ndcg": 0.0064,
       "precision": 0.0033,
       "price_coverage": 1.0,
       "reason_coverage": 1.0,
+      "recall": 0.0167,
       "sellable_rate": 1.0,
-      "title_overlap": 0.0894
-    },
-    "hybrid_rrf": {
-      "hit_rate": 0.0333,
-      "mrr": 0.0083,
-      "ndcg": 0.0088,
-      "precision": 0.0033,
-      "price_coverage": 1.0,
-      "reason_coverage": 1.0,
-      "sellable_rate": 1.0,
-      "title_overlap": 0.0523
+      "semantic_ndcg": 0.0828,
+      "semantic_recall": 0.2209,
+      "title_overlap": 0.0761
     },
     "kg_attribute_history": {
-      "hit_rate": 0.0,
-      "mrr": 0.0,
-      "ndcg": 0.0,
-      "precision": 0.0,
-      "price_coverage": 0.1667,
-      "reason_coverage": 0.1667,
-      "sellable_rate": 0.1667,
-      "title_overlap": 0.0019
+      "attribute_overlap": 0.0766,
+      "catalog_coverage": 0.03,
+      "diversity": 0.8886,
+      "hit_rate": 0.1,
+      "mrr": 0.0472,
+      "ndcg": 0.0365,
+      "precision": 0.01,
+      "price_coverage": 0.9667,
+      "reason_coverage": 0.9667,
+      "recall": 0.05,
+      "sellable_rate": 0.9667,
+      "semantic_ndcg": 0.0805,
+      "semantic_recall": 0.2438,
+      "title_overlap": 0.0661
     },
     "kg_no_history_home": {
+      "attribute_overlap": 0.024,
+      "catalog_coverage": 0.0013,
+      "diversity": 0.9888,
       "hit_rate": 0.0,
       "mrr": 0.0,
       "ndcg": 0.0,
       "precision": 0.0,
       "price_coverage": 1.0,
       "reason_coverage": 1.0,
+      "recall": 0.0,
       "sellable_rate": 1.0,
-      "title_overlap": 0.0139
+      "semantic_ndcg": 0.0154,
+      "semantic_recall": 0.0843,
+      "title_overlap": 0.0085
     },
-    "popularity_baseline": {
-      "hit_rate": 0.0,
-      "mrr": 0.0,
-      "ndcg": 0.0,
-      "precision": 0.0,
-      "price_coverage": 1.0,
-      "reason_coverage": 1.0,
-      "sellable_rate": 1.0,
-      "title_overlap": 0.0086
-    },
-    "title_keyword_profile": {
+    "kg_semantic_history": {
+      "attribute_overlap": 0.0728,
+      "catalog_coverage": 0.0329,
+      "diversity": 0.9099,
       "hit_rate": 0.0667,
-      "mrr": 0.04,
-      "ndcg": 0.0283,
+      "mrr": 0.0381,
+      "ndcg": 0.0273,
       "precision": 0.0067,
       "price_coverage": 1.0,
       "reason_coverage": 1.0,
+      "recall": 0.0333,
       "sellable_rate": 1.0,
-      "title_overlap": 0.0618
+      "semantic_ndcg": 0.083,
+      "semantic_recall": 0.2346,
+      "title_overlap": 0.0709
+    },
+    "popularity_baseline": {
+      "attribute_overlap": 0.024,
+      "catalog_coverage": 0.0013,
+      "diversity": 0.9888,
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "recall": 0.0,
+      "sellable_rate": 1.0,
+      "semantic_ndcg": 0.0154,
+      "semantic_recall": 0.0843,
+      "title_overlap": 0.0085
+    },
+    "title_keyword_profile": {
+      "attribute_overlap": 0.0769,
+      "catalog_coverage": 0.0326,
+      "diversity": 0.8429,
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "recall": 0.0,
+      "sellable_rate": 1.0,
+      "semantic_ndcg": 0.0824,
+      "semantic_recall": 0.2013,
+      "title_overlap": 0.0755
     }
   }
 }

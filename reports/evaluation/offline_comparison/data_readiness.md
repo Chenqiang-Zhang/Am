@@ -1,9 +1,6 @@
 # Offline Experiment Data Readiness
 
-Ready for experiment: `False`
-
-## Warnings
-- `recommendable_attribute_coverage_below_20_percent`
+Ready for experiment: `True`
 
 ## Counts
 | Item | Count |
@@ -16,11 +13,11 @@ Ready for experiment: `False`
 | `products_with_title` | 112,578 |
 | `products_with_image` | 112,590 |
 | `products_with_features` | 23,649 |
-| `products_with_attributes` | 1,775 |
-| `attributes_total` | 6,359 |
+| `products_with_attributes` | 109,410 |
+| `attributes_total` | 49,253 |
 | `mentions_total` | 0 |
 | `recommendable_products` | 17,280 |
-| `recommendable_with_attributes` | 477 |
+| `recommendable_with_attributes` | 17,099 |
 | `eligible_eval_users` | 45 |
 
 ## Ratios
@@ -28,6 +25,6 @@ Ready for experiment: `False`
 |---|---:|
 | `price_coverage` | 15.72% |
 | `feature_coverage` | 21.00% |
-| `attribute_coverage` | 1.58% |
+| `attribute_coverage` | 97.18% |
 | `recommendable_rate` | 15.35% |
-| `recommendable_attribute_coverage` | 2.76% |
+| `recommendable_attribute_coverage` | 98.95% |

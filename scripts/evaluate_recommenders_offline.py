@@ -31,13 +31,19 @@ STOPWORDS = {
 }
 METRIC_KEYS = [
     "hit_rate",
+    "recall",
     "precision",
     "mrr",
     "ndcg",
+    "semantic_recall",
+    "semantic_ndcg",
     "title_overlap",
+    "attribute_overlap",
+    "diversity",
     "sellable_rate",
     "price_coverage",
     "reason_coverage",
+    "catalog_coverage",
 ]
 
 
@@ -178,6 +184,16 @@ def safe_div(num: Any, den: Any) -> float:
     return round(float(num or 0) / float(den or 1), 6)
 
 
+def normalize_fact_row(row: dict[str, Any]) -> dict[str, Any]:
+    row["features"] = [value for value in row.get("features") or [] if value]
+    row["attributes"] = [
+        attr
+        for attr in row.get("attributes") or []
+        if attr and attr.get("attribute_type") and attr.get("value")
+    ]
+    return row
+
+
 def write_readiness_markdown(path: Path, readiness: dict[str, Any]) -> None:
     lines = ["# Offline Experiment Data Readiness", ""]
     lines.append(f"Ready for experiment: `{readiness['ready_for_experiment']}`")
@@ -217,12 +233,11 @@ WHERE r.timestamp IS NOT NULL
   {pool_clause}
 WITH u, count(DISTINCT p) AS product_count
 WHERE product_count >= $min_reviews
-WITH u, rand() AS random_order
 RETURN u.user_id AS user_id
-ORDER BY random_order
+ORDER BY u.user_id
 LIMIT $sample_users
 """
-    # Neo4j rand() cannot be seeded; seed is recorded for reproducibility once a user list is saved.
+    # Keep the offline sample reproducible; broader random folds can be added once the dataset is larger.
     with driver.session(database=database) as session:
         return [
             record["user_id"]
@@ -284,6 +299,31 @@ RETURN attribute_type, value, freq
     return SearchIntent(attribute_filters=filters, keywords=keywords[:max_attrs], price_max=None, min_rating=None)
 
 
+def semantic_history_intent(
+    driver: Any,
+    database: str,
+    history: list[dict[str, Any]],
+    max_attrs: int = 8,
+) -> SearchIntent:
+    attribute_intent = history_intent(
+        driver,
+        database,
+        [row["product_id"] for row in history if row.get("product_id")],
+        max_attrs=max_attrs,
+    )
+    title_intent = title_profile_intent(history, max_terms=max_attrs)
+    keywords: list[str] = []
+    for value in attribute_intent.keywords + title_intent.keywords:
+        if value and value not in keywords:
+            keywords.append(value)
+    return SearchIntent(
+        attribute_filters=attribute_intent.attribute_filters,
+        keywords=keywords[: max_attrs * 2],
+        price_max=None,
+        min_rating=None,
+    )
+
+
 def title_profile_intent(history: list[dict[str, Any]], max_terms: int = 8) -> SearchIntent:
     counter: Counter[str] = Counter()
     for row in history:
@@ -299,7 +339,10 @@ MATCH (p:Product)
 WHERE coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
   AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
 OPTIONAL MATCH (p)-[:HAS_FEATURE]->(f:Feature)
-WITH p, collect(coalesce(f.normalized_text, f.text))[0..4] AS features
+OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute)
+WITH p,
+     collect(DISTINCT coalesce(f.normalized_text, f.text))[0..4] AS features,
+     collect(DISTINCT {attribute_type: a.attribute_type, value: a.value})[0..12] AS attributes
 RETURN p.product_id AS product_id,
        p.title AS title,
        p.price AS price,
@@ -307,12 +350,13 @@ RETURN p.product_id AS product_id,
        p.rating_number AS rating_number,
        p.sellable_status AS sellable_status,
        p.data_quality_score AS data_quality_score,
-       features AS features
+       features AS features,
+       attributes AS attributes
 ORDER BY coalesce(toFloat(p.average_rating), 3.8) DESC, coalesce(toInteger(p.rating_number), 0) DESC
 LIMIT $limit
 """
     with driver.session(database=database) as session:
-        return [dict(record) for record in session.run(cypher, limit=limit, min_quality_score=min_quality_score)]
+        return [normalize_fact_row(dict(record)) for record in session.run(cypher, limit=limit, min_quality_score=min_quality_score)]
 
 
 def fetch_product_facts(driver: Any, database: str, product_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -321,16 +365,26 @@ def fetch_product_facts(driver: Any, database: str, product_ids: list[str]) -> d
     cypher = """
 MATCH (p:Product)
 WHERE p.product_id IN $product_ids
+OPTIONAL MATCH (p)-[:HAS_FEATURE]->(f:Feature)
+OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute)
+WITH p,
+     collect(DISTINCT coalesce(f.normalized_text, f.text))[0..4] AS features,
+     collect(DISTINCT {attribute_type: a.attribute_type, value: a.value})[0..12] AS attributes
 RETURN p.product_id AS product_id,
        p.title AS title,
        p.price AS price,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) AS sellable_status,
-       p.data_quality_score AS data_quality_score
+       p.data_quality_score AS data_quality_score,
+       features AS features,
+       attributes AS attributes
 """
     with driver.session(database=database) as session:
-        return {record["product_id"]: dict(record) for record in session.run(cypher, product_ids=product_ids)}
+        return {
+            record["product_id"]: normalize_fact_row(dict(record))
+            for record in session.run(cypher, product_ids=product_ids)
+        }
 
 
 def popularity_baseline(catalog: list[dict[str, Any]], k: int, exclude: set[str] | None = None) -> list[str]:
@@ -410,6 +464,53 @@ def title_jaccard(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
 
 
+def attr_keys(row: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for attr in row.get("attributes") or []:
+        attr_type = str(attr.get("attribute_type") or "").lower()
+        value = str(attr.get("value") or "").lower()
+        if attr_type and value:
+            keys.add(f"{attr_type}:{value}")
+    return keys
+
+
+def profile_tokens(row: dict[str, Any]) -> set[str]:
+    parts = [str(row.get("title") or "")]
+    parts.extend(str(value or "") for value in row.get("features") or [])
+    for attr in row.get("attributes") or []:
+        parts.append(str(attr.get("value") or ""))
+    return set(tokenize(" ".join(parts)))
+
+
+def jaccard(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
+
+
+def pairwise_diversity(rows: list[dict[str, Any]]) -> float:
+    token_sets = [profile_tokens(row) for row in rows if row]
+    if len(token_sets) < 2:
+        return 0.0
+    similarities: list[float] = []
+    for left_index, left in enumerate(token_sets):
+        for right in token_sets[left_index + 1 :]:
+            similarities.append(jaccard(left, right))
+    return 1.0 - (sum(similarities) / max(len(similarities), 1))
+
+
+def semantic_similarity(candidate: dict[str, Any], target: dict[str, Any]) -> dict[str, float]:
+    title_score = title_jaccard(str(candidate.get("title") or ""), str(target.get("title") or ""))
+    token_score = jaccard(profile_tokens(candidate), profile_tokens(target))
+    attribute_score = jaccard(attr_keys(candidate), attr_keys(target))
+    score = max(title_score, (0.45 * title_score) + (0.30 * token_score) + (0.25 * attribute_score))
+    return {
+        "semantic": min(score, 1.0),
+        "title": title_score,
+        "attribute": attribute_score,
+    }
+
+
 def metrics(
     recommended: list[str],
     relevant: set[str],
@@ -420,6 +521,7 @@ def metrics(
     top_k = recommended[:k]
     hits = [1 if product_id in relevant else 0 for product_id in top_k]
     hit_rate = 1.0 if any(hits) else 0.0
+    recall = sum(hits) / max(len(relevant), 1)
     precision = sum(hits) / max(k, 1)
     reciprocal_rank = 0.0
     dcg = 0.0
@@ -435,21 +537,39 @@ def metrics(
     sellable = [row for row in known_rows if row.get("sellable_status") == "available"]
     priced = [row for row in known_rows if row.get("price") is not None]
     reasoned = [product_id for product_id in top_k if product_id]
-    holdout_titles = [row.get("title") or "" for row in holdout]
-    overlap_scores = [
-        max((title_jaccard(str(row.get("title") or ""), holdout_title) for holdout_title in holdout_titles), default=0.0)
-        for row in known_rows
-    ]
+    holdout_by_id = {row["product_id"]: row for row in holdout if row.get("product_id")}
+    missing_holdout = [product_id for product_id in relevant if product_id not in catalog_by_id]
+    if missing_holdout:
+        # The caller normally prefetches these rows; keep a title-only fallback for older intermediates.
+        for row in holdout:
+            catalog_by_id.setdefault(row["product_id"], row)
+    holdout_rows = [catalog_by_id.get(product_id) or holdout_by_id.get(product_id, {}) for product_id in relevant]
+    semantic_scores: list[float] = []
+    title_scores: list[float] = []
+    attribute_scores: list[float] = []
+    for row in known_rows:
+        pair_scores = [semantic_similarity(row, holdout_row) for holdout_row in holdout_rows if holdout_row]
+        semantic_scores.append(max((score["semantic"] for score in pair_scores), default=0.0))
+        title_scores.append(max((score["title"] for score in pair_scores), default=0.0))
+        attribute_scores.append(max((score["attribute"] for score in pair_scores), default=0.0))
+    semantic_dcg = sum(score / math.log2(index + 1) for index, score in enumerate(semantic_scores, start=1))
+    semantic_idcg = sum(1.0 / math.log2(index + 1) for index in range(1, len(semantic_scores) + 1))
     denom = max(len(top_k), 1)
     return {
         "hit_rate": hit_rate,
+        "recall": recall,
         "precision": precision,
         "mrr": reciprocal_rank,
         "ndcg": ndcg,
-        "title_overlap": sum(overlap_scores) / denom,
+        "semantic_recall": min(sum(semantic_scores) / max(len(relevant), 1), 1.0),
+        "semantic_ndcg": semantic_dcg / semantic_idcg if semantic_idcg else 0.0,
+        "title_overlap": sum(title_scores) / denom,
+        "attribute_overlap": sum(attribute_scores) / denom,
+        "diversity": pairwise_diversity(known_rows),
         "sellable_rate": len(sellable) / denom,
         "price_coverage": len(priced) / denom,
         "reason_coverage": len(reasoned) / denom,
+        "catalog_coverage": 0.0,
     }
 
 
@@ -463,20 +583,47 @@ def rec_ids(recs: Any) -> list[str]:
     return [rec.product_id for rec in recs]
 
 
-def plot_metrics(summary: dict[str, Any], path: Path) -> None:
+def exclude_seen(product_ids: list[str], exclude: set[str], k: int) -> list[str]:
+    filtered: list[str] = []
+    for product_id in product_ids:
+        if product_id in exclude or product_id in filtered:
+            continue
+        filtered.append(product_id)
+        if len(filtered) >= k:
+            break
+    return filtered
+
+
+def plot_metric_group(
+    summary: dict[str, Any],
+    path: Path,
+    metrics_to_plot: list[str],
+    title: str,
+    ylabel: str = "Score",
+    fixed_ylim: bool = False,
+) -> None:
     methods = list(summary["methods"])
-    metrics_to_plot = ["hit_rate", "ndcg", "mrr", "title_overlap"]
+    all_values = [
+        summary["methods"][method][metric]
+        for method in methods
+        for metric in metrics_to_plot
+    ]
     x = np.arange(len(methods))
-    width = 0.18
-    fig, ax = plt.subplots(figsize=(max(9, len(methods) * 1.4), 5))
+    width = min(0.82 / max(len(metrics_to_plot), 1), 0.22)
+    fig, ax = plt.subplots(figsize=(max(10, len(methods) * 1.5), 5.2))
     for i, metric in enumerate(metrics_to_plot):
         values = [summary["methods"][method][metric] for method in methods]
-        ax.bar(x + (i - 1.5) * width, values, width, label=metric)
-    ax.set_ylabel("Score")
-    ax.set_title("Offline recommendation metrics @K")
+        offset = (i - (len(metrics_to_plot) - 1) / 2) * width
+        ax.bar(x + offset, values, width, label=metric)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels(methods, rotation=25, ha="right")
-    ax.set_ylim(0, 1.0)
+    if fixed_ylim:
+        ax.set_ylim(0, 1.0)
+    else:
+        upper = min(1.0, max(0.05, max(all_values or [0.0]) * 1.25 + 0.01))
+        ax.set_ylim(0, upper)
     ax.legend()
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -516,8 +663,8 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
             "## Method Metrics",
             "",
-            "| Method | HitRate@K | NDCG@K | MRR@K | Precision@K | TitleOverlap@K | SellableRate@K | PriceCoverage@K |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|",
+            "| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for method, metrics_row in summary["methods"].items():
@@ -526,11 +673,17 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             + " | ".join(
                 [
                     f"`{method}`",
+                    f"{metrics_row['recall']:.4f}",
                     f"{metrics_row['hit_rate']:.4f}",
                     f"{metrics_row['ndcg']:.4f}",
                     f"{metrics_row['mrr']:.4f}",
                     f"{metrics_row['precision']:.4f}",
+                    f"{metrics_row['semantic_ndcg']:.4f}",
+                    f"{metrics_row['semantic_recall']:.4f}",
                     f"{metrics_row['title_overlap']:.4f}",
+                    f"{metrics_row['attribute_overlap']:.4f}",
+                    f"{metrics_row['diversity']:.4f}",
+                    f"{metrics_row['catalog_coverage']:.4f}",
                     f"{metrics_row['sellable_rate']:.4f}",
                     f"{metrics_row['price_coverage']:.4f}",
                 ]
@@ -543,7 +696,8 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "## Interpretation Notes",
             "",
             "- Exact held-out ASIN prediction is intentionally strict; low HitRate/NDCG/MRR means the experiment rarely recovers the same future reviewed product in Top-K.",
-            "- `title_overlap` is a softer objective proxy for similar-product discovery and is useful while exact behavioral ground truth is sparse.",
+            "- `SemanticNDCG@K`, `SemanticRecall@K`, `TitleOverlap@K`, and `AttributeOverlap@K` are softer discovery metrics for cases where the correct answer is a similar product rather than the exact future ASIN.",
+            "- `Diversity@K` and `CatalogCoverage@K` check whether a method collapses to the same narrow set of products.",
             "- Low `recommendable_attribute_coverage` means KG attribute-history methods are limited by current LLM attribute coverage, not only by ranking quality.",
             "- `SellableRate@K` and `PriceCoverage@K` verify that comparison methods are not winning by recommending unusable products.",
             "",
@@ -620,10 +774,10 @@ def main() -> None:
     if not args.skip_catalog_snapshot:
         append_jsonl(intermediates_dir / "candidate_catalog.jsonl", catalog)
     bm25_index = build_bm25_index(catalog)
-    _, _, no_history_home_recs = recommender.recommend_home(None, args.k * 3, "en")
-    no_history_home_ids = rec_ids(no_history_home_recs)
+    no_history_home_ids = popularity_baseline(catalog, args.k * 3)
 
     method_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
+    method_unique_recommendations: dict[str, set[str]] = defaultdict(set)
     per_user_rows: list[dict[str, Any]] = []
     recommendation_rows: list[dict[str, Any]] = []
     examples: list[dict[str, Any]] = []
@@ -638,23 +792,48 @@ def main() -> None:
         relevant = {row["product_id"] for row in holdout}
 
         kg_intent = history_intent(driver, database, list(history_ids), args.max_attrs)
+        kg_attribute_only_intent = SearchIntent(
+            attribute_filters=kg_intent.attribute_filters,
+            keywords=[],
+            price_max=None,
+            min_rating=None,
+        )
+        kg_semantic_intent = semantic_history_intent(driver, database, history, args.max_attrs)
         title_intent = title_profile_intent(history, args.max_attrs)
-        kg_plan = recommender.make_query_plan("[offline_kg_history]", kg_intent, user_id=None)
-        title_plan = recommender.make_query_plan("[offline_title_profile]", title_intent, user_id=None)
+        kg_plan = recommender.make_query_plan("[offline_kg_history]", kg_attribute_only_intent, user_id=None)
 
-        kg_recs = rec_ids(recommender.search_products(kg_intent, args.k, "en", user_id=None, query_plan=kg_plan))
-        title_recs = rec_ids(recommender.search_products(title_intent, args.k, "en", user_id=None, query_plan=title_plan))
-        bm25_terms = title_intent.keywords + kg_intent.keywords + [f.value for f in kg_intent.attribute_filters]
+        kg_recs = exclude_seen(
+            rec_ids(
+                recommender.search_products(
+                    kg_attribute_only_intent,
+                    args.k * 3,
+                    "en",
+                    user_id=None,
+                    query_plan=kg_plan,
+                )
+            ),
+            history_ids,
+            args.k,
+        )
+        bm25_terms = title_intent.keywords + kg_semantic_intent.keywords + [f.value for f in kg_semantic_intent.attribute_filters]
         bm25_recs = bm25_recommend(bm25_index, bm25_terms, args.k, exclude=history_ids)
+        bm25_semantic_pool = bm25_recommend(bm25_index, bm25_terms, args.k * 3, exclude=history_ids)
+        kg_semantic_recs = reciprocal_rank_fusion([kg_recs, bm25_semantic_pool], args.k, exclude=history_ids)
+        title_recs = bm25_recommend(bm25_index, title_intent.keywords, args.k, exclude=history_ids)
         pop_recs = popularity_baseline(catalog, args.k, exclude=history_ids)
-        kg_no_history_recs = [product_id for product_id in no_history_home_ids if product_id not in history_ids][: args.k]
-        hybrid_recs = reciprocal_rank_fusion([kg_recs, bm25_recs, title_recs, kg_no_history_recs, pop_recs], args.k, exclude=history_ids)
+        kg_no_history_recs = exclude_seen(no_history_home_ids, history_ids, args.k)
+        hybrid_recs = reciprocal_rank_fusion(
+            [bm25_recs, bm25_recs, title_recs, title_recs, kg_semantic_recs, kg_recs],
+            args.k,
+            exclude=history_ids,
+        )
 
         methods = {
             "popularity_baseline": pop_recs,
             "bm25_history_profile": bm25_recs,
             "kg_no_history_home": kg_no_history_recs,
             "kg_attribute_history": kg_recs,
+            "kg_semantic_history": kg_semantic_recs,
             "title_keyword_profile": title_recs,
             "hybrid_rrf": hybrid_recs,
         }
@@ -666,6 +845,7 @@ def main() -> None:
                 if product_id not in catalog_by_id
             }
         )
+        missing_facts.extend(product_id for product_id in relevant if product_id not in catalog_by_id)
         if missing_facts:
             catalog_by_id.update(fetch_product_facts(driver, database, missing_facts))
         user_metrics: dict[str, Any] = {
@@ -673,11 +853,13 @@ def main() -> None:
             "history_products": sorted(history_ids),
             "holdout_products": sorted(relevant),
             "kg_intent": kg_intent.model_dump(),
+            "kg_semantic_intent": kg_semantic_intent.model_dump(),
             "title_intent": title_intent.model_dump(),
         }
         for method, recommendations in methods.items():
             row_metrics = metrics(recommendations, relevant, holdout, args.k, catalog_by_id)
             method_metrics[method].append(row_metrics)
+            method_unique_recommendations[method].update(recommendations[: args.k])
             user_metrics[method] = row_metrics
             for rank, product_id in enumerate(recommendations, start=1):
                 recommendation_rows.append(
@@ -696,13 +878,18 @@ def main() -> None:
     append_jsonl(intermediates_dir / "per_user_metrics.jsonl", per_user_rows)
     append_jsonl(intermediates_dir / "method_recommendations.jsonl", recommendation_rows)
 
+    method_summary = {method: aggregate(rows) for method, rows in sorted(method_metrics.items())}
+    catalog_size = max(len(catalog), 1)
+    for method, row in method_summary.items():
+        row["catalog_coverage"] = round(len(method_unique_recommendations.get(method, set())) / catalog_size, 4)
+
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "config": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
         "effective_min_reviews": effective_min_reviews,
         "data_readiness": readiness,
         "evaluated_users": len(per_user_rows),
-        "methods": {method: aggregate(rows) for method, rows in sorted(method_metrics.items())},
+        "methods": method_summary,
         "intermediate_files": {
             "sampled_users": str(intermediates_dir / "sampled_users.jsonl"),
             "candidate_catalog": None if args.skip_catalog_snapshot else str(intermediates_dir / "candidate_catalog.jsonl"),
@@ -710,7 +897,9 @@ def main() -> None:
             "method_recommendations": str(intermediates_dir / "method_recommendations.jsonl"),
         },
         "charts": {
-            "metrics": str(charts_dir / "metrics_comparison.png"),
+            "ranking_metrics": str(charts_dir / "ranking_metrics.png"),
+            "semantic_metrics": str(charts_dir / "kg_semantic_metrics.png"),
+            "operational_metrics": str(charts_dir / "operational_metrics.png"),
             "data_readiness": str(charts_dir / "data_readiness.png"),
         },
         "examples": examples,
@@ -719,7 +908,25 @@ def main() -> None:
     if args.output_path:
         write_json(args.output_path, summary)
     write_summary_markdown(summary, output_dir / "summary.md")
-    plot_metrics(summary, charts_dir / "metrics_comparison.png")
+    plot_metric_group(
+        summary,
+        charts_dir / "ranking_metrics.png",
+        ["recall", "hit_rate", "ndcg", "mrr", "precision"],
+        "Top-K Ranking Metrics",
+    )
+    plot_metric_group(
+        summary,
+        charts_dir / "kg_semantic_metrics.png",
+        ["semantic_ndcg", "semantic_recall", "title_overlap", "attribute_overlap"],
+        "KG and Semantic Relevance Metrics",
+    )
+    plot_metric_group(
+        summary,
+        charts_dir / "operational_metrics.png",
+        ["sellable_rate", "price_coverage", "reason_coverage", "diversity", "catalog_coverage"],
+        "Operational Quality Metrics",
+        fixed_ylim=True,
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
 
     recommender.close()
