@@ -13,6 +13,15 @@ earlier reviewed products -> history profile
 later reviewed products   -> held-out ground truth
 ```
 
+By default, the split uses only products that are also eligible for the recommendation pool:
+
+```text
+sellable_status = available
+data_quality_score >= 0.6
+```
+
+This matters because using all reviewed products as ground truth can make exact-hit metrics artificially zero: many reviewed products are missing price, marked low-quality, or otherwise filtered out by the production recommender.
+
 The KG-history method extracts attributes from the history products, recommends products from the graph, and checks whether held-out products appear in the top K.
 
 ## Methods Compared
@@ -63,7 +72,8 @@ conda run -n py312 python scripts/evaluate_recommenders_offline.py \
   --history-size 3 \
   --holdout-size 2 \
   --k 10 \
-  --candidate-catalog-limit 8000
+  --candidate-catalog-limit 8000 \
+  --ground-truth-scope recommendable
 ```
 
 Output:

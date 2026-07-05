@@ -21,7 +21,7 @@ Ready for experiment: `False`
 | `mentions_total` | 0 |
 | `recommendable_products` | 17,280 |
 | `recommendable_with_attributes` | 477 |
-| `eligible_eval_users` | 890 |
+| `eligible_eval_users` | 45 |
 
 ## Ratios
 | Item | Ratio |

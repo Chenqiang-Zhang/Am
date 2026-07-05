@@ -58,6 +58,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-path", type=Path, default=None, help="Optional compatibility alias for summary JSON output.")
     parser.add_argument("--strict-readiness", action="store_true", help="Abort if readiness checks raise warnings.")
     parser.add_argument("--skip-catalog-snapshot", action="store_true", help="Do not save the BM25 candidate catalog JSONL.")
+    parser.add_argument(
+        "--ground-truth-scope",
+        choices=["recommendable", "all"],
+        default="recommendable",
+        help="Use only recommendable products for history/holdout by default so ground truth matches the recommendation pool.",
+    )
     return parser.parse_args()
 
 
@@ -91,6 +97,13 @@ def relationship_exists(session: Any, relationship_type: str) -> bool:
         relationship_type=relationship_type,
     ).single()
     return bool(record and int(record["count"] or 0) > 0)
+
+
+def product_pool_filter(alias: str = "p") -> str:
+    return (
+        f"coalesce({alias}.sellable_status, CASE WHEN {alias}.price IS NOT NULL THEN \"available\" ELSE \"currently_unavailable\" END) = \"available\" "
+        f"AND coalesce(toFloat({alias}.data_quality_score), CASE WHEN {alias}.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score"
+    )
 
 
 def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_score: float) -> dict[str, Any]:
@@ -130,14 +143,16 @@ def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_sc
             ),
             "eligible_eval_users": scalar(
                 session,
-                """
-                MATCH (u:User)-[r:RATED]->(:Product)
+                f"""
+                MATCH (u:User)-[r:RATED]->(p:Product)
                 WHERE r.timestamp IS NOT NULL
+                  AND {product_pool_filter("p")}
                 WITH u, count(r) AS review_count
                 WHERE review_count >= $min_reviews
                 RETURN count(u)
                 """,
                 min_reviews=min_reviews,
+                min_quality_score=min_quality_score,
             ),
         }
     ratios = {
@@ -186,10 +201,20 @@ def write_readiness_markdown(path: Path, readiness: dict[str, Any]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def pick_users(driver: Any, database: str, sample_users: int, min_reviews: int, seed: int) -> list[str]:
-    cypher = """
+def pick_users(
+    driver: Any,
+    database: str,
+    sample_users: int,
+    min_reviews: int,
+    seed: int,
+    min_quality_score: float,
+    ground_truth_scope: str,
+) -> list[str]:
+    pool_clause = f"AND {product_pool_filter('p')}" if ground_truth_scope == "recommendable" else ""
+    cypher = f"""
 MATCH (u:User)-[r:RATED]->(p:Product)
 WHERE r.timestamp IS NOT NULL
+  {pool_clause}
 WITH u, count(DISTINCT p) AS product_count
 WHERE product_count >= $min_reviews
 WITH u, rand() AS random_order
@@ -199,12 +224,29 @@ LIMIT $sample_users
 """
     # Neo4j rand() cannot be seeded; seed is recorded for reproducibility once a user list is saved.
     with driver.session(database=database) as session:
-        return [record["user_id"] for record in session.run(cypher, min_reviews=min_reviews, sample_users=sample_users)]
+        return [
+            record["user_id"]
+            for record in session.run(
+                cypher,
+                min_reviews=min_reviews,
+                sample_users=sample_users,
+                min_quality_score=min_quality_score,
+            )
+        ]
 
 
-def user_review_sequence(driver: Any, database: str, user_id: str) -> list[dict[str, Any]]:
-    cypher = """
-MATCH (:User {user_id: $user_id})-[r:RATED]->(p:Product)
+def user_review_sequence(
+    driver: Any,
+    database: str,
+    user_id: str,
+    min_quality_score: float,
+    ground_truth_scope: str,
+) -> list[dict[str, Any]]:
+    pool_clause = f"AND {product_pool_filter('p')}" if ground_truth_scope == "recommendable" else ""
+    cypher = f"""
+MATCH (:User {{user_id: $user_id}})-[r:RATED]->(p:Product)
+WHERE r.timestamp IS NOT NULL
+  {pool_clause}
 RETURN p.product_id AS product_id,
        p.title AS title,
        r.timestamp AS timestamp,
@@ -212,7 +254,14 @@ RETURN p.product_id AS product_id,
 ORDER BY r.timestamp ASC
 """
     with driver.session(database=database) as session:
-        return [dict(record) for record in session.run(cypher, user_id=user_id)]
+        return [
+            dict(record)
+            for record in session.run(
+                cypher,
+                user_id=user_id,
+                min_quality_score=min_quality_score,
+            )
+        ]
 
 
 def history_intent(driver: Any, database: str, product_ids: list[str], max_attrs: int = 8) -> SearchIntent:
@@ -437,11 +486,13 @@ def plot_metrics(summary: dict[str, Any], path: Path) -> None:
 
 def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
     readiness = summary["data_readiness"]
+    has_exact_hits = any(row.get("hit_rate", 0.0) > 0.0 for row in summary["methods"].values())
     lines = [
         "# Offline Recommender Comparison",
         "",
         f"Created at: `{summary['created_at']}`",
         f"Evaluated users: `{summary['evaluated_users']}`",
+        f"Ground-truth scope: `{summary['config']['ground_truth_scope']}`",
         "",
         "## Data Readiness",
         "",
@@ -491,7 +542,7 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
             "## Interpretation Notes",
             "",
-            "- Exact held-out ASIN prediction is intentionally strict; zero exact-hit scores mean the experiment did not recover the same future reviewed product in Top-K.",
+            "- Exact held-out ASIN prediction is intentionally strict; low HitRate/NDCG/MRR means the experiment rarely recovers the same future reviewed product in Top-K.",
             "- `title_overlap` is a softer objective proxy for similar-product discovery and is useful while exact behavioral ground truth is sparse.",
             "- Low `recommendable_attribute_coverage` means KG attribute-history methods are limited by current LLM attribute coverage, not only by ranking quality.",
             "- `SellableRate@K` and `PriceCoverage@K` verify that comparison methods are not winning by recommending unusable products.",
@@ -500,6 +551,11 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
         ]
     )
+    if has_exact_hits:
+        lines.insert(
+            lines.index("## Output Files") - 1,
+            "- Non-zero exact-hit scores show that the evaluation target is now aligned with the recommendable product pool.",
+        )
     for label, file_path in summary["intermediate_files"].items():
         if file_path:
             lines.append(f"- `{label}`: `{file_path}`")
@@ -548,7 +604,15 @@ def main() -> None:
     if args.strict_readiness and readiness["warnings"]:
         raise SystemExit(f"Readiness check failed: {readiness['warnings']}")
 
-    users = pick_users(driver, database, args.sample_users, effective_min_reviews, args.random_seed)
+    users = pick_users(
+        driver,
+        database,
+        args.sample_users,
+        effective_min_reviews,
+        args.random_seed,
+        args.min_quality_score,
+        args.ground_truth_scope,
+    )
     append_jsonl(intermediates_dir / "sampled_users.jsonl", ({"user_id": user_id} for user_id in users))
 
     catalog = fetch_catalog(driver, database, args.candidate_catalog_limit, args.min_quality_score)
@@ -565,7 +629,7 @@ def main() -> None:
     examples: list[dict[str, Any]] = []
 
     for user_id in users:
-        sequence = user_review_sequence(driver, database, user_id)
+        sequence = user_review_sequence(driver, database, user_id, args.min_quality_score, args.ground_truth_scope)
         if len(sequence) < args.history_size + args.holdout_size:
             continue
         history = sequence[: args.history_size]

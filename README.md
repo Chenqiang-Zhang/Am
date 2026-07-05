@@ -344,10 +344,11 @@ conda run -n py312 python scripts/evaluate_recommenders_offline.py \
   --history-size 3 \
   --holdout-size 2 \
   --k 10 \
-  --candidate-catalog-limit 8000
+  --candidate-catalog-limit 8000 \
+  --ground-truth-scope recommendable
 ```
 
-The script first checks graph data readiness, then compares `popularity_baseline`, `kg_no_history_home`, `title_keyword_profile`, `bm25_history_profile`, `kg_attribute_history`, and `hybrid_rrf`. It writes the summary, intermediate files, and English-language charts to `reports/evaluation/offline_comparison/`. Metrics include strict exact-ASIN ranking metrics plus `title_overlap` as a softer similar-product discovery proxy.
+The script first checks graph data readiness, then compares `popularity_baseline`, `kg_no_history_home`, `title_keyword_profile`, `bm25_history_profile`, `kg_attribute_history`, and `hybrid_rrf`. By default it evaluates against recommendable held-out products only, so the ground truth matches the backend's availability and quality filters. It writes the summary, intermediate files, and English-language charts to `reports/evaluation/offline_comparison/`. Metrics include strict exact-ASIN ranking metrics plus `title_overlap` as a softer similar-product discovery proxy.
 
 ### Review mention extraction
 
