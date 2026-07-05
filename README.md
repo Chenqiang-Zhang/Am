@@ -335,13 +335,19 @@ The script scans all `Product` nodes, writes `sellable_status`, `data_quality_sc
 
 ### Offline evaluation
 
-Run a lightweight offline evaluation using users with review history:
+Run an offline comparison using users with review history:
 
 ```bash
-conda run -n py312 python scripts/evaluate_recommenders_offline.py --sample-users 30 --k 10
+conda run -n py312 python scripts/evaluate_recommenders_offline.py \
+  --sample-users 30 \
+  --min-reviews 4 \
+  --history-size 3 \
+  --holdout-size 2 \
+  --k 10 \
+  --candidate-catalog-limit 8000
 ```
 
-The script compares a popularity baseline with a KG-history profile recommender and writes metrics such as HitRate, Precision, MRR, and NDCG to `reports/evaluation/offline_history_eval.json`.
+The script first checks graph data readiness, then compares `popularity_baseline`, `kg_no_history_home`, `title_keyword_profile`, `bm25_history_profile`, `kg_attribute_history`, and `hybrid_rrf`. It writes the summary, intermediate files, and English-language charts to `reports/evaluation/offline_comparison/`. Metrics include strict exact-ASIN ranking metrics plus `title_overlap` as a softer similar-product discovery proxy.
 
 ### Review mention extraction
 

@@ -15,14 +15,18 @@ later reviewed products   -> held-out ground truth
 
 The KG-history method extracts attributes from the history products, recommends products from the graph, and checks whether held-out products appear in the top K.
 
-## Methods to Compare First
+## Methods Compared
 
 | Method | Purpose |
 |---|---|
 | Popularity baseline | Checks whether the system beats simple popular/high-rating recommendation |
-| KG history profile | Checks whether review history improves recommendation relevance |
+| KG no-history home | Uses the current backend home recommender without user history |
+| Title keyword profile | Builds a simple keyword profile from the user's historical product titles |
+| BM25 history profile | Runs lexical BM25 over a sellable/high-quality candidate catalog |
+| KG attribute history | Extracts graph attributes from historical products and recalls related products |
+| Hybrid RRF | Combines BM25, title keywords, KG history, KG no-history, and popularity via reciprocal rank fusion |
 
-Later comparison methods can add BM25, vector search, KG without history, and full hybrid ranking.
+Vector search is still a future comparison once product embeddings are available.
 
 ## Metrics
 
@@ -32,10 +36,23 @@ Later comparison methods can add BM25, vector search, KG without history, and fu
 | `Precision@K` | Fraction of Top-K recommendations that are held-out products |
 | `MRR@K` | How early the first held-out product appears |
 | `NDCG@K` | Whether relevant products rank higher |
+| `TitleOverlap@K` | Average token overlap between recommended titles and held-out product titles |
 | `SellableRate@K` | Fraction of Top-K products that are available and high-quality |
 | `ReasonCoverage@K` | Fraction of recommendations with graph-backed reasons |
 
-The initial script implements HitRate, Precision, MRR, and NDCG. SellableRate and ReasonCoverage can be added once the comparison set expands.
+The script implements HitRate, Precision, MRR, NDCG, TitleOverlap, SellableRate, PriceCoverage, and ReasonCoverage. Exact held-out ASIN prediction is intentionally kept as a strict metric; TitleOverlap is a softer objective proxy for similar-product discovery.
+
+## Data Readiness Check
+
+Before running the comparison, `scripts/evaluate_recommenders_offline.py` checks whether the current graph is suitable for the experiment. It records:
+
+- total products, users, reviews, and rating edges
+- products with price, title, image, features, and LLM attributes
+- recommendable products after sellability and quality filters
+- eligible users with enough review history
+- review mention relationship coverage
+
+The current local graph is usable for baseline/BM25/history-title experiments, but KG attribute history is data-limited: only a small fraction of recommendable products currently have LLM attributes. This should be reported as a data limitation, not hidden.
 
 ## Command
 
@@ -45,14 +62,29 @@ conda run -n py312 python scripts/evaluate_recommenders_offline.py \
   --min-reviews 4 \
   --history-size 3 \
   --holdout-size 2 \
-  --k 10
+  --k 10 \
+  --candidate-catalog-limit 8000
 ```
 
 Output:
 
 ```text
-reports/evaluation/offline_history_eval.json
+reports/evaluation/offline_comparison/
+├── data_readiness.json
+├── data_readiness.md
+├── summary.json
+├── summary.md
+├── charts/
+│   ├── data_readiness.png
+│   └── metrics_comparison.png
+└── intermediates/
+    ├── sampled_users.jsonl
+    ├── candidate_catalog.jsonl
+    ├── per_user_metrics.jsonl
+    └── method_recommendations.jsonl
 ```
+
+All visualization text is in English for presentation reuse.
 
 ## How to Present the Value
 

@@ -1,0 +1,1371 @@
+{
+  "charts": {
+    "data_readiness": "reports/evaluation/offline_comparison/charts/data_readiness.png",
+    "metrics": "reports/evaluation/offline_comparison/charts/metrics_comparison.png"
+  },
+  "config": {
+    "candidate_catalog_limit": 8000,
+    "history_size": 3,
+    "holdout_size": 2,
+    "k": 10,
+    "max_attrs": 8,
+    "min_quality_score": 0.6,
+    "min_reviews": 4,
+    "output_dir": "reports/evaluation/offline_comparison",
+    "output_path": null,
+    "random_seed": 42,
+    "sample_users": 30,
+    "skip_catalog_snapshot": false,
+    "strict_readiness": false
+  },
+  "created_at": "2026-07-05T19:32:28.454885+00:00",
+  "data_readiness": {
+    "ratios": {
+      "attribute_coverage": 0.015765,
+      "feature_coverage": 0.210045,
+      "price_coverage": 0.157243,
+      "recommendable_attribute_coverage": 0.027604,
+      "recommendable_rate": 0.153477
+    },
+    "ready_for_experiment": false,
+    "stats": {
+      "attributes_total": 6359,
+      "eligible_eval_users": 890,
+      "mentions_total": 0,
+      "products_total": 112590,
+      "products_with_attributes": 1775,
+      "products_with_features": 23649,
+      "products_with_image": 112590,
+      "products_with_price": 17704,
+      "products_with_title": 112578,
+      "rated_edges": 199059,
+      "recommendable_products": 17280,
+      "recommendable_with_attributes": 477,
+      "reviews_total": 200000,
+      "users_total": 168664
+    },
+    "warnings": [
+      "recommendable_attribute_coverage_below_20_percent"
+    ]
+  },
+  "effective_min_reviews": 5,
+  "evaluated_users": 30,
+  "examples": [
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.02011237243435386
+      },
+      "history_products": [
+        "B07QF1LW1L",
+        "B08BMV4C42",
+        "B08YJV9YL2"
+      ],
+      "holdout_products": [
+        "B07S4298B7",
+        "B08T6M827B"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0058823529411764705
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B0B84PQ5BV",
+          "B07YXDPQDF",
+          "B09KQXHLKJ",
+          "B078X79HG5",
+          "B08DM5WVCR",
+          "B0751JGRDV",
+          "B074XQP3B5",
+          "B01I54YL7A",
+          "B0C4HYWKH6",
+          "B08T121TL4"
+        ],
+        "hybrid_rrf": [
+          "B078X79HG5",
+          "B0B84PQ5BV",
+          "B08DJ8RK2L",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B07YXDPQDF",
+          "B0948L4Y2R",
+          "B087BC1TRW",
+          "B00DSPD1Q4",
+          "B09KQXHLKJ"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B08DJ8RK2L",
+          "B0948L4Y2R",
+          "B0C52PWCV2",
+          "B09J7RT53D",
+          "B078X79HG5",
+          "B09W66MSPX",
+          "B06XFQK412",
+          "B08DKF7JK4",
+          "B079JPNPF3",
+          "B0BLWHK7T9"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "free",
+          "oil",
+          "long",
+          "lasting",
+          "body",
+          "fragrance",
+          "name",
+          "necessary"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.019684663162924033
+      },
+      "user_id": "AG5X7COSPHSZREKLQ3OKHIAKYT4A"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0038461538461538464
+      },
+      "history_products": [
+        "B0000ZLF18",
+        "B075XSKF7H",
+        "B07D6KK5M4"
+      ],
+      "holdout_products": [
+        "B076TFQL1J",
+        "B07QKJ5DKZ"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.005263157894736842
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.005263157894736842
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B07V4RPYQ6",
+          "B09JB765BC",
+          "B098KBMWX2",
+          "B0B8HBMQSZ",
+          "B08F574VSP",
+          "B07DLS3Z7Q",
+          "B07YK5DVL2",
+          "B08HCKD45N",
+          "B0B8R2PNXR",
+          "B07FRM76YP"
+        ],
+        "hybrid_rrf": [
+          "B07DLS3Z7Q",
+          "B098KBMWX2",
+          "B09JB765BC",
+          "B08F574VSP",
+          "B07RPDHQNN",
+          "B07V4RPYQ6",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B0BBNFQFG1",
+          "B087BC1TRW"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B07DLS3Z7Q",
+          "B0BBNFQFG1",
+          "B098KBMWX2",
+          "B08HPNHZ8P",
+          "B07RPDHQNN",
+          "B07MD79GK8",
+          "B08F574VSP",
+          "B09JB765BC",
+          "B08YDRM6WC",
+          "B00JJYQ4QC"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "women",
+          "wyuen",
+          "sheets",
+          "butterfly",
+          "temporary",
+          "tattoo",
+          "stickers",
+          "animal"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "user_id": "AE5YGSWQJFOVOQBX7TVX3GYBPIGQ"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.05265691751675733
+      },
+      "history_products": [
+        "B00BQ47QHY",
+        "B00VVQZJLC",
+        "B01AWBVFH8"
+      ],
+      "holdout_products": [
+        "B00UXWRGXE",
+        "B017NM5J80"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.023504916136495087
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.009022435897435897
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B086H7KY27",
+          "B0761F3L44",
+          "B009NVBIV2",
+          "B016DHIYBK",
+          "B07GC6NYQ1",
+          "B07BCNYBSS",
+          "B08ZRXY3QW",
+          "B00R1LB7HG",
+          "B08YXWRB79",
+          "B01M5GGFHD"
+        ],
+        "hybrid_rrf": [
+          "B086H7KY27",
+          "B084KK8CXC",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B0761F3L44",
+          "B0888TZ9W6",
+          "B087BC1TRW",
+          "B00DSPD1Q4",
+          "B009NVBIV2",
+          "B07Z2632L2"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B084KK8CXC",
+          "B0888TZ9W6",
+          "B07Z2632L2",
+          "B09RRQHDRC",
+          "B06Y5XQ6SJ",
+          "B008JHO4E4",
+          "B00H3WGN9K",
+          "B0CDNZ7F2V",
+          "B096S4RQNH",
+          "B08VJDQ36P"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "brown",
+          "jasmine",
+          "essential",
+          "oil",
+          "lacey",
+          "inch",
+          "pony",
+          "fastener"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.008120300751879698
+      },
+      "user_id": "AFAZJRDZGEXDJ4LJYJVHVEWOOMVA"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.015209790209790209
+      },
+      "history_products": [
+        "B0881MBQQF",
+        "B088ZVSLYP",
+        "B08M3C6LVS"
+      ],
+      "holdout_products": [
+        "B08DJ1BMHX",
+        "B08J7QKSNZ"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.02233479020979021
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.00615530303030303
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.004
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B0821T443T",
+          "B083BDVS36",
+          "B007N47C66",
+          "B09PGSGDJ6",
+          "B083XR6NFT",
+          "B07FNVSM2R",
+          "B00OE86NN2",
+          "B00UK82YH4",
+          "B01KYQQ9S6",
+          "B084CTFH2F"
+        ],
+        "hybrid_rrf": [
+          "B083BDVS36",
+          "B0821T443T",
+          "B07DLS3Z7Q",
+          "B087BC1TRW",
+          "B084CTFH2F",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B007N47C66",
+          "B01IA9D3OC"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B083BDVS36",
+          "B07DLS3Z7Q",
+          "B0821T443T",
+          "B0994THZFX",
+          "B087BC1TRW",
+          "B081D87QCJ",
+          "B08HZ8DYLQ",
+          "B07GWF7NS9",
+          "B084CTFH2F",
+          "B07B9KL867"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "bath",
+          "under",
+          "eye",
+          "feet",
+          "callus",
+          "remover",
+          "dark",
+          "pillow"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.012942633347045113
+      },
+      "user_id": "AH5VWWUH27OPSTF3QV2K274I7QTQ"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.09033898651887709
+      },
+      "history_products": [
+        "B085RQKWNF",
+        "B08Y8723D6",
+        "B0912VNQRM"
+      ],
+      "holdout_products": [
+        "B091TKH1JF",
+        "B09B3KGCM1"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.10003453532865299
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.013877233877233877
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.007142857142857143
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B09MKM81F1",
+          "B01GX71IWW",
+          "B07KGD952N",
+          "B087BQSR4F",
+          "B08XY68J41",
+          "B089S18BG9",
+          "B01DTCZM1W",
+          "B0BLVDD68Q",
+          "B089RH1RLM",
+          "B01AAC0VRE"
+        ],
+        "hybrid_rrf": [
+          "B089RH1RLM",
+          "B09MKM81F1",
+          "B08S2PPH99",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B01GX71IWW",
+          "B0B87SH493",
+          "B087BC1TRW",
+          "B00DSPD1Q4",
+          "B07KGD952N"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B08S2PPH99",
+          "B0B87SH493",
+          "B00A0RUGPM",
+          "B095WD2RTG",
+          "B015M2C68E",
+          "B089RH1RLM",
+          "B07QLN67ZB",
+          "B075WDK2SF",
+          "B07H6FFN5T",
+          "B07S7N9DPY"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "nail",
+          "art",
+          "dotting",
+          "pen",
+          "diy",
+          "tool",
+          "bob",
+          "clips"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.07870859196517091
+      },
+      "user_id": "AFCQODXRVHWIJD5CWNND7J4GQ2MA"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.03691735227758976
+      },
+      "history_products": [
+        "B074PR77QN",
+        "B07R4H7FPL",
+        "B07WXGN177"
+      ],
+      "holdout_products": [
+        "B0899WJG8J",
+        "B08CKL9WQB"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.03711019974177869
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.022420419824003012
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B004L28Z0A",
+          "B073RRNY51",
+          "B07WJ7C5V2",
+          "B0BK9W619J",
+          "B075YCX892",
+          "B0784KZLZY",
+          "B08T1GZDMG",
+          "B086VMDN55",
+          "B0921CNWSZ",
+          "B09358V4DZ"
+        ],
+        "hybrid_rrf": [
+          "B004L28Z0A",
+          "B09LHS6RGF",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B073RRNY51",
+          "B09GP8KK8Z",
+          "B087BC1TRW",
+          "B00DSPD1Q4",
+          "B07WJ7C5V2",
+          "B07531ZR12"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B09LHS6RGF",
+          "B09GP8KK8Z",
+          "B07531ZR12",
+          "B007Y54ABE",
+          "B0BYRMZ2H7",
+          "B0BXXD1FZ4",
+          "B08N5ZNM73",
+          "B0924KQWK3",
+          "B0C3HFLG7R",
+          "B094FSSGWP"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "nail",
+          "black",
+          "wig",
+          "foil",
+          "transfer",
+          "foils",
+          "aisi",
+          "straight"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.052539389246706314
+      },
+      "user_id": "AHEASFQXMGQJD2XC2T7ONFRKPZJQ"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0038461538461538464
+      },
+      "history_products": [
+        "B07TLMZL3T",
+        "B08B5FJMHM",
+        "B08CL46XNM"
+      ],
+      "holdout_products": [
+        "B08BLX72TP",
+        "B0C13R3XGB"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.003333333333333333
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.003333333333333333
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B0863L5YZ5",
+          "B08LTD99WX",
+          "B01BLYQ16U",
+          "B0BT2NQQ7W",
+          "B00KOCU5UE",
+          "B01GPS1OS2",
+          "B01LANRSRS",
+          "B07KMBWZQ6",
+          "B075H22DYC",
+          "B002F88368"
+        ],
+        "hybrid_rrf": [
+          "B0863L5YZ5",
+          "B0C52PWCV2",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B08LTD99WX",
+          "B01F9AWHME",
+          "B087BC1TRW",
+          "B00DSPD1Q4",
+          "B01BLYQ16U",
+          "B06ZZ8G6BJ"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B0C52PWCV2",
+          "B01F9AWHME",
+          "B06ZZ8G6BJ",
+          "B08KFH71KV",
+          "B0BN113VWD",
+          "B07GWF7NS9",
+          "B09648ZSBN",
+          "B075QWDN97",
+          "B00DPNKBOE",
+          "B00AJOJ0GW"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "oil",
+          "loofah",
+          "pads",
+          "shower",
+          "control",
+          "free",
+          "segbeauty",
+          "empty"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0030303030303030303
+      },
+      "user_id": "AEPKAGO2WGVI55RQAVNBXKGJ2BOQ"
+    },
+    {
+      "bm25_history_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.0023809523809523807
+      },
+      "history_products": [
+        "B085PS2FZC",
+        "B088ZVSLYP",
+        "B08JPKXJMV"
+      ],
+      "holdout_products": [
+        "B08N6CLJ6P",
+        "B095H9S84K"
+      ],
+      "hybrid_rrf": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.015164744706340633
+      },
+      "kg_attribute_history": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 0.0,
+        "reason_coverage": 0.0,
+        "sellable_rate": 0.0,
+        "title_overlap": 0.0
+      },
+      "kg_intent": {
+        "attribute_filters": [],
+        "keywords": [],
+        "min_rating": null,
+        "price_max": null
+      },
+      "kg_no_history_home": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.013802362170177607
+      },
+      "popularity_baseline": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.008249158249158249
+      },
+      "recommendations": {
+        "bm25_history_profile": [
+          "B01IFP1NNE",
+          "B0713VF1M3",
+          "B07K5KQZQ6",
+          "B01J5C2R2M",
+          "B01JAGZWWA",
+          "B07DVTLHN1",
+          "B06XXDZFH3",
+          "B09TZWY42G",
+          "B072MZP78Q",
+          "B08VHY2P3W"
+        ],
+        "hybrid_rrf": [
+          "B08VHY2P3W",
+          "B09TZWY42G",
+          "B09QJNKJXK",
+          "B01IFP1NNE",
+          "B07Z2QTWSW",
+          "B07J6PNGGM",
+          "B0713VF1M3",
+          "B0888TZ9W6",
+          "B087BC1TRW",
+          "B00DSPD1Q4"
+        ],
+        "kg_attribute_history": [],
+        "kg_no_history_home": [
+          "B07Z2QTWSW",
+          "B087BC1TRW",
+          "B07DLS3Z7Q",
+          "B07TTPGW82",
+          "B0BPGR3F5W",
+          "B072379PFP",
+          "B09KVBFVFX",
+          "B0998YBC4T",
+          "B09QJNKJXK",
+          "B07RPDHQNN"
+        ],
+        "popularity_baseline": [
+          "B07J6PNGGM",
+          "B00DSPD1Q4",
+          "B01IA9D3OC",
+          "B01MXC2N1L",
+          "B01I9ZA6C4",
+          "B01N26L078",
+          "B016V17FMW",
+          "B07GLC13Y9",
+          "B01I0QW7QK",
+          "B07N4DDF7K"
+        ],
+        "title_keyword_profile": [
+          "B08VHY2P3W",
+          "B0888TZ9W6",
+          "B08VJDQ36P",
+          "B09TZWY42G",
+          "B09QJNKJXK",
+          "B07H318WZL",
+          "B081RMZN1H",
+          "B09FFS291Y",
+          "B00DZQ0UJM",
+          "B09K9JHDNX"
+        ]
+      },
+      "title_intent": {
+        "attribute_filters": [],
+        "keywords": [
+          "razor",
+          "women",
+          "bath",
+          "wigs",
+          "double",
+          "edge",
+          "pillow",
+          "bathtub"
+        ],
+        "min_rating": null,
+        "price_max": null
+      },
+      "title_keyword_profile": {
+        "hit_rate": 0.0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "precision": 0.0,
+        "price_coverage": 1.0,
+        "reason_coverage": 1.0,
+        "sellable_rate": 1.0,
+        "title_overlap": 0.01347333851871057
+      },
+      "user_id": "AGYSABJOPUEUZQ4XODJZNBNVVHTQ"
+    }
+  ],
+  "intermediate_files": {
+    "candidate_catalog": "reports/evaluation/offline_comparison/intermediates/candidate_catalog.jsonl",
+    "method_recommendations": "reports/evaluation/offline_comparison/intermediates/method_recommendations.jsonl",
+    "per_user_metrics": "reports/evaluation/offline_comparison/intermediates/per_user_metrics.jsonl",
+    "sampled_users": "reports/evaluation/offline_comparison/intermediates/sampled_users.jsonl"
+  },
+  "methods": {
+    "bm25_history_profile": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "sellable_rate": 1.0,
+      "title_overlap": 0.0531
+    },
+    "hybrid_rrf": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "sellable_rate": 1.0,
+      "title_overlap": 0.0371
+    },
+    "kg_attribute_history": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 0.0,
+      "reason_coverage": 0.0,
+      "sellable_rate": 0.0,
+      "title_overlap": 0.0
+    },
+    "kg_no_history_home": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "sellable_rate": 1.0,
+      "title_overlap": 0.0119
+    },
+    "popularity_baseline": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "sellable_rate": 1.0,
+      "title_overlap": 0.0061
+    },
+    "title_keyword_profile": {
+      "hit_rate": 0.0,
+      "mrr": 0.0,
+      "ndcg": 0.0,
+      "precision": 0.0,
+      "price_coverage": 1.0,
+      "reason_coverage": 1.0,
+      "sellable_rate": 1.0,
+      "title_overlap": 0.0436
+    }
+  }
+}
