@@ -13,6 +13,7 @@ Neo4j Knowledge Graph
     ↓
 REST API (FastAPI)
     ├── LLM intent extraction  (natural language → structured attribute filters)
+    ├── Controlled query planning (SearchIntent → allow-listed backend actions)
     ├── Conversational recommendation (multi-turn preference collection)
     ├── Multi-path graph recall (attributes + feature text + title/category/store)
     ├── Hybrid ranking          (match coverage + rating quality + popularity + price availability)
@@ -61,8 +62,11 @@ REST API (FastAPI)
 │   ├── build_kg_csv.py                    # Build base graph CSVs
 │   ├── extract_product_attributes_llm.py  # LLM attribute extraction
 │   ├── extract_attributes_from_details.py # Zero-cost attribute extraction from metadata details
+│   ├── filter_catalog_before_llm.py       # Pre-LLM product cleaning and review filtering
 │   ├── enrich_product_images.py           # Add Product.image_url from metadata
 │   ├── attributes_to_kg_csv.py            # Convert attributes JSONL → CSV
+│   ├── check_api_contract.py              # Frontend/backend response contract smoke test
+│   ├── evaluate_recommenders_offline.py   # Offline history-based recommender evaluation
 │   ├── import_kg_to_neo4j.py              # Import base graph via Bolt
 │   ├── import_attributes_to_neo4j.py      # Import attributes via Bolt
 │   └── split_csv_for_aura_github.py       # Split CSVs for GitHub upload
@@ -118,6 +122,11 @@ Place the Amazon Reviews'23 data files locally:
 ```text
 data/All_Beauty.jsonl.gz
 data/meta_All_Beauty.jsonl.gz
+```
+
+Clean products before graph expansion or LLM extraction:
+```bash
+python3 scripts/filter_catalog_before_llm.py
 ```
 
 Build CSVs and import:
@@ -180,6 +189,16 @@ Accepts a natural-language query and returns ranked product recommendations with
       {"attribute_type": "ingredient", "value": "hyaluronic acid", "weight": 1.0}
     ],
     "keywords": ["gentle", "fragrance-free"]
+  },
+  "query_plan": {
+    "source": "controlled_query_plan",
+    "history_policy": "positive_behavior_attributes",
+    "actions": [
+      {"name": "attribute_recall", "enabled": true, "reason": "Use structured Attribute nodes.", "cypher_template": "ATTRIBUTE_SEARCH_CYPHER"},
+      {"name": "feature_text_recall", "enabled": true, "reason": "Use feature text recall.", "cypher_template": "FEATURE_SEARCH_CYPHER"},
+      {"name": "filter_available", "enabled": true, "reason": "Exclude unavailable products.", "cypher_template": "embedded_in_recall_where_clause"}
+    ],
+    "safety_notes": ["LLM output is parsed only as SearchIntent; raw Cypher from the LLM is never executed."]
   },
   "recommendations": [
     {
@@ -292,6 +311,18 @@ The recommender also performs data cleaning and deduplication:
 - marks products without a dataset price as `currently_unavailable`; the frontend can filter available, unavailable, or all results
 - defaults recommendation recall to `sellable_status = "available"` and `data_quality_score >= 0.6`
 
+The API also returns a `query_plan` field. This is the controlled replacement for raw LLM-generated Cypher: the LLM or heuristic parser extracts `SearchIntent`, while the backend maps that intent to allow-listed actions and fixed Cypher templates.
+
+### API contract check
+
+After backend or frontend changes, run:
+
+```bash
+conda run -n py312 python scripts/check_api_contract.py --base-url http://127.0.0.1:8000
+```
+
+This checks that `/recommend`, `/recommend/home`, and `/chat` still expose the fields expected by the frontend, including recommendation reason fields and `query_plan`.
+
 ### Product quality audit
 
 Run the audit after importing or expanding product data:
@@ -301,6 +332,16 @@ conda run -n py312 python scripts/audit_product_quality.py
 ```
 
 The script scans all `Product` nodes, writes `sellable_status`, `data_quality_score`, and `quality_flags` back to Neo4j, and generates JSON/Markdown reports under `reports/product_quality/`. Use `--dry-run` to generate reports without writing to Neo4j.
+
+### Offline evaluation
+
+Run a lightweight offline evaluation using users with review history:
+
+```bash
+conda run -n py312 python scripts/evaluate_recommenders_offline.py --sample-users 30 --k 10
+```
+
+The script compares a popularity baseline with a KG-history profile recommender and writes metrics such as HitRate, Precision, MRR, and NDCG to `reports/evaluation/offline_history_eval.json`.
 
 ### Review mention extraction
 

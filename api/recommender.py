@@ -13,7 +13,8 @@ from typing import Any
 from neo4j import GraphDatabase
 from openai import OpenAI
 
-from .models import AttributeFilter, MatchedAttribute, Recommendation, SearchIntent
+from .models import AttributeFilter, MatchedAttribute, QueryPlan, Recommendation, SearchIntent
+from .query_plan import build_controlled_query_plan, enabled_action_names
 
 ATTRIBUTE_TYPES = [
     "benefit", "skin_type", "scent", "texture", "ingredient",
@@ -803,6 +804,7 @@ class Recommender:
         limit: int,
         lang: str = "en",
         user_id: str | None = None,
+        query_plan: QueryPlan | None = None,
     ) -> list[Recommendation]:
         terms = _search_terms(intent)
         if not intent.attribute_filters and not terms:
@@ -812,11 +814,12 @@ class Recommender:
             for f in intent.attribute_filters
         ]
         candidate_limit = max(100, min(500, limit * 50))
+        actions = enabled_action_names(query_plan)
 
         with self.driver.session(database=self.neo4j_database) as session:
             candidates: dict[str, dict[str, Any]] = {}
 
-            if filters:
+            if filters and "attribute_recall" in actions:
                 result = session.run(
                     _ATTRIBUTE_SEARCH_CYPHER,
                     filters=filters,
@@ -839,7 +842,7 @@ class Recommender:
                         for m in record["matched_attrs"]
                     ]
 
-            if terms:
+            if terms and "feature_text_recall" in actions:
                 result = session.run(
                     _FEATURE_SEARCH_CYPHER,
                     terms=terms,
@@ -859,6 +862,7 @@ class Recommender:
                             candidate["feature_evidence"].append(evidence)
                     candidate["feature_hit_count"] += int(record["feature_hit_count"] or 0)
 
+            if terms and "field_recall" in actions:
                 result = session.run(
                     _FIELD_SEARCH_CYPHER,
                     terms=terms,
@@ -872,10 +876,20 @@ class Recommender:
                     candidate["field_terms"].update(record["field_terms"] or [])
 
             if candidates:
-                self._apply_behavior_context(session, candidates, user_id)
-                self._apply_review_mention_context(session, candidates, intent, terms)
+                if "apply_user_history_boost" in actions:
+                    self._apply_behavior_context(session, candidates, user_id)
+                if "apply_review_mention_ranking" in actions:
+                    self._apply_review_mention_context(session, candidates, intent, terms)
 
         return _rank_candidates(candidates, intent, terms, limit, lang)
+
+    def make_query_plan(self, query: str, intent: SearchIntent, user_id: str | None = None) -> QueryPlan:
+        return build_controlled_query_plan(
+            user_input=query,
+            intent=intent,
+            user_id=user_id,
+            min_quality_score=self.min_quality_score,
+        )
 
     def recommend(
         self,
@@ -883,19 +897,22 @@ class Recommender:
         limit: int = 10,
         lang: str = "en",
         user_id: str | None = None,
-    ) -> tuple[SearchIntent, list[Recommendation]]:
+    ) -> tuple[SearchIntent, QueryPlan, list[Recommendation]]:
         intent = self.extract_intent(query)
-        products = self.search_products(intent, limit, lang, user_id)
-        return intent, products
+        query_plan = self.make_query_plan(query, intent, user_id)
+        products = self.search_products(intent, limit, lang, user_id, query_plan)
+        return intent, query_plan, products
 
-    def recommend_home(self, user_id: str, limit: int = 10, lang: str = "en") -> tuple[SearchIntent, list[Recommendation]]:
+    def recommend_home(self, user_id: str | None, limit: int = 10, lang: str = "en") -> tuple[SearchIntent, QueryPlan, list[Recommendation]]:
         intent = self._behavior_home_intent(user_id)
+        query_plan = self.make_query_plan("[home]", intent, user_id)
         if intent.attribute_filters or intent.keywords:
-            products = self.search_products(intent, limit, lang, user_id)
+            products = self.search_products(intent, limit, lang, user_id, query_plan)
             if products:
-                return intent, products
+                return intent, query_plan, products
 
         fallback_intent = SearchIntent(attribute_filters=[], keywords=["popular"], price_max=None, min_rating=None)
+        fallback_plan = self.make_query_plan("[home]", fallback_intent, user_id)
         with self.driver.session(database=self.neo4j_database) as session:
             candidates: dict[str, dict[str, Any]] = {}
             result = session.run(
@@ -908,9 +925,12 @@ class Recommender:
                 candidate["field_terms"].add("popular")
                 candidate["field_score"] = float(record.get("field_score") or 0.0)
             if candidates:
-                self._apply_behavior_context(session, candidates, user_id)
-                self._apply_review_mention_context(session, candidates, fallback_intent, ["popular"])
-        return fallback_intent, _rank_candidates(candidates, fallback_intent, ["popular"], limit, lang)
+                fallback_actions = enabled_action_names(fallback_plan)
+                if "apply_user_history_boost" in fallback_actions:
+                    self._apply_behavior_context(session, candidates, user_id)
+                if "apply_review_mention_ranking" in fallback_actions:
+                    self._apply_review_mention_context(session, candidates, fallback_intent, ["popular"])
+        return fallback_intent, fallback_plan, _rank_candidates(candidates, fallback_intent, ["popular"], limit, lang)
 
     def chat(
         self,
@@ -982,13 +1002,16 @@ class Recommender:
         # ── 結果を返す ────────────────────────────────────────────────────────
         if should_search:
             intent = self._intent_from_data(intent_data if intent_data else None, messages)
-            products = self.search_products(intent, limit, lang, user_id)
+            query_text = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
+            query_plan = self.make_query_plan(query_text, intent, user_id)
+            products = self.search_products(intent, limit, lang, user_id, query_plan)
             return {
                 "action": "search",
                 "question": None,
                 "options": [],
                 "preference_summary": summary,
                 "intent": intent,
+                "query_plan": query_plan,
                 "recommendations": products,
             }
 

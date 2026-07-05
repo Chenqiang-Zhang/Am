@@ -43,16 +43,16 @@ async def health() -> dict:
 async def recommend(req: RecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    intent, results = _recommender.recommend(req.query, req.limit, req.lang, req.user_id)
-    return RecommendResponse(query=req.query, intent=intent, recommendations=results)
+    intent, query_plan, results = _recommender.recommend(req.query, req.limit, req.lang, req.user_id)
+    return RecommendResponse(query=req.query, intent=intent, query_plan=query_plan, recommendations=results)
 
 
 @app.post("/recommend/home", response_model=RecommendResponse)
 async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    intent, results = _recommender.recommend_home(req.user_id, req.limit, req.lang)
-    return RecommendResponse(query="[home]", intent=intent, recommendations=results)
+    intent, query_plan, results = _recommender.recommend_home(req.user_id, req.limit, req.lang)
+    return RecommendResponse(query="[home]", intent=intent, query_plan=query_plan, recommendations=results)
 
 
 @app.post("/chat", response_model=ChatResponse)

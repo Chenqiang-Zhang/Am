@@ -11,7 +11,7 @@ class RecommendRequest(BaseModel):
 
 
 class HomeRecommendRequest(BaseModel):
-    user_id: str
+    user_id: str | None = None
     limit: int = 10
     lang: str = "en"
 
@@ -27,6 +27,23 @@ class SearchIntent(BaseModel):
     keywords: list[str]
     price_max: float | None = None
     min_rating: float | None = None
+
+
+class QueryAction(BaseModel):
+    name: str
+    enabled: bool = True
+    reason: str
+    cypher_template: str | None = None
+
+
+class QueryPlan(BaseModel):
+    source: str = "controlled_query_plan"
+    objective: str = "product_recommendation"
+    user_input: str
+    history_policy: str = "none"
+    constraints: dict[str, str | int | float | bool | None | list[str]] = Field(default_factory=dict)
+    actions: list[QueryAction] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
 
 
 class MatchedAttribute(BaseModel):
@@ -62,6 +79,7 @@ class Recommendation(BaseModel):
 class RecommendResponse(BaseModel):
     query: str
     intent: SearchIntent
+    query_plan: QueryPlan | None = None
     recommendations: list[Recommendation]
 
 
@@ -84,6 +102,7 @@ class ChatResponse(BaseModel):
     options: list[str] = Field(default_factory=list)
     preference_summary: list[str] = Field(default_factory=list)
     intent: SearchIntent | None = None
+    query_plan: QueryPlan | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { chat, recommendHome, ApiError } from "../api/client";
-import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
+import type { ChatMessage, QueryPlan, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
 import QuickReplies from "../components/QuickReplies";
@@ -18,6 +18,7 @@ interface Result {
   recommendations: Recommendation[];
   preference_summary: string[];
   intent: SearchIntent | null;
+  queryPlan: QueryPlan | null;
   query: string;
 }
 
@@ -51,6 +52,7 @@ export default function ChatPage() {
           recommendations: data.recommendations,
           preference_summary: [],
           intent: data.intent,
+          queryPlan: data.query_plan,
           query: data.query,
         });
         setHomeStatus("done");
@@ -86,6 +88,7 @@ export default function ChatPage() {
           recommendations: r.recommendations,
           preference_summary: r.preference_summary,
           intent: r.intent,
+          queryPlan: r.query_plan,
           query: next.filter((m) => m.role === "user").map((m) => m.content).join(" "),
         });
       }
@@ -235,12 +238,13 @@ export default function ChatPage() {
               onClick={() => {
                 setHomeResult(null);
                 setHomeStatus("idle");
-                void recommendHome({ user_id: userId, limit: LIMIT, lang })
+                void recommendHome({ user_id: effectiveUserId, limit: LIMIT, lang })
                   .then((data) => {
                     setHomeResult({
                       recommendations: data.recommendations,
                       preference_summary: [],
                       intent: data.intent,
+                      queryPlan: data.query_plan,
                       query: data.query,
                     });
                     setHomeStatus("done");
@@ -260,7 +264,9 @@ export default function ChatPage() {
           )}
           {homeResult && homeResult.recommendations.length > 0 && (
             <>
-              {devMode && homeResult.intent && <IntentPanel intent={homeResult.intent} />}
+              {devMode && homeResult.intent && (
+                <IntentPanel intent={homeResult.intent} queryPlan={homeResult.queryPlan} />
+              )}
               <RecommendationList
                 items={homeResult.recommendations}
                 devMode={devMode}
@@ -276,7 +282,9 @@ export default function ChatPage() {
       {result && (
         <section className={styles.results}>
           <PreferenceSummary items={result.preference_summary} />
-          {devMode && result.intent && <IntentPanel intent={result.intent} />}
+          {devMode && result.intent && (
+            <IntentPanel intent={result.intent} queryPlan={result.queryPlan} />
+          )}
           <RecommendationList
             items={result.recommendations}
             devMode={devMode}
