@@ -1,0 +1,559 @@
+{
+  "audited_at": "2026-06-30T18:42:32.939548+00:00",
+  "thresholds": {
+    "min_quality_score": 0.6,
+    "min_title_len": 8,
+    "min_content_count": 1
+  },
+  "summary": {
+    "total_products": 112590,
+    "available_high_quality": 17280,
+    "available_high_quality_rate": 0.1535
+  },
+  "sellable_status_counts": {
+    "low_quality": 82305,
+    "available": 17280,
+    "currently_unavailable": 11882,
+    "duplicate_suspect": 1123
+  },
+  "quality_flag_counts": {
+    "missing_price": 94886,
+    "missing_useful_content": 88038,
+    "low_quality": 82303,
+    "duplicate_suspect": 3635,
+    "missing_or_short_title": 117
+  },
+  "score_buckets": {
+    "0.2-0.3": 35,
+    "0.3-0.4": 59,
+    "0.4-0.5": 2343,
+    "0.5-0.6": 79866,
+    "0.6-0.7": 2799,
+    "0.7-0.8": 18375,
+    "0.8-0.9": 2973,
+    "0.9-1.0": 5957,
+    "1.0": 183
+  },
+  "duplicate_samples": [
+    {
+      "title_duplicate_key": "bfwood",
+      "count": 18,
+      "products": [
+        {
+          "product_id": "B071XX8T2N",
+          "title": "BFWood"
+        },
+        {
+          "product_id": "B07FQGCZ55",
+          "title": "BFWood"
+        },
+        {
+          "product_id": "B07YFDDH3N",
+          "title": "BFWood"
+        },
+        {
+          "product_id": "B07YTXD8JB",
+          "title": "BFWood"
+        },
+        {
+          "product_id": "B086VZ8M2K",
+          "title": "BFWood"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "ekloen 12pcs 9pcs 6pcs multifunctional headband magic mask scarf",
+      "count": 16,
+      "products": [
+        {
+          "product_id": "B0758FDX1W",
+          "title": "EKLOEN 12PCS/9PCS/6PCS Multifunctional Headband Magic Mask Scarf"
+        },
+        {
+          "product_id": "B0758CLCK7",
+          "title": "EKLOEN 12PCS/9PCS/6PCS Multifunctional Headband Magic Mask Scarf"
+        },
+        {
+          "product_id": "B0758FDMMJ",
+          "title": "EKLOEN 12PCS/9PCS/6PCS Multifunctional Headband Magic Mask Scarf"
+        },
+        {
+          "product_id": "B0758G1T84",
+          "title": "EKLOEN 12PCS/9PCS/6PCS Multifunctional Headband Magic Mask Scarf"
+        },
+        {
+          "product_id": "B0758CGLTK",
+          "title": "EKLOEN 12PCS/9PCS/6PCS Multifunctional Headband Magic Mask Scarf"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "eyelash growth serum",
+      "count": 15,
+      "products": [
+        {
+          "product_id": "B00WJ7TADA",
+          "title": "Eyelash Growth Serum"
+        },
+        {
+          "product_id": "B016YGH3N0",
+          "title": "Eyelash Growth Serum"
+        },
+        {
+          "product_id": "B01AU4Z8XO",
+          "title": "Eyelash Growth Serum"
+        },
+        {
+          "product_id": "B013ALDYQ2",
+          "title": "Eyelash Growth Serum"
+        },
+        {
+          "product_id": "B013MFDB3W",
+          "title": "Eyelash Growth Serum"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "brison silicone bra inserts breast pads gel cup padding swimsuit racerback strap clip",
+      "count": 12,
+      "products": [
+        {
+          "product_id": "B00PAU1KD6",
+          "title": "BRISON Silicone Bra Inserts Breast Pads Gel Cup Padding Swimsuit +Racerback Strap Clip"
+        },
+        {
+          "product_id": "B00FQMCOPQ",
+          "title": "BRISON Silicone Bra Inserts Breast Pads Gel Cup Padding Swimsuit +Racerback Strap Clip"
+        },
+        {
+          "product_id": "B07NC7Q7L9",
+          "title": "BRISON Silicone Bra Inserts Breast Pads Gel Cup Padding Swimsuit +Racerback Strap Clip"
+        },
+        {
+          "product_id": "B07H98SH99",
+          "title": "BRISON Silicone Bra Inserts Breast Pads Gel Cup Padding Swimsuit +Racerback Strap Clip"
+        },
+        {
+          "product_id": "B073G96NBC",
+          "title": "BRISON Silicone Bra Inserts Breast Pads Gel Cup Padding Swimsuit +Racerback Strap Clip"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "lasting makeup foundation face body liquid foundation lightweight bottle full coverage invisible pores covering blemishes for all skin types 40 ml",
+      "count": 10,
+      "products": [
+        {
+          "product_id": "B07PG6XMWT",
+          "title": "Lasting Makeup Foundation – Face&Body Liquid Foundation Lightweight Bottle Full Coverage Invisible Pores Covering Blemishes - for All Skin Types (40 mL)"
+        },
+        {
+          "product_id": "B07PJH62L3",
+          "title": "Lasting Makeup Foundation – Face&Body Liquid Foundation Lightweight Bottle Full Coverage Invisible Pores Covering Blemishes - for All Skin Types (40 mL)"
+        },
+        {
+          "product_id": "B07PHCHM6C",
+          "title": "Lasting Makeup Foundation – Face&Body Liquid Foundation Lightweight Bottle Full Coverage Invisible Pores Covering Blemishes - for All Skin Types (40 mL)"
+        },
+        {
+          "product_id": "B07PLFM6NY",
+          "title": "Lasting Makeup Foundation – Face&Body Liquid Foundation Lightweight Bottle Full Coverage Invisible Pores Covering Blemishes - for All Skin Types (40 mL)"
+        },
+        {
+          "product_id": "B07PG6WKWL",
+          "title": "Lasting Makeup Foundation – Face&Body Liquid Foundation Lightweight Bottle Full Coverage Invisible Pores Covering Blemishes - for All Skin Types (40 mL)"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "louise maelys 1pcs folding mini pocket hair comb with mirror travel gift idea",
+      "count": 9,
+      "products": [
+        {
+          "product_id": "B0171AQJ2E",
+          "title": "LOUISE MAELYS 1Pcs Folding Mini Pocket Hair Comb with Mirror Travel Set Gift Idea"
+        },
+        {
+          "product_id": "B0171AQLRW",
+          "title": "LOUISE MAELYS 1Pcs Folding Mini Pocket Hair Comb with Mirror Travel Set Gift Idea"
+        },
+        {
+          "product_id": "B01EUAUTCE",
+          "title": "LOUISE MAELYS 1Pcs Folding Mini Pocket Hair Comb with Mirror Travel Set Gift Idea"
+        },
+        {
+          "product_id": "B01EUAUW6W",
+          "title": "LOUISE MAELYS 1Pcs Folding Mini Pocket Hair Comb with Mirror Travel Set Gift Idea"
+        },
+        {
+          "product_id": "B01EUAUTH4",
+          "title": "LOUISE MAELYS 1Pcs Folding Mini Pocket Hair Comb with Mirror Travel Set Gift Idea"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "koksk exfoliating gloves body scrubbing exfoliator mitts for men and women for shower or bath",
+      "count": 9,
+      "products": [
+        {
+          "product_id": "B00JCTNDZO",
+          "title": "Koksk Exfoliating Gloves - Body Scrubbing Exfoliator Mitts For Men and Women For Shower or Bath"
+        },
+        {
+          "product_id": "B01N6SD9U1",
+          "title": "Koksk Exfoliating Gloves - Body Scrubbing Exfoliator Mitts For Men and Women For Shower or Bath"
+        },
+        {
+          "product_id": "B078SCYQRM",
+          "title": "Koksk Exfoliating Gloves - Body Scrubbing Exfoliator Mitts For Men and Women For Shower or Bath"
+        },
+        {
+          "product_id": "B00005JKQ4",
+          "title": "Koksk Exfoliating Gloves - Body Scrubbing Exfoliator Mitts For Men and Women For Shower or Bath"
+        },
+        {
+          "product_id": "B00KEHD00G",
+          "title": "Koksk Exfoliating Gloves - Body Scrubbing Exfoliator Mitts For Men and Women For Shower or Bath"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "gratino facial cleansing brush 7 in 1 portable and waterproof facial cleanser brush with 2 speed settings deep cleansing gentle exfoliating removing make up oil and blackhead massaging",
+      "count": 9,
+      "products": [
+        {
+          "product_id": "B07284XV2Z",
+          "title": "GRATINO Facial Cleansing Brush, 7-in-1 Portable and Waterproof Facial Cleanser Brush with 2 Speed Settings – Deep Cleansing, Gentle Exfoliating, Removing Make-up, Oil and Blackhead, Massaging"
+        },
+        {
+          "product_id": "B01M6X2JCQ",
+          "title": "GRATINO Facial Cleansing Brush, 7-in-1 Portable and Waterproof Facial Cleanser Brush with 2 Speed Settings – Deep Cleansing, Gentle Exfoliating, Removing Make-up, Oil and Blackhead, Massaging"
+        },
+        {
+          "product_id": "B072BWCRFB",
+          "title": "GRATINO Facial Cleansing Brush, 7-in-1 Portable and Waterproof Facial Cleanser Brush with 2 Speed Settings – Deep Cleansing, Gentle Exfoliating, Removing Make-up, Oil and Blackhead, Massaging"
+        },
+        {
+          "product_id": "B005JUPEKM",
+          "title": "GRATINO Facial Cleansing Brush, 7-in-1 Portable and Waterproof Facial Cleanser Brush with 2 Speed Settings – Deep Cleansing, Gentle Exfoliating, Removing Make-up, Oil and Blackhead, Massaging"
+        },
+        {
+          "product_id": "B00K1ZKLA8",
+          "title": "GRATINO Facial Cleansing Brush, 7-in-1 Portable and Waterproof Facial Cleanser Brush with 2 Speed Settings – Deep Cleansing, Gentle Exfoliating, Removing Make-up, Oil and Blackhead, Massaging"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "lift nipple cover double sided body tape silicone reusable pasties lingerie fashion adhesive 4 body clothing",
+      "count": 9,
+      "products": [
+        {
+          "product_id": "B01M7MN0A7",
+          "title": "Lift Nipple Cover+Double Sided Body Tape Silicone Reusable Pasties Lingerie Fashion Adhesive 4 Body Clothing."
+        },
+        {
+          "product_id": "B07QYBKBNF",
+          "title": "Lift Nipple Cover+Double Sided Body Tape Silicone Reusable Pasties Lingerie Fashion Adhesive 4 Body Clothing."
+        },
+        {
+          "product_id": "B072Z7MDD3",
+          "title": "Lift Nipple Cover+Double Sided Body Tape Silicone Reusable Pasties Lingerie Fashion Adhesive 4 Body Clothing."
+        },
+        {
+          "product_id": "B0083KNFBA",
+          "title": "Lift Nipple Cover+Double Sided Body Tape Silicone Reusable Pasties Lingerie Fashion Adhesive 4 Body Clothing."
+        },
+        {
+          "product_id": "B00BB1YL16",
+          "title": "Lift Nipple Cover+Double Sided Body Tape Silicone Reusable Pasties Lingerie Fashion Adhesive 4 Body Clothing."
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "samsung galaxy screen protector tempered glass screen protector for samsung galaxy",
+      "count": 9,
+      "products": [
+        {
+          "product_id": "B007BXNETS",
+          "title": "Samsung Galaxy Screen Protector ,Tempered Glass Screen Protector for Samsung Galaxy"
+        },
+        {
+          "product_id": "B077PTN3X3",
+          "title": "Samsung Galaxy Screen Protector,Tempered Glass Screen Protector for Samsung Galaxy"
+        },
+        {
+          "product_id": "B00JK38XUC",
+          "title": "Samsung Galaxy Screen Protector,Tempered Glass Screen Protector for Samsung Galaxy"
+        },
+        {
+          "product_id": "B011IDM38Y",
+          "title": "Samsung Galaxy Screen Protector,Tempered Glass Screen Protector for Samsung Galaxy"
+        },
+        {
+          "product_id": "B07C1GNMLY",
+          "title": "Samsung Galaxy Screen Protector ,Tempered Glass Screen Protector for Samsung Galaxy"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "2 soft sleep cap night satin bonnet with wide premium elastic band for women",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B07SQXRRZ3",
+          "title": "2 Pieces Soft Sleep Cap – Night Satin Bonnet with Wide Premium Elastic Band for Women"
+        },
+        {
+          "product_id": "B07SQY49LX",
+          "title": "2 Pieces Soft Sleep Cap – Night Satin Bonnet with Wide Premium Elastic Band for Women"
+        },
+        {
+          "product_id": "B07SPK6628",
+          "title": "2 Pieces Soft Sleep Cap – Night Satin Bonnet with Wide Premium Elastic Band for Women"
+        },
+        {
+          "product_id": "B07ZZ8641H",
+          "title": "2 Pieces Soft Sleep Cap – Night Satin Bonnet with Wide Premium Elastic Band for Women"
+        },
+        {
+          "product_id": "B07ZZ84WRP",
+          "title": "2 Pieces Soft Sleep Cap – Night Satin Bonnet with Wide Premium Elastic Band for Women"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "qd udreamy lace front wig",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B072KH148V",
+          "title": "QD-Udreamy Lace Front Wig"
+        },
+        {
+          "product_id": "B0734L8ZY7",
+          "title": "QD-Udreamy Lace Front Wig"
+        },
+        {
+          "product_id": "B07DJ3D81Q",
+          "title": "QD-Udreamy Lace Front Wig"
+        },
+        {
+          "product_id": "B08TBB4V4L",
+          "title": "QD-Udreamy Lace Front Wig"
+        },
+        {
+          "product_id": "B07T588CPW",
+          "title": "QD-Udreamy Lace Front Wig"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "double color lipstick waterproof long lasting lip gloss moisturzing nourishing lipsticks balm lip cosmetics by shouhengda",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B07PJ728QW",
+          "title": "Double Color Lipstick Waterproof Long-Lasting Lip Gloss Moisturzing Nourishing Lipsticks Balm Lip Cosmetics By Shouhengda"
+        },
+        {
+          "product_id": "B07PJ5BFCJ",
+          "title": "Double Color Lipstick Waterproof Long-Lasting Lip Gloss Moisturzing Nourishing Lipsticks Balm Lip Cosmetics By Shouhengda"
+        },
+        {
+          "product_id": "B07PH55YSP",
+          "title": "Double Color Lipstick Waterproof Long-Lasting Lip Gloss Moisturzing Nourishing Lipsticks Balm Lip Cosmetics By Shouhengda"
+        },
+        {
+          "product_id": "B07PFZMV6K",
+          "title": "Double Color Lipstick Waterproof Long-Lasting Lip Gloss Moisturzing Nourishing Lipsticks Balm Lip Cosmetics By Shouhengda"
+        },
+        {
+          "product_id": "B07PJ5QS6T",
+          "title": "Double Color Lipstick Waterproof Long-Lasting Lip Gloss Moisturzing Nourishing Lipsticks Balm Lip Cosmetics By Shouhengda"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "lakkio 5 pairs pure mink hair eyelashes 3d eyelashes extension natural dense false eyelashes handmade lashes",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B07DWT7144",
+          "title": "Lakkio 5 Pairs Pure Mink Hair Eyelashes 3D Eyelashes Extension Natural Dense False Eyelashes Handmade Lashes Set"
+        },
+        {
+          "product_id": "B07DWSXJ8D",
+          "title": "Lakkio 5 Pairs Pure Mink Hair Eyelashes 3D Eyelashes Extension Natural Dense False Eyelashes Handmade Lashes Set"
+        },
+        {
+          "product_id": "B07GJ7W9LR",
+          "title": "Lakkio 5 Pairs Pure Mink Hair Eyelashes 3D Eyelashes Extension Natural Dense False Eyelashes Handmade Lashes Set"
+        },
+        {
+          "product_id": "B07GJJ9TFD",
+          "title": "Lakkio 5 Pairs Pure Mink Hair Eyelashes 3D Eyelashes Extension Natural Dense False Eyelashes Handmade Lashes Set"
+        },
+        {
+          "product_id": "B07GJHX6N7",
+          "title": "Lakkio 5 Pairs Pure Mink Hair Eyelashes 3D Eyelashes Extension Natural Dense False Eyelashes Handmade Lashes Set"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "barara king 4 bow women headband boho floal style criss cross head wrap hair band",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B083LJKMCT",
+          "title": "Barara King 4 Pack Bow Women Headband Boho Floal Style Criss Cross Head Wrap Hair Band"
+        },
+        {
+          "product_id": "B083LPH1XW",
+          "title": "Barara King 4 Pack Bow Women Headband Boho Floal Style Criss Cross Head Wrap Hair Band"
+        },
+        {
+          "product_id": "B083LCZ8TV",
+          "title": "Barara King 4 Pack Bow Women Headband Boho Floal Style Criss Cross Head Wrap Hair Band"
+        },
+        {
+          "product_id": "B083L44ZQF",
+          "title": "Barara King 4 Pack Bow Women Headband Boho Floal Style Criss Cross Head Wrap Hair Band"
+        },
+        {
+          "product_id": "B083LBP9Q9",
+          "title": "Barara King 4 Pack Bow Women Headband Boho Floal Style Criss Cross Head Wrap Hair Band"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "aliglossy bob wig human hair",
+      "count": 8,
+      "products": [
+        {
+          "product_id": "B01M5G7POD",
+          "title": "Aliglossy bob wig human hair …"
+        },
+        {
+          "product_id": "B01MYFCS6R",
+          "title": "Aliglossy bob wig human hair …"
+        },
+        {
+          "product_id": "B01LZK38ZU",
+          "title": "Aliglossy bob wig human hair …"
+        },
+        {
+          "product_id": "B01N5D3GY5",
+          "title": "Aliglossy bob wig human hair …"
+        },
+        {
+          "product_id": "B01LZ86DOI",
+          "title": "Aliglossy bob wig human hair …"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "magnetic eyeliner and eyelash kit natural look waterproof and smudge resistant no glue easier to use than traditional magnetic eyelashes",
+      "count": 7,
+      "products": [
+        {
+          "product_id": "B07W5SNLMK",
+          "title": "Magnetic Eyeliner and Eyelash Kit Natural Look Waterproof and Smudge Resistant No Glue Easier To Use Than Traditional Magnetic Eyelashes"
+        },
+        {
+          "product_id": "B07WPBNBQF",
+          "title": "Magnetic Eyeliner and Eyelash Kit Natural Look Waterproof and Smudge Resistant No Glue Easier To Use Than Traditional Magnetic Eyelashes"
+        },
+        {
+          "product_id": "B07WYC5M8K",
+          "title": "Magnetic Eyeliner and Eyelash Kit Natural Look Waterproof and Smudge Resistant No Glue Easier To Use Than Traditional Magnetic Eyelashes"
+        },
+        {
+          "product_id": "B07WPB4PP6",
+          "title": "Magnetic Eyeliner and Eyelash Kit Natural Look Waterproof and Smudge Resistant No Glue Easier To Use Than Traditional Magnetic Eyelashes"
+        },
+        {
+          "product_id": "B07WYCN95M",
+          "title": "Magnetic Eyeliner and Eyelash Kit Natural Look Waterproof and Smudge Resistant No Glue Easier To Use Than Traditional Magnetic Eyelashes"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "bc bonacure time restore treatment 6 8 ounce",
+      "count": 7,
+      "products": [
+        {
+          "product_id": "B001P5R8AE",
+          "title": "BC Bonacure TIME RESTORE Treatment, 6.8-Ounce"
+        },
+        {
+          "product_id": "B004FCMQME",
+          "title": "BC Bonacure TIME RESTORE Treatment, 6.8-Ounce"
+        },
+        {
+          "product_id": "B005DBPEQQ",
+          "title": "BC Bonacure TIME RESTORE Treatment, 6.8-Ounce"
+        },
+        {
+          "product_id": "B002Q7S214",
+          "title": "BC Bonacure TIME RESTORE Treatment, 6.8-Ounce"
+        },
+        {
+          "product_id": "B001CN78PY",
+          "title": "BC Bonacure TIME RESTORE Treatment, 6.8-Ounce"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "feshfen hair ponytail extensions 19 claw clip on long hair pony tail wavy synthetic natural looking hairpieces for women",
+      "count": 7,
+      "products": [
+        {
+          "product_id": "B07H4C3TPN",
+          "title": "FESHFEN Hair Ponytail Extensions, 19\" Claw Clip on Long Hair Piece Pony Tail Wavy Synthetic Natural Looking Hairpieces for Women"
+        },
+        {
+          "product_id": "B07H4CMDKT",
+          "title": "FESHFEN Hair Ponytail Extensions, 19\" Claw Clip on Long Hair Piece Pony Tail Wavy Synthetic Natural Looking Hairpieces for Women"
+        },
+        {
+          "product_id": "B07H4D35NF",
+          "title": "FESHFEN Hair Ponytail Extensions, 19\" Claw Clip on Long Hair Piece Pony Tail Wavy Synthetic Natural Looking Hairpieces for Women"
+        },
+        {
+          "product_id": "B07H4C6561",
+          "title": "FESHFEN Hair Ponytail Extensions, 19\" Claw Clip on Long Hair Piece Pony Tail Wavy Synthetic Natural Looking Hairpieces for Women"
+        },
+        {
+          "product_id": "B07H4CHLDQ",
+          "title": "FESHFEN Hair Ponytail Extensions, 19\" Claw Clip on Long Hair Piece Pony Tail Wavy Synthetic Natural Looking Hairpieces for Women"
+        }
+      ]
+    },
+    {
+      "title_duplicate_key": "beardbullet",
+      "count": 7,
+      "products": [
+        {
+          "product_id": "B093VMH8NY",
+          "title": "BeardBullet"
+        },
+        {
+          "product_id": "B093VWYRNV",
+          "title": "BeardBullet"
+        },
+        {
+          "product_id": "B0982NZSCB",
+          "title": "BeardBullet"
+        },
+        {
+          "product_id": "B0982R886Z",
+          "title": "BeardBullet"
+        },
+        {
+          "product_id": "B0982QDH24",
+          "title": "BeardBullet"
+        }
+      ]
+    }
+  ]
+}

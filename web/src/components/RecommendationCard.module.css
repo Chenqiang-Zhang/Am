@@ -1,0 +1,322 @@
+.card {
+  display: flex;
+  gap: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+  animation: fadeUp 0.35s ease both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card:hover {
+  box-shadow: 0 8px 28px rgba(100, 60, 30, 0.1), 0 2px 6px rgba(100, 60, 30, 0.05);
+  transform: translateY(-3px);
+  border-top-color: var(--color-gold);
+  border-color: var(--color-border);
+  border-top-color: var(--color-gold);
+}
+
+/* 商品画像 */
+.thumb,
+.thumbPlaceholder {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 0;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  object-fit: contain;
+}
+
+.thumbPlaceholder {
+  background: #f7f2ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbIcon {
+  width: 34px;
+  height: 34px;
+  color: #cdc3b4;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.rank {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  padding-top: 3px;
+}
+
+.title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--color-text);
+  /* 長いAmazonタイトルは3行で省略（全文は title 属性でホバー表示） */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.score {
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.price {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.priceUnknown {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.availabilityOk,
+.availabilityUnavailable {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.availabilityOk {
+  border-color: var(--color-border);
+  color: var(--color-primary);
+  background: var(--color-primary-weak);
+}
+
+.availabilityUnavailable {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.id {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.amazonLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--space-3);
+  padding: 6px 14px;
+  border: 1px solid var(--color-gold);
+  border-radius: var(--radius);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.2s, color 0.2s;
+}
+
+.amazonLink:hover {
+  background: var(--color-gold);
+  color: #fff;
+}
+
+/* ===== ユーザーモード ===== */
+.user {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.userTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.userTag {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.quoteBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.userQuote {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.localizedReason {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+
+.quoteToggle {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.quoteToggle:hover {
+  opacity: 0.75;
+}
+
+/* ===== 開発者モード ===== */
+.dev {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.section {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.sectionLabel {
+  flex: 0 0 92px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  padding-top: 2px;
+}
+
+.sectionBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.explanation {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.feedbackLabel,
+.feedbackDone,
+.feedbackError {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.feedback button {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.feedback button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.feedbackDone {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.feedbackError {
+  color: var(--color-danger);
+}
+
+@media (max-width: 560px) {
+  .card {
+    gap: var(--space-3);
+  }
+  .thumb,
+  .thumbPlaceholder {
+    width: 84px;
+    height: 84px;
+  }
+  .section {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sectionLabel {
+    flex-basis: auto;
+  }
+}

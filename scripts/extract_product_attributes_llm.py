@@ -125,8 +125,9 @@ def load_env_file(path: Path = Path(".env")) -> None:
                 os.environ[key] = value
 
 
-def read_jsonl_gz(path: Path):
-    with gzip.open(path, "rt", encoding="utf-8") as f:
+def read_jsonl(path: Path):
+    open_fn = gzip.open if str(path).endswith(".gz") else open
+    with open_fn(path, "rt", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 yield json.loads(line)
@@ -424,7 +425,9 @@ def extract_chat_with_fallback(
         return extract_batch_chat_json(client, model, products, max_output_tokens, retries)
     except Exception as batch_error:
         if len(products) <= 1:
-            raise
+            product_id = products[0].get("product_id") if products else ""
+            print(f"Single-product JSON failed; using rules only for {product_id}: {batch_error}", file=sys.stderr)
+            return {str(product_id): []}, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
         print(f"Batch JSON failed; retrying {len(products)} products one by one: {batch_error}", file=sys.stderr)
         merged: dict[str, list[dict[str, Any]]] = {}
@@ -460,6 +463,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=1, help="Products per LLM request. Use 5-10 for cheaper bulk extraction.")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent LLM batches. Start with 3-5 to avoid rate limits.")
     parser.add_argument("--rule-only", action="store_true", help="Do not call an LLM; only use deterministic metadata rules.")
+    parser.add_argument("--timeout", type=float, default=45.0, help="Per-request API timeout in seconds.")
     return parser.parse_args()
 
 
@@ -490,8 +494,12 @@ def build_client(args: argparse.Namespace) -> tuple[Any | None, str, str]:
         sys.exit(2)
 
     if args.provider == "deepseek":
-        return OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"], base_url=base_url), model, base_url
-    return OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=base_url) if base_url else OpenAI(api_key=os.environ["OPENAI_API_KEY"]), model, base_url or ""
+        return OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"], base_url=base_url, timeout=args.timeout), model, base_url
+    return (
+        OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url=base_url, timeout=args.timeout)
+        if base_url
+        else OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=args.timeout)
+    ), model, base_url or ""
 
 
 def write_records(out: Any, records: list[dict[str, Any]]) -> None:
@@ -583,7 +591,7 @@ def main() -> None:
     with args.output_path.open("a", encoding="utf-8") as out:
         executor = ThreadPoolExecutor(max_workers=args.workers) if args.workers > 1 and not args.rule_only else None
         try:
-            for row in read_jsonl_gz(args.meta_path):
+            for row in read_jsonl(args.meta_path):
                 if seen < args.offset:
                     seen += 1
                     continue
