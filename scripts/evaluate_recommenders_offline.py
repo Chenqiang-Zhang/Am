@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--history-size", type=int, default=3)
     parser.add_argument("--holdout-size", type=int, default=2)
     parser.add_argument("--k", type=int, default=10)
-    parser.add_argument("--candidate-catalog-limit", type=int, default=8000)
+    parser.add_argument("--candidate-catalog-limit", type=int, default=20000)
     parser.add_argument("--max-attrs", type=int, default=8)
     parser.add_argument("--min-quality-score", type=float, default=0.6)
     parser.add_argument("--random-seed", type=int, default=42)
@@ -666,6 +666,7 @@ def plot_metric_group(
 
 def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
     readiness = summary["data_readiness"]
+    diagnostics = summary.get("ranking_diagnostics", {})
     has_exact_hits = any(row.get("hit_rate", 0.0) > 0.0 for row in summary["methods"].values())
     lines = [
         "# Offline Recommender Comparison",
@@ -691,6 +692,22 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
     )
     for key, value in readiness["ratios"].items():
         lines.append(f"| `{key}` | {value:.2%} |")
+    if diagnostics:
+        lines.extend(
+            [
+                "",
+                "## Ranking Diagnostics",
+                "",
+                f"Candidate catalog size: `{diagnostics.get('candidate_catalog_size', 0):,}`",
+                f"Holdout products in candidate catalog: `{diagnostics.get('holdout_in_candidate_catalog', 0):,}` / `{diagnostics.get('holdout_total', 0):,}`",
+                f"Unique holdout products in candidate catalog: `{diagnostics.get('unique_holdout_in_candidate_catalog', 0):,}` / `{diagnostics.get('unique_holdout_total', 0):,}`",
+                "",
+                "| Method | Exact Hits | Users With Hit |",
+                "|---|---:|---:|",
+            ]
+        )
+        for method, row in diagnostics.get("method_exact_hits", {}).items():
+            lines.append(f"| `{method}` | {row.get('exact_hits', 0)} | {row.get('users_with_hit', 0)} |")
     lines.extend(
         [
             "",
@@ -732,6 +749,7 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "## Interpretation Notes",
             "",
             "- Exact held-out ASIN prediction is intentionally strict; low HitRate/NDCG/MRR means the experiment rarely recovers the same future reviewed product in Top-K.",
+            "- If `Holdout products in candidate catalog` is below 100%, local candidate-based methods cannot possibly hit every exact target.",
             "- `SemanticNDCG@K`, `SemanticRecall@K`, `TitleOverlap@K`, and `AttributeOverlap@K` are softer discovery metrics for cases where the correct answer is a similar product rather than the exact future ASIN.",
             "- `Diversity@K`, `Novelty@K`, and `CatalogCoverage@K` check whether a method collapses to the same narrow set of popular products.",
             "- `SellableRate@K` and `PriceCoverage@K` are constraint checks. They are expected to be near 1.0 because the candidate pool is filtered to recommendable products.",
@@ -919,12 +937,35 @@ def main() -> None:
     catalog_size = max(len(catalog), 1)
     for method, row in method_summary.items():
         row["catalog_coverage"] = round(len(method_unique_recommendations.get(method, set())) / catalog_size, 4)
+    catalog_ids = set(catalog_by_id)
+    holdout_products = [
+        product_id
+        for row in per_user_rows
+        for product_id in row.get("holdout_products", [])
+    ]
+    unique_holdouts = set(holdout_products)
+    exact_hit_rows: dict[str, dict[str, Any]] = {}
+    for method in sorted(method_metrics):
+        hit_rows = [row for row in recommendation_rows if row["method"] == method and row.get("is_relevant")]
+        exact_hit_rows[method] = {
+            "exact_hits": len(hit_rows),
+            "users_with_hit": len({row["user_id"] for row in hit_rows}),
+        }
+    ranking_diagnostics = {
+        "candidate_catalog_size": len(catalog),
+        "holdout_total": len(holdout_products),
+        "unique_holdout_total": len(unique_holdouts),
+        "holdout_in_candidate_catalog": sum(1 for product_id in holdout_products if product_id in catalog_ids),
+        "unique_holdout_in_candidate_catalog": len(unique_holdouts & catalog_ids),
+        "method_exact_hits": exact_hit_rows,
+    }
 
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "config": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
         "effective_min_reviews": effective_min_reviews,
         "data_readiness": readiness,
+        "ranking_diagnostics": ranking_diagnostics,
         "evaluated_users": len(per_user_rows),
         "methods": method_summary,
         "intermediate_files": {

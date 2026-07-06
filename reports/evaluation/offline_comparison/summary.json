@@ -6,7 +6,7 @@
     "semantic_metrics": "reports/evaluation/offline_comparison/charts/kg_semantic_metrics.png"
   },
   "config": {
-    "candidate_catalog_limit": 8000,
+    "candidate_catalog_limit": 20000,
     "ground_truth_scope": "recommendable",
     "history_size": 3,
     "holdout_size": 2,
@@ -21,7 +21,7 @@
     "skip_catalog_snapshot": false,
     "strict_readiness": false
   },
-  "created_at": "2026-07-06T00:33:29.732179+00:00",
+  "created_at": "2026-07-06T08:20:32.640888+00:00",
   "data_readiness": {
     "ratios": {
       "attribute_coverage": 0.971756,
@@ -54,23 +54,23 @@
   "examples": [
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.0,
-        "average_quality_score": 0.88676,
-        "average_rating_score": 0.916,
+        "attribute_overlap": 0.0125,
+        "average_quality_score": 0.8829100000000001,
+        "average_rating_score": 0.788,
         "catalog_coverage": 0.0,
-        "diversity": 0.9533349098002918,
+        "diversity": 0.9481894313676039,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5816267510412227,
+        "novelty": 0.7115827959347628,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02927353705794345,
-        "semantic_recall": 0.15566712980506084,
-        "title_overlap": 0.03113342596101217
+        "semantic_ndcg": 0.030640905315132246,
+        "semantic_recall": 0.1844181266761912,
+        "title_overlap": 0.034896445848058746
       },
       "history_products": [
         "B07CCZH87X",
@@ -83,22 +83,22 @@
       ],
       "hybrid_rrf": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.9063800000000001,
-        "average_rating_score": 0.8960000000000001,
+        "average_quality_score": 0.9064399999999999,
+        "average_rating_score": 0.8240000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9561333390695113,
+        "diversity": 0.950228201997409,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5948557891449839,
+        "novelty": 0.6190074171437637,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.027283772436163096,
-        "semantic_recall": 0.13854903663062965,
-        "title_overlap": 0.02728727211485832
+        "semantic_ndcg": 0.024906947851129457,
+        "semantic_recall": 0.13912857533030182,
+        "title_overlap": 0.027403179854792757
       },
       "kg_attribute_history": {
         "attribute_overlap": 0.0,
@@ -110,7 +110,7 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.35739529182078,
+        "novelty": 0.40675371416475536,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
@@ -149,33 +149,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.009896616476674886,
+        "semantic_ndcg": 0.009758486107875396,
         "semantic_recall": 0.05298913043478261,
         "title_overlap": 0.010597826086956521
       },
       "kg_semantic_history": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.93102,
-        "average_rating_score": 0.8859999999999999,
+        "average_quality_score": 0.9087099999999999,
+        "average_rating_score": 0.828,
         "catalog_coverage": 0.0,
-        "diversity": 0.9629236802581744,
+        "diversity": 0.9669928144005033,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.4594875243756791,
+        "novelty": 0.5606452747393675,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.01839098762756355,
-        "semantic_recall": 0.10527328859195056,
-        "title_overlap": 0.02007656695156695
+        "semantic_ndcg": 0.017254185344670953,
+        "semantic_recall": 0.10975357533030182,
+        "title_overlap": 0.020972624299237203
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -215,39 +215,39 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.009896616476674886,
+        "semantic_ndcg": 0.009758486107875396,
         "semantic_recall": 0.05298913043478261,
         "title_overlap": 0.010597826086956521
       },
       "recommendations": {
         "bm25_history_profile": [
+          "B08XXKYTP5",
           "B00HJD0MYA",
           "B089F9YNTZ",
+          "B08DLNTF88",
+          "B07FTLXQ62",
+          "B07GWSTXMW",
+          "B08HHXD5HT",
           "B093RW9YM2",
-          "B09L14SGKQ",
-          "B09B7J4TDS",
-          "B08N4DC776",
-          "B07K4TXQKP",
-          "B093D9LR1K",
-          "B07H3BD7ZG",
-          "B0924GT395"
+          "B01EUISB9Y",
+          "B07T6B127W"
         ],
         "hybrid_rrf": [
+          "B08XXKYTP5",
           "B00HJD0MYA",
+          "B08DLNTF88",
           "B089F9YNTZ",
           "B093RW9YM2",
-          "B09L14SGKQ",
-          "B09B7J4TDS",
-          "B08N4DC776",
-          "B07K4TXQKP",
-          "B0924GT395",
+          "B07GWSTXMW",
+          "B07FTLXQ62",
           "B005DT7YP2",
-          "B01LYQLV0X"
+          "B01LYQLV0X",
+          "B079NV9PBG"
         ],
         "kg_attribute_history": [
           "B005DT7YP2",
@@ -267,23 +267,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
           "B005DT7YP2",
-          "B00HJD0MYA",
+          "B08XXKYTP5",
           "B01LYQLV0X",
-          "B089F9YNTZ",
+          "B00HJD0MYA",
           "B079NV9PBG",
-          "B093RW9YM2",
+          "B089F9YNTZ",
           "B07R3BMYBG",
-          "B09L14SGKQ",
+          "B08DLNTF88",
           "B014I0FDVI",
-          "B09B7J4TDS"
+          "B07FTLXQ62"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -291,23 +291,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B08XXKYTP5",
           "B00HJD0MYA",
+          "B08DLNTF88",
           "B093RW9YM2",
           "B089F9YNTZ",
+          "B08S3DFHW6",
+          "B07BW5MBSK",
           "B09L14SGKQ",
           "B09B7J4TDS",
-          "B08N4DC776",
-          "B07K4TXQKP",
-          "B0924GT395",
-          "B07HS15WV6",
-          "B0BLJ29VW7"
+          "B07GWSTXMW"
         ]
       },
       "title_intent": {
@@ -327,44 +327,44 @@
       },
       "title_keyword_profile": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.8850200000000001,
-        "average_rating_score": 0.924,
+        "average_quality_score": 0.8665499999999999,
+        "average_rating_score": 0.8380000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9582314497471859,
+        "diversity": 0.9427747049535192,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6279557074330359,
+        "novelty": 0.6223292515124275,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.028508779476061896,
-        "semantic_recall": 0.15310302724095828,
-        "title_overlap": 0.030620605448191656
+        "semantic_ndcg": 0.02472665129601829,
+        "semantic_recall": 0.13933071408877862,
+        "title_overlap": 0.027866142817755724
       },
       "user_id": "AE3PLZHW6NXWBMZ76TDVFQG2MJFA"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.030952380952380953,
-        "average_quality_score": 0.80783,
-        "average_rating_score": 0.952,
+        "attribute_overlap": 0.04,
+        "average_quality_score": 0.78902,
+        "average_rating_score": 0.858,
         "catalog_coverage": 0.0,
-        "diversity": 0.9187621647244554,
+        "diversity": 0.9451237497285268,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.7298919888901949,
+        "novelty": 0.723865261474855,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.03468268128404304,
-        "semantic_recall": 0.14262647475763673,
-        "title_overlap": 0.024833333333333332
+        "semantic_ndcg": 0.03538973564108381,
+        "semantic_recall": 0.15232464607464608,
+        "title_overlap": 0.019345238095238092
       },
       "history_products": [
         "B076TFQL1J",
@@ -376,42 +376,42 @@
         "B07SSFL9T5"
       ],
       "hybrid_rrf": {
-        "attribute_overlap": 0.029166666666666664,
-        "average_quality_score": 0.8313,
-        "average_rating_score": 0.93,
+        "attribute_overlap": 0.07666666666666667,
+        "average_quality_score": 0.8190799999999999,
+        "average_rating_score": 0.874,
         "catalog_coverage": 0.0,
-        "diversity": 0.9313993294121122,
+        "diversity": 0.9426996298405769,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6435985308333602,
+        "novelty": 0.6484306074768007,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.021505405357930853,
-        "semantic_recall": 0.13455833333333334,
-        "title_overlap": 0.023287037037037037
+        "semantic_ndcg": 0.034500969725978124,
+        "semantic_recall": 0.23833943833943833,
+        "title_overlap": 0.032692307692307694
       },
       "kg_attribute_history": {
-        "attribute_overlap": 0.06583333333333333,
-        "average_quality_score": 0.9158799999999999,
-        "average_rating_score": 0.9019999999999999,
+        "attribute_overlap": 0.36333333333333334,
+        "average_quality_score": 0.89177,
+        "average_rating_score": 0.8560000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9666281167238284,
-        "hit_rate": 0.0,
+        "diversity": 0.9398630755881273,
+        "hit_rate": 1.0,
         "list_fill_rate": 1.0,
-        "mrr": 0.0,
-        "ndcg": 0.0,
-        "novelty": 0.3485112975961934,
-        "precision": 0.0,
+        "mrr": 0.1,
+        "ndcg": 0.17723928678404774,
+        "novelty": 0.5136003660487178,
+        "precision": 0.1,
         "price_coverage": 1.0,
-        "recall": 0.0,
+        "recall": 0.5,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.03754659175931488,
-        "semantic_recall": 0.15973762911924677,
-        "title_overlap": 0.02548692048692049
+        "semantic_ndcg": 0.18525505187572827,
+        "semantic_recall": 1.0,
+        "title_overlap": 0.1823820623820624
       },
       "kg_intent": {
         "attribute_filters": [
@@ -421,13 +421,8 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "color",
-            "value": "blue",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "brand",
-            "value": "makeup revolution",
+            "attribute_type": "size",
+            "value": "1.00 fl oz",
             "weight": 0.7
           },
           {
@@ -446,25 +441,30 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "color",
-            "value": "blue, ice",
+            "attribute_type": "brand",
+            "value": "makeup revolution",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "crayon",
             "weight": 0.7
           },
           {
             "attribute_type": "brand",
-            "value": "jeffree star cosmetics",
+            "value": "canmake",
             "weight": 0.7
           }
         ],
         "keywords": [
           "powder",
-          "blue",
-          "makeup revolution",
+          "1.00 fl oz",
           "10g",
           "1.00 count",
           "mermaids heart",
-          "blue, ice",
-          "jeffree star cosmetics"
+          "makeup revolution",
+          "crayon",
+          "canmake"
         ],
         "min_rating": null,
         "price_max": null
@@ -479,33 +479,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0026417658072801164,
+        "semantic_ndcg": 0.0026499781810765833,
         "semantic_recall": 0.017356515304602055,
         "title_overlap": 0.0
       },
       "kg_semantic_history": {
-        "attribute_overlap": 0.04583333333333333,
-        "average_quality_score": 0.8694700000000001,
-        "average_rating_score": 0.9339999999999999,
+        "attribute_overlap": 0.14666666666666667,
+        "average_quality_score": 0.8347,
+        "average_rating_score": 0.868,
         "catalog_coverage": 0.0,
-        "diversity": 0.9817027657613009,
+        "diversity": 0.9420961202896989,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5034034506691406,
+        "novelty": 0.597283318800818,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.03369294859409392,
-        "semantic_recall": 0.17579279331779332,
-        "title_overlap": 0.030979344729344726
+        "semantic_ndcg": 0.0702369715874389,
+        "semantic_recall": 0.40074453324453324,
+        "title_overlap": 0.061783216783216785
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -580,51 +580,51 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0026417658072801164,
+        "semantic_ndcg": 0.0026499781810765833,
         "semantic_recall": 0.017356515304602055,
         "title_overlap": 0.0
       },
       "recommendations": {
         "bm25_history_profile": [
           "B07QCZRC4L",
+          "B0773CPWPF",
+          "B06XNLFK6M",
+          "B073FNQCW6",
           "B08G6NFGNM",
+          "B0B8TCRQYP",
           "B07G3LBGJB",
           "B079SY4HZQ",
-          "B08JCV51TF",
-          "B08JCQZW79",
-          "B07QF3J61F",
-          "B00ZD58Z3Q",
-          "B06XR7C5NZ",
-          "B08JD1TRMM"
+          "B072MLSXYL",
+          "B07VQQRR7W"
         ],
         "hybrid_rrf": [
-          "B08JCV51TF",
+          "B0773CPWPF",
+          "B06XNLFK6M",
+          "B073FNQCW6",
           "B08G6NFGNM",
-          "B07QCZRC4L",
+          "B08JCV51TF",
+          "B0B8TCRQYP",
           "B079SY4HZQ",
-          "B08JCQZW79",
-          "B07QF3J61F",
-          "B08JD1TRMM",
-          "B07G3LBGJB",
-          "B07VFXC7QW",
-          "B0BHPF8HJG"
+          "B07QCZRC4L",
+          "B003QKKDQ2",
+          "B00V45AUSW"
         ],
         "kg_attribute_history": [
-          "B07VFXC7QW",
-          "B0BHPF8HJG",
-          "B085BB7B1M",
           "B003QKKDQ2",
-          "B082MRDK5M",
-          "B07JF4C4C2",
+          "B00V45AUSW",
           "B08JCV51TF",
           "B0824C2Z3W",
-          "B073SBNLJJ",
-          "B076VXWTNQ"
+          "B00NW3F6T2",
+          "B078YYJ67W",
+          "B08V59BGT7",
+          "B08JCX3DL7",
+          "B07VZHNXPP",
+          "B07SSFL9T5"
         ],
         "kg_no_history_home": [
           "B07J6PNGGM",
@@ -632,23 +632,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
           "B08JCV51TF",
-          "B07VFXC7QW",
-          "B07QCZRC4L",
-          "B0BHPF8HJG",
-          "B08G6NFGNM",
-          "B085BB7B1M",
-          "B07G3LBGJB",
           "B003QKKDQ2",
-          "B079SY4HZQ",
-          "B082MRDK5M"
+          "B07QCZRC4L",
+          "B00V45AUSW",
+          "B0773CPWPF",
+          "B06XNLFK6M",
+          "B0824C2Z3W",
+          "B073FNQCW6",
+          "B00NW3F6T2",
+          "B08G6NFGNM"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -656,23 +656,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B0773CPWPF",
+          "B06XNLFK6M",
+          "B073FNQCW6",
           "B08G6NFGNM",
+          "B0B8TCRQYP",
           "B079SY4HZQ",
           "B08JCV51TF",
           "B08JCQZW79",
           "B07QF3J61F",
-          "B08JD1TRMM",
-          "B07QCZRC4L",
-          "B07DZ1Y5TN",
-          "B09P8SWB68",
-          "B07VZHNXPP"
+          "B07DZ1Y5TN"
         ]
       },
       "title_intent": {
@@ -692,43 +692,43 @@
       },
       "title_keyword_profile": {
         "attribute_overlap": 0.02,
-        "average_quality_score": 0.8308899999999999,
-        "average_rating_score": 0.924,
+        "average_quality_score": 0.8233900000000001,
+        "average_rating_score": 0.876,
         "catalog_coverage": 0.0,
-        "diversity": 0.8941128963283007,
+        "diversity": 0.8969762641504392,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6559656984777005,
+        "novelty": 0.7008768952140705,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.010763316755558364,
-        "semantic_recall": 0.07787037037037037,
-        "title_overlap": 0.008333333333333333
+        "semantic_ndcg": 0.008724706333948019,
+        "semantic_recall": 0.0412037037037037,
+        "title_overlap": 0.0
       },
       "user_id": "AE5YGSWQJFOVOQBX7TVX3GYBPIGQ"
     },
     {
       "bm25_history_profile": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.8757699999999999,
-        "average_rating_score": 0.9400000000000001,
+        "average_quality_score": 0.8622799999999999,
+        "average_rating_score": 0.93,
         "catalog_coverage": 0.0,
-        "diversity": 0.88310890540615,
+        "diversity": 0.8823718841962774,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.698979291030905,
+        "novelty": 0.7257328889838492,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0013488554113444753,
-        "semantic_recall": 0.007350361023010999,
+        "semantic_ndcg": 0.0016426984723932859,
+        "semantic_recall": 0.008594949767599743,
         "title_overlap": 0.0
       },
       "history_products": [
@@ -742,21 +742,21 @@
       ],
       "hybrid_rrf": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.91113,
-        "average_rating_score": 0.9339999999999999,
+        "average_quality_score": 0.87557,
+        "average_rating_score": 0.8540000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9360012142165924,
+        "diversity": 0.9183370296250557,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6498343957365817,
+        "novelty": 0.7265265639098455,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0031715771533773014,
-        "semantic_recall": 0.020860046705770675,
+        "semantic_ndcg": 0.0030851587460718377,
+        "semantic_recall": 0.020740999086723055,
         "title_overlap": 0.0
       },
       "kg_attribute_history": {
@@ -769,7 +769,7 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.4558906647965359,
+        "novelty": 0.49768366448427254,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
@@ -780,6 +780,21 @@
       },
       "kg_intent": {
         "attribute_filters": [
+          {
+            "attribute_type": "size",
+            "value": "90ml",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "swiss arabian",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "size",
+            "value": "1.00 fl oz",
+            "weight": 0.7
+          },
           {
             "attribute_type": "brand",
             "value": "beautystat",
@@ -796,40 +811,25 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "scent",
-            "value": "floral",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "size",
-            "value": "90ml",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "brand",
-            "value": "swiss arabian",
-            "weight": 0.7
-          },
-          {
             "attribute_type": "brand",
             "value": "pinrose",
             "weight": 0.7
           },
           {
-            "attribute_type": "size",
-            "value": "1.00 fl oz",
+            "attribute_type": "scent",
+            "value": "floral",
             "weight": 0.7
           }
         ],
         "keywords": [
+          "90ml",
+          "swiss arabian",
+          "1.00 fl oz",
           "beautystat",
           "30ml",
           "oil",
-          "floral",
-          "90ml",
-          "swiss arabian",
           "pinrose",
-          "1.00 fl oz"
+          "floral"
         ],
         "min_rating": null,
         "price_max": null
@@ -844,32 +844,32 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.013301004012818045,
+        "semantic_ndcg": 0.013233222455658767,
         "semantic_recall": 0.08369563371876962,
         "title_overlap": 0.013095238095238094
       },
       "kg_semantic_history": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.89436,
-        "average_rating_score": 0.906,
+        "average_quality_score": 0.8932399999999999,
+        "average_rating_score": 0.9019999999999999,
         "catalog_coverage": 0.0,
-        "diversity": 0.9512810923223398,
+        "diversity": 0.958938032269985,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5719021937715709,
+        "novelty": 0.6298165742784467,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.006375192242019082,
-        "semantic_recall": 0.0372886181343421,
+        "semantic_ndcg": 0.0067767329902275,
+        "semantic_recall": 0.04031892116464513,
         "title_overlap": 0.004
       },
       "kg_semantic_intent": {
@@ -945,12 +945,12 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.013301004012818045,
+        "semantic_ndcg": 0.013233222455658767,
         "semantic_recall": 0.08369563371876962,
         "title_overlap": 0.013095238095238094
       },
@@ -959,25 +959,25 @@
           "B0718Z1K15",
           "B0CHXWTSM6",
           "B015QYD1EQ",
+          "B06Y2H698D",
           "B07WC43HHD",
           "B01LYR65T0",
-          "B08PPX8MBY",
           "B07FLRCGJ2",
-          "B00KIWYPX8",
-          "B08NBC2RR8",
-          "B01EKXMBYA"
+          "B08PPX8MBY",
+          "B01EKXMBYA",
+          "B08NBC2RR8"
         ],
         "hybrid_rrf": [
           "B015QYD1EQ",
           "B07WC43HHD",
-          "B0CHXWTSM6",
-          "B00KIWYPX8",
           "B08NBC2RR8",
           "B0718Z1K15",
+          "B0CHXWTSM6",
+          "B06Y2H698D",
+          "B07MVGYQV4",
           "B08R5FCWJ8",
-          "B07BCNYBSS",
           "B07JZKQZ3G",
-          "B091MBLJB1"
+          "B07BCNYBSS"
         ],
         "kg_attribute_history": [
           "B08R5FCWJ8",
@@ -997,10 +997,10 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
@@ -1012,7 +1012,7 @@
           "B091MBLJB1",
           "B015QYD1EQ",
           "B019E61G1W",
-          "B07WC43HHD",
+          "B06Y2H698D",
           "B00CNKSEN0"
         ],
         "popularity_baseline": [
@@ -1021,23 +1021,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B07MVGYQV4",
           "B015QYD1EQ",
           "B07BCNYBSS",
+          "B0821MBT3Y",
           "B07WC43HHD",
-          "B00KIWYPX8",
           "B08NBC2RR8",
+          "B00KIWYPX8",
+          "B07SJCPZ3D",
           "B085PS91MY",
-          "B08N9L8SZD",
-          "B0CHXWTSM6",
-          "B016TNVK4Q",
-          "B085PSQYWM"
+          "B08N9L8SZD"
         ]
       },
       "title_intent": {
@@ -1057,44 +1057,44 @@
       },
       "title_keyword_profile": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.8865700000000001,
-        "average_rating_score": 0.9460000000000001,
+        "average_quality_score": 0.8669399999999999,
+        "average_rating_score": 0.842,
         "catalog_coverage": 0.0,
-        "diversity": 0.8792396457741718,
+        "diversity": 0.8947782408310273,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.7605297018121961,
+        "novelty": 0.7704935998190411,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0015265155202376919,
-        "semantic_recall": 0.009793127928734735,
+        "semantic_ndcg": 0.0011384612033067082,
+        "semantic_recall": 0.00804757987762293,
         "title_overlap": 0.0
       },
       "user_id": "AEAXAJACFMXIAAH4WOHRMXPSZWFA"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.053869047619047615,
-        "average_quality_score": 0.9414199999999999,
-        "average_rating_score": 0.9179999999999999,
+        "attribute_overlap": 0.03958333333333333,
+        "average_quality_score": 0.9455,
+        "average_rating_score": 0.858,
         "catalog_coverage": 0.0,
-        "diversity": 0.9508538804683379,
+        "diversity": 0.9501185401520451,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5627140004879789,
+        "novelty": 0.653831034466475,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.042159882194737985,
-        "semantic_recall": 0.24674114616590317,
-        "title_overlap": 0.03352397602397602
+        "semantic_ndcg": 0.039398092635214696,
+        "semantic_recall": 0.22061553024530606,
+        "title_overlap": 0.03701852347013637
       },
       "history_products": [
         "B07Q1DC383",
@@ -1107,64 +1107,44 @@
       ],
       "hybrid_rrf": {
         "attribute_overlap": 0.04434523809523809,
-        "average_quality_score": 0.9416100000000001,
-        "average_rating_score": 0.9100000000000001,
+        "average_quality_score": 0.9604800000000001,
+        "average_rating_score": 0.8600000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9566595994642202,
+        "diversity": 0.9544596150338683,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5580140422693597,
+        "novelty": 0.6169331070076971,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.04373175916540006,
-        "semantic_recall": 0.2654405916975405,
-        "title_overlap": 0.0420954045954046
+        "semantic_ndcg": 0.044341307451646765,
+        "semantic_recall": 0.2593423690350843,
+        "title_overlap": 0.04663833913833913
       },
       "kg_attribute_history": {
-        "attribute_overlap": 0.033358395989974934,
-        "average_quality_score": 0.93919,
-        "average_rating_score": 0.8940000000000001,
+        "attribute_overlap": 0.0400250626566416,
+        "average_quality_score": 0.95961,
+        "average_rating_score": 0.8780000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9637595863073198,
+        "diversity": 0.9541099241659996,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.4555321059308749,
+        "novelty": 0.48798685497075367,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.06130110344541516,
-        "semantic_recall": 0.26328425141683126,
-        "title_overlap": 0.04397468743594999
+        "semantic_ndcg": 0.058961308560601,
+        "semantic_recall": 0.24817908687297607,
+        "title_overlap": 0.03738321814005459
       },
       "kg_intent": {
         "attribute_filters": [
-          {
-            "attribute_type": "benefit",
-            "value": "exfoliating",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "skin_type",
-            "value": "dry",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "size",
-            "value": "8 oz",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "scent",
-            "value": "coconut, floral",
-            "weight": 0.7
-          },
           {
             "attribute_type": "other",
             "value": "oily",
@@ -1181,20 +1161,40 @@
             "weight": 0.7
           },
           {
+            "attribute_type": "texture",
+            "value": "liquid",
+            "weight": 0.7
+          },
+          {
             "attribute_type": "brand",
             "value": "south of france natural body care",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "exfoliating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "dry",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "scent",
+            "value": "coconut, floral",
             "weight": 0.7
           }
         ],
         "keywords": [
-          "exfoliating",
-          "dry",
-          "8 oz",
-          "coconut, floral",
           "oily",
           "350ml",
           "snow buddy",
-          "south of france natural body care"
+          "liquid",
+          "south of france natural body care",
+          "exfoliating",
+          "dry",
+          "coconut, floral"
         ],
         "min_rating": null,
         "price_max": null
@@ -1209,33 +1209,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02558656852748751,
+        "semantic_ndcg": 0.025671292989232063,
         "semantic_recall": 0.14329452086977726,
         "title_overlap": 0.009615258784270104
       },
       "kg_semantic_history": {
-        "attribute_overlap": 0.049608395989974935,
-        "average_quality_score": 0.9434799999999999,
-        "average_rating_score": 0.9040000000000001,
+        "attribute_overlap": 0.032941729323308265,
+        "average_quality_score": 0.9775600000000001,
+        "average_rating_score": 0.8880000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9624324608938076,
+        "diversity": 0.9532743156780908,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5127436812306112,
+        "novelty": 0.5332809110494386,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.05466380659381357,
-        "semantic_recall": 0.23469297123225866,
-        "title_overlap": 0.033686740089179115
+        "semantic_ndcg": 0.05668130299400546,
+        "semantic_recall": 0.251921823321746,
+        "title_overlap": 0.04207292754513401
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -1311,12 +1311,12 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02558656852748751,
+        "semantic_ndcg": 0.025671292989232063,
         "semantic_recall": 0.14329452086977726,
         "title_overlap": 0.009615258784270104
       },
@@ -1325,37 +1325,37 @@
           "B08CB22Q6L",
           "B09C6SQ1DM",
           "B09648ZSBN",
+          "B01HYN6G4Y",
           "B085LT5DZ4",
+          "B00POVD9X0",
+          "B09KS7ZS9M",
           "B07Z2BFVXT",
-          "B08KLNFFQT",
-          "B06XF8JTY6",
-          "B098VHD353",
-          "B07XKCBF5Q",
-          "B07ZS2Z9C8"
+          "B08621VWD6",
+          "B06XF8JTY6"
         ],
         "hybrid_rrf": [
-          "B08CB22Q6L",
           "B09648ZSBN",
+          "B08CB22Q6L",
+          "B01HYN6G4Y",
           "B085LT5DZ4",
-          "B07XKCBF5Q",
-          "B08KLNFFQT",
+          "B00POVD9X0",
+          "B09KS7ZS9M",
           "B06XF8JTY6",
-          "B098VHD353",
           "B09C6SQ1DM",
-          "B07Z2BFVXT",
+          "B07XKCBF5Q",
           "B08MSXLK3Y"
         ],
         "kg_attribute_history": [
           "B07XKCBF5Q",
           "B08MSXLK3Y",
+          "B077TBSVK8",
           "B0C7WQK2QW",
           "B01F9AWHME",
-          "B00IVZDCP6",
+          "B09KKXB1SZ",
+          "B01IA9EE2M",
           "B093JW2RVF",
-          "B08MJVVWLV",
-          "B08FKPLJFS",
-          "B08W36QJ4B",
-          "B08YNNPJXQ"
+          "B081CK97GD",
+          "B08MJVVWLV"
         ],
         "kg_no_history_home": [
           "B07J6PNGGM",
@@ -1363,10 +1363,10 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
@@ -1374,12 +1374,12 @@
           "B08CB22Q6L",
           "B08MSXLK3Y",
           "B09C6SQ1DM",
-          "B0C7WQK2QW",
+          "B077TBSVK8",
           "B09648ZSBN",
+          "B0C7WQK2QW",
+          "B01HYN6G4Y",
           "B01F9AWHME",
-          "B085LT5DZ4",
-          "B00IVZDCP6",
-          "B07Z2BFVXT"
+          "B085LT5DZ4"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -1387,23 +1387,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
           "B09648ZSBN",
+          "B01HYN6G4Y",
           "B085LT5DZ4",
+          "B00POVD9X0",
+          "B09KS7ZS9M",
           "B08CB22Q6L",
-          "B08KLNFFQT",
           "B06XF8JTY6",
-          "B098VHD353",
-          "B09ZFFN5Z5",
-          "B08KTYTJ2W",
-          "B09BJKG8HQ",
-          "B09KZRXC2W"
+          "B08KLNFFQT",
+          "B08VF99M3F",
+          "B098VHD353"
         ]
       },
       "title_intent": {
@@ -1422,45 +1422,45 @@
         "price_max": null
       },
       "title_keyword_profile": {
-        "attribute_overlap": 0.020535714285714286,
-        "average_quality_score": 0.90708,
-        "average_rating_score": 0.916,
+        "attribute_overlap": 0.03958333333333333,
+        "average_quality_score": 0.9254200000000001,
+        "average_rating_score": 0.8560000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9399958179527546,
+        "diversity": 0.9409485214312857,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5870110611199304,
+        "novelty": 0.655602332273938,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.03929232100763055,
-        "semantic_recall": 0.21949698875793364,
-        "title_overlap": 0.03951985514485514
+        "semantic_ndcg": 0.04042745426681748,
+        "semantic_recall": 0.2096634710266886,
+        "title_overlap": 0.03624456624456625
       },
       "user_id": "AEE4M36AZAKURLEYGV23TM3BE7OQ"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.0,
-        "average_quality_score": 0.8773199999999999,
-        "average_rating_score": 0.932,
+        "attribute_overlap": 0.01111111111111111,
+        "average_quality_score": 0.87788,
+        "average_rating_score": 0.898,
         "catalog_coverage": 0.0,
-        "diversity": 0.872459291478672,
+        "diversity": 0.8835225503797401,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6619071437188724,
+        "novelty": 0.6753580788454461,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.003344481157543334,
-        "semantic_recall": 0.025,
-        "title_overlap": 0.004
+        "semantic_ndcg": 0.007397292743447816,
+        "semantic_recall": 0.03539238539238539,
+        "title_overlap": 0.0038461538461538464
       },
       "history_products": [
         "B08M3Y94KW",
@@ -1473,64 +1473,44 @@
       ],
       "hybrid_rrf": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.92731,
-        "average_rating_score": 0.932,
+        "average_quality_score": 0.91402,
+        "average_rating_score": 0.8939999999999999,
         "catalog_coverage": 0.0,
-        "diversity": 0.9171006243683619,
+        "diversity": 0.9385604492828543,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5815482363830826,
+        "novelty": 0.6127988698195483,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0013600215915309873,
-        "semantic_recall": 0.009619758351101635,
-        "title_overlap": 0.0
+        "semantic_ndcg": 0.004891654007215603,
+        "semantic_recall": 0.023850527581870867,
+        "title_overlap": 0.0038461538461538464
       },
       "kg_attribute_history": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.9184300000000001,
-        "average_rating_score": 0.9019999999999999,
+        "average_quality_score": 0.9402799999999999,
+        "average_rating_score": 0.9120000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9601341444954916,
+        "diversity": 0.9628468746303183,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.4596525154628388,
+        "novelty": 0.4579286475029026,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.009209878786703244,
+        "semantic_ndcg": 0.008872987146400592,
         "semantic_recall": 0.05779389522089068,
         "title_overlap": 0.009347826086956522
       },
       "kg_intent": {
         "attribute_filters": [
-          {
-            "attribute_type": "brand",
-            "value": "pinrose",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "texture",
-            "value": "spray",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "scent",
-            "value": "bold soul",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "brand",
-            "value": "bouquet garni",
-            "weight": 0.7
-          },
           {
             "attribute_type": "color",
             "value": "white",
@@ -1547,20 +1527,40 @@
             "weight": 0.7
           },
           {
+            "attribute_type": "size",
+            "value": "17.85 fl oz",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "skin_type",
+            "value": "all, dry",
+            "weight": 0.7
+          },
+          {
             "attribute_type": "brand",
-            "value": "atitifope",
+            "value": "pinrose",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "texture",
+            "value": "spray",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "brand",
+            "value": "bouquet garni",
             "weight": 0.7
           }
         ],
         "keywords": [
-          "pinrose",
-          "spray",
-          "bold soul",
-          "bouquet garni",
           "white",
           "garni",
           "gel",
-          "atitifope"
+          "17.85 fl oz",
+          "all, dry",
+          "pinrose",
+          "spray",
+          "bouquet garni"
         ],
         "min_rating": null,
         "price_max": null
@@ -1575,33 +1575,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.01860953135736655,
+        "semantic_ndcg": 0.018482132054722867,
         "semantic_recall": 0.11684343434343433,
         "title_overlap": 0.01534090909090909
       },
       "kg_semantic_history": {
         "attribute_overlap": 0.0,
-        "average_quality_score": 0.93559,
-        "average_rating_score": 0.916,
+        "average_quality_score": 0.9312900000000001,
+        "average_rating_score": 0.884,
         "catalog_coverage": 0.0,
-        "diversity": 0.9497979911931396,
+        "diversity": 0.9520303936457265,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.542678288460025,
+        "novelty": 0.5230208178115132,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0012747407903989695,
-        "semantic_recall": 0.007000710732054015,
-        "title_overlap": 0.0
+        "semantic_ndcg": 0.00514085848364544,
+        "semantic_recall": 0.026231479962823247,
+        "title_overlap": 0.0038461538461538464
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -1675,39 +1675,39 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.01860953135736655,
+        "semantic_ndcg": 0.018482132054722867,
         "semantic_recall": 0.11684343434343433,
         "title_overlap": 0.01534090909090909
       },
       "recommendations": {
         "bm25_history_profile": [
           "B097L3C61P",
+          "B07YXFDG3S",
           "B08KHQ5PDX",
           "B07D3LZ8RB",
-          "B085PSQYWM",
           "B06XP4N4YN",
+          "B085PSQYWM",
           "B094GZW7KD",
+          "B09FS1913B",
           "B07W7W2KQM",
-          "B092Y6QP3J",
-          "B07YXDPQDF",
-          "B08P5Z7FP5"
+          "B01FS5PJNE"
         ],
         "hybrid_rrf": [
           "B097L3C61P",
           "B08KHQ5PDX",
+          "B07YXFDG3S",
+          "B06XP4N4YN",
           "B085PSQYWM",
           "B07D3LZ8RB",
-          "B06XP4N4YN",
-          "B094GZW7KD",
-          "B092Y6QP3J",
           "B01N5P12CM",
           "B08LXJYHSN",
-          "B08MCLM9V7"
+          "B074WHV122",
+          "B08KJB8HZJ"
         ],
         "kg_attribute_history": [
           "B01N5P12CM",
@@ -1715,11 +1715,11 @@
           "B074WHV122",
           "B085B5S92V",
           "B097L3C61P",
+          "B07PGLQ6P2",
           "B08MCLM9V7",
           "B00GX1RFEY",
           "B07KWKVCMG",
-          "B08TCBP8HV",
-          "B00P4OFQ2Y"
+          "B08TCBP8HV"
         ],
         "kg_no_history_home": [
           "B07J6PNGGM",
@@ -1727,23 +1727,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
           "B097L3C61P",
-          "B08MCLM9V7",
           "B01N5P12CM",
           "B08LXJYHSN",
-          "B08KHQ5PDX",
+          "B07YXFDG3S",
           "B074WHV122",
-          "B07D3LZ8RB",
+          "B08KHQ5PDX",
           "B085B5S92V",
-          "B085PSQYWM",
-          "B06XP4N4YN"
+          "B07D3LZ8RB",
+          "B06XP4N4YN",
+          "B07PGLQ6P2"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -1751,23 +1751,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
           "B08KHQ5PDX",
           "B097L3C61P",
+          "B07YXFDG3S",
+          "B08KJB8HZJ",
+          "B07WJCGGVP",
           "B085PSQYWM",
+          "B09LVPRHNQ",
           "B09PZ9HX6W",
-          "B06XP4N4YN",
-          "B07D3LZ8RB",
-          "B094GZW7KD",
-          "B092Y6QP3J",
-          "B072N95X6P",
-          "B09RGJLVDF"
+          "B079RWGHQN",
+          "B06XP4N4YN"
         ]
       },
       "title_intent": {
@@ -1786,45 +1786,45 @@
         "price_max": null
       },
       "title_keyword_profile": {
-        "attribute_overlap": 0.0,
-        "average_quality_score": 0.92569,
-        "average_rating_score": 0.942,
+        "attribute_overlap": 0.016666666666666666,
+        "average_quality_score": 0.9025500000000001,
+        "average_rating_score": 0.858,
         "catalog_coverage": 0.0,
-        "diversity": 0.8755735416108138,
+        "diversity": 0.8923847616282736,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.62076346502589,
+        "novelty": 0.7200887538868662,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0036825601373481746,
-        "semantic_recall": 0.026851851851851852,
-        "title_overlap": 0.0037037037037037034
+        "semantic_ndcg": 0.013840136682468992,
+        "semantic_recall": 0.07941042291042291,
+        "title_overlap": 0.012391608391608392
       },
       "user_id": "AEH7RAIDBU7QALXTMWAA73PTL4JA"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.1488095238095238,
-        "average_quality_score": 0.78013,
-        "average_rating_score": 0.9359999999999999,
+        "attribute_overlap": 0.15297619047619046,
+        "average_quality_score": 0.77853,
+        "average_rating_score": 0.834,
         "catalog_coverage": 0.0,
-        "diversity": 0.4609316772552067,
+        "diversity": 0.4350043440678115,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.7549798399307537,
+        "novelty": 0.8096662903160923,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.07458592378547492,
-        "semantic_recall": 0.3546537110529857,
-        "title_overlap": 0.04886325662641452
+        "semantic_ndcg": 0.07535936508815508,
+        "semantic_recall": 0.3547884070838035,
+        "title_overlap": 0.04617683041596085
       },
       "history_products": [
         "B00XYLX25C",
@@ -1836,53 +1836,53 @@
         "B08K9B8B4X"
       ],
       "hybrid_rrf": {
-        "attribute_overlap": 0.12658730158730158,
-        "average_quality_score": 0.80176,
-        "average_rating_score": 0.9259999999999999,
+        "attribute_overlap": 0.1498015873015873,
+        "average_quality_score": 0.7798700000000001,
+        "average_rating_score": 0.8460000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.6605887008063795,
+        "diversity": 0.5296951287637562,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.7155334243477636,
+        "novelty": 0.7797695032077329,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.07500614551793042,
-        "semantic_recall": 0.35653502418429883,
-        "title_overlap": 0.05177992329308119
+        "semantic_ndcg": 0.07694158571018728,
+        "semantic_recall": 0.36677803565431444,
+        "title_overlap": 0.048460380199510635
       },
       "kg_attribute_history": {
-        "attribute_overlap": 0.11706349206349205,
-        "average_quality_score": 0.8478199999999999,
-        "average_rating_score": 0.852,
+        "attribute_overlap": 0.11884920634920634,
+        "average_quality_score": 0.8468500000000001,
+        "average_rating_score": 0.82,
         "catalog_coverage": 0.0,
-        "diversity": 0.8810328331646573,
+        "diversity": 0.8479499416098252,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5691143148055702,
+        "novelty": 0.6237995482435539,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.0725183493253211,
-        "semantic_recall": 0.3488737267436656,
-        "title_overlap": 0.05213364851522746
+        "semantic_ndcg": 0.0707817278131585,
+        "semantic_recall": 0.3397103173769204,
+        "title_overlap": 0.04981480793551732
       },
       "kg_intent": {
         "attribute_filters": [
           {
-            "attribute_type": "texture",
-            "value": "oil",
+            "attribute_type": "size",
+            "value": "1 oz",
             "weight": 0.7
           },
           {
-            "attribute_type": "size",
-            "value": "1 oz",
+            "attribute_type": "texture",
+            "value": "oil",
             "weight": 0.7
           },
           {
@@ -1891,13 +1891,18 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "benefit",
-            "value": "soothing",
+            "attribute_type": "brand",
+            "value": "labello",
             "weight": 0.7
           },
           {
-            "attribute_type": "brand",
-            "value": "labello",
+            "attribute_type": "color",
+            "value": "pink",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "soothing",
             "weight": 0.7
           },
           {
@@ -1906,25 +1911,20 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "size",
-            "value": "3 pack",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "color",
-            "value": "pink",
+            "attribute_type": "scent",
+            "value": "orange",
             "weight": 0.7
           }
         ],
         "keywords": [
-          "oil",
           "1 oz",
+          "oil",
           "bargz",
-          "soothing",
           "labello",
+          "pink",
+          "soothing",
           "balm",
-          "3 pack",
-          "pink"
+          "orange"
         ],
         "min_rating": null,
         "price_max": null
@@ -1939,33 +1939,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.024284732479122592,
+        "semantic_ndcg": 0.024422943303806344,
         "semantic_recall": 0.1539004598201606,
         "title_overlap": 0.01719298245614035
       },
       "kg_semantic_history": {
-        "attribute_overlap": 0.14146825396825397,
-        "average_quality_score": 0.82298,
-        "average_rating_score": 0.8960000000000001,
+        "attribute_overlap": 0.13551587301587303,
+        "average_quality_score": 0.8224,
+        "average_rating_score": 0.8280000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.7960887749987715,
+        "diversity": 0.7104733741325119,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6862381674456084,
+        "novelty": 0.7231450353959602,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.07373660803553732,
-        "semantic_recall": 0.3718146445415194,
-        "title_overlap": 0.05167207792207792
+        "semantic_ndcg": 0.07167894204115245,
+        "semantic_recall": 0.3587336525174282,
+        "title_overlap": 0.04753306190377128
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -2039,49 +2039,49 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.024284732479122592,
+        "semantic_ndcg": 0.024422943303806344,
         "semantic_recall": 0.1539004598201606,
         "title_overlap": 0.01719298245614035
       },
       "recommendations": {
         "bm25_history_profile": [
+          "B00XYLWUAK",
+          "B00XYLWNOS",
           "B00XYLWH26",
+          "B00XYMULAA",
+          "B00XYM7S3I",
           "B00XYM7M6G",
           "B00XYLS1MQ",
-          "B00XYLNYN2",
-          "B00XYMILHU",
-          "B00XYM2MZM",
-          "B00XYLNFNG",
-          "B00XYLLQAU",
-          "B00XYM1MV2",
-          "B00XYKSI66"
+          "B00XYM8CH4",
+          "B00XYLOEEK",
+          "B00XYLO7W4"
         ],
         "hybrid_rrf": [
+          "B00XYLWUAK",
+          "B00XYLWNOS",
           "B00XYLWH26",
+          "B00XYM7S3I",
+          "B00XYMULAA",
+          "B00XYLOEEK",
+          "B00XYLO7W4",
           "B00XYM7M6G",
-          "B00XYLNYN2",
-          "B00XYLS1MQ",
-          "B00XYMILHU",
-          "B00XYM2MZM",
-          "B00XYLNFNG",
-          "B00XYLLQAU",
           "B01C052LVS",
-          "B0798FPXVX"
+          "B00XYMILHU"
         ],
         "kg_attribute_history": [
           "B01C052LVS",
-          "B0798FPXVX",
-          "B01C055IFY",
+          "B00XYMULAA",
           "B00XYLDMUC",
           "B00XYMCEYG",
           "B0CBKZS7X2",
           "B00XYMILHU",
           "B00XYL4QV6",
+          "B0798FPXVX",
           "B00XYKZY6S",
           "B00XYKWFJC"
         ],
@@ -2091,23 +2091,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
+          "B00XYMULAA",
           "B00XYMILHU",
-          "B00XYL4QV6",
           "B01C052LVS",
-          "B00XYLWH26",
-          "B0798FPXVX",
-          "B00XYM7M6G",
-          "B01C055IFY",
-          "B00XYLS1MQ",
+          "B00XYLWUAK",
+          "B00XYLWNOS",
           "B00XYLDMUC",
-          "B00XYLNYN2"
+          "B00XYLWH26",
+          "B00XYMCEYG",
+          "B0CBKZS7X2",
+          "B00XYM7S3I"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -2115,23 +2115,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B00XYLWUAK",
+          "B00XYLWNOS",
           "B00XYLWH26",
+          "B00XYLOEEK",
+          "B00XYLO7W4",
           "B00XYLNYN2",
+          "B00XYLNQ8U",
+          "B00XYM7S3I",
           "B00XYM7M6G",
-          "B00XYLS1MQ",
-          "B00XYM2MZM",
-          "B00XYLNFNG",
-          "B00XYLLQAU",
-          "B00XYLUCN2",
-          "B00XYLPQDI",
-          "B00XYLPB5Q"
+          "B00XYMWGKS"
         ]
       },
       "title_intent": {
@@ -2150,45 +2150,45 @@
         "price_max": null
       },
       "title_keyword_profile": {
-        "attribute_overlap": 0.1488095238095238,
-        "average_quality_score": 0.78015,
-        "average_rating_score": 0.93,
+        "attribute_overlap": 0.1601190476190476,
+        "average_quality_score": 0.77713,
+        "average_rating_score": 0.8560000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.4911385781974017,
+        "diversity": 0.36895983464610915,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.754473699863949,
+        "novelty": 0.8409851926246267,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.07487980817094202,
-        "semantic_recall": 0.3539279662095938,
-        "title_overlap": 0.04860351636667426
+        "semantic_ndcg": 0.07759888293101806,
+        "semantic_recall": 0.3654139748784889,
+        "title_overlap": 0.046772068511198944
       },
       "user_id": "AEHNRIRHKXUWYPIEPZ3HTSJQUAYA"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.03611111111111111,
-        "average_quality_score": 0.88323,
-        "average_rating_score": 0.9359999999999999,
+        "attribute_overlap": 0.058611111111111114,
+        "average_quality_score": 0.89186,
+        "average_rating_score": 0.852,
         "catalog_coverage": 0.0,
-        "diversity": 0.9528084622071533,
+        "diversity": 0.9295836461339161,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6798002894672815,
+        "novelty": 0.6436334274106474,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.03293199815581511,
-        "semantic_recall": 0.1651400351686039,
-        "title_overlap": 0.022567953397421882
+        "semantic_ndcg": 0.02363985909503285,
+        "semantic_recall": 0.13404185716750763,
+        "title_overlap": 0.01055984555984556
       },
       "history_products": [
         "B07L9H27SH",
@@ -2200,42 +2200,42 @@
         "B08PLFZB89"
       ],
       "hybrid_rrf": {
-        "attribute_overlap": 0.0427020202020202,
-        "average_quality_score": 0.89337,
-        "average_rating_score": 0.9339999999999999,
+        "attribute_overlap": 0.042083333333333334,
+        "average_quality_score": 0.89172,
+        "average_rating_score": 0.8480000000000001,
         "catalog_coverage": 0.0,
-        "diversity": 0.9598200347330081,
+        "diversity": 0.9404961016997394,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5961313709831871,
+        "novelty": 0.6468191112550016,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.026173996843784603,
-        "semantic_recall": 0.143501385305037,
-        "title_overlap": 0.01955030660913014
+        "semantic_ndcg": 0.016221187619609077,
+        "semantic_recall": 0.09724671910852445,
+        "title_overlap": 0.005182724252491694
       },
       "kg_attribute_history": {
-        "attribute_overlap": 0.05131313131313131,
-        "average_quality_score": 0.89871,
+        "attribute_overlap": 0.04458333333333333,
+        "average_quality_score": 0.9395300000000001,
         "average_rating_score": 0.9,
         "catalog_coverage": 0.0,
-        "diversity": 0.9187923707651727,
+        "diversity": 0.9529221103995296,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.4671753014979768,
+        "novelty": 0.4701314574677962,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.033115875013847655,
-        "semantic_recall": 0.17051563795892824,
-        "title_overlap": 0.03129726973767221
+        "semantic_ndcg": 0.035685255530740034,
+        "semantic_recall": 0.17345139176145347,
+        "title_overlap": 0.020884193835540223
       },
       "kg_intent": {
         "attribute_filters": [
@@ -2245,23 +2245,28 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "size",
-            "value": "8 oz",
-            "weight": 0.7
-          },
-          {
             "attribute_type": "scent",
             "value": "tangerine",
             "weight": 0.7
           },
           {
-            "attribute_type": "brand",
-            "value": "argan magic",
+            "attribute_type": "size",
+            "value": "8 oz",
             "weight": 0.7
           },
           {
-            "attribute_type": "size",
-            "value": "4.23 oz",
+            "attribute_type": "texture",
+            "value": "foam",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "benefit",
+            "value": "hydrating",
+            "weight": 0.7
+          },
+          {
+            "attribute_type": "other",
+            "value": "color treated",
             "weight": 0.7
           },
           {
@@ -2270,25 +2275,20 @@
             "weight": 0.7
           },
           {
-            "attribute_type": "texture",
-            "value": "cream",
-            "weight": 0.7
-          },
-          {
-            "attribute_type": "other",
-            "value": "color treated",
+            "attribute_type": "size",
+            "value": "4.23 oz",
             "weight": 0.7
           }
         ],
         "keywords": [
           "all",
-          "8 oz",
           "tangerine",
-          "argan magic",
-          "4.23 oz",
+          "8 oz",
+          "foam",
+          "hydrating",
+          "color treated",
           "o!geti",
-          "cream",
-          "color treated"
+          "4.23 oz"
         ],
         "min_rating": null,
         "price_max": null
@@ -2303,33 +2303,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.01758982474514382,
+        "semantic_ndcg": 0.01776168543228995,
         "semantic_recall": 0.08131244356725222,
         "title_overlap": 0.0032258064516129032
       },
       "kg_semantic_history": {
-        "attribute_overlap": 0.05270202020202021,
-        "average_quality_score": 0.8810600000000001,
-        "average_rating_score": 0.93,
+        "attribute_overlap": 0.042083333333333334,
+        "average_quality_score": 0.93604,
+        "average_rating_score": 0.868,
         "catalog_coverage": 0.0,
-        "diversity": 0.9582837070679321,
+        "diversity": 0.9548216026145878,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.5713262935044013,
+        "novelty": 0.5423635267421879,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.030419002843524758,
-        "semantic_recall": 0.1580104004719469,
-        "title_overlap": 0.02312173518055871
+        "semantic_ndcg": 0.021304758692157248,
+        "semantic_recall": 0.11157637612752229,
+        "title_overlap": 0.007682724252491694
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -2405,51 +2405,51 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.01758982474514382,
+        "semantic_ndcg": 0.01776168543228995,
         "semantic_recall": 0.08131244356725222,
         "title_overlap": 0.0032258064516129032
       },
       "recommendations": {
         "bm25_history_profile": [
+          "B07D24GKQQ",
+          "B08PDQBWZR",
+          "B07DL94CPX",
           "B07P56BYX8",
+          "B00VH2AKC8",
           "B01KS18BV0",
           "B07Z9LPTLR",
-          "B0815VY23F",
-          "B096DM63T9",
-          "B08HSH335C",
-          "B096YHL82K",
-          "B07QGSFN15",
-          "B08KW8TCK3",
-          "B01LXQTVNE"
+          "B002Z2I224",
+          "B0BHFBHXW8",
+          "B00JVU2UHQ"
         ],
         "hybrid_rrf": [
+          "B07DL94CPX",
+          "B07D24GKQQ",
           "B07P56BYX8",
-          "B096DM63T9",
-          "B08HSH335C",
-          "B01KS18BV0",
-          "B07Z9LPTLR",
-          "B0815VY23F",
-          "B019JE1W2W",
-          "B081QTPRMP",
-          "B08T6NZCMR",
-          "B084KZQW5H"
+          "B08W58HSZQ",
+          "B002Z2I224",
+          "B08PDQBWZR",
+          "B00VH2AKC8",
+          "B07KBFQ588",
+          "B08X7JHQG5",
+          "B07K81LNHG"
         ],
         "kg_attribute_history": [
-          "B019JE1W2W",
-          "B081QTPRMP",
-          "B084KZQW5H",
-          "B08C337R86",
+          "B07KBFQ588",
+          "B08X7JHQG5",
+          "B014I0FDVI",
+          "B09KNNC73P",
           "B08W58HSZQ",
-          "B07BZVBYHH",
-          "B01NBKRMMO",
-          "B078845YCW",
-          "B00Z9NU5QM",
-          "B0B1719DWB"
+          "B08VRXNFNH",
+          "B0CCSW2DL9",
+          "B075S27J6Z",
+          "B0C7WQK2QW",
+          "B0BV1FPZY6"
         ],
         "kg_no_history_home": [
           "B07J6PNGGM",
@@ -2457,23 +2457,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
-          "B019JE1W2W",
-          "B07P56BYX8",
-          "B081QTPRMP",
-          "B01KS18BV0",
-          "B084KZQW5H",
-          "B07Z9LPTLR",
-          "B08C337R86",
-          "B0815VY23F",
           "B08W58HSZQ",
-          "B096DM63T9"
+          "B07KBFQ588",
+          "B07D24GKQQ",
+          "B08X7JHQG5",
+          "B08PDQBWZR",
+          "B014I0FDVI",
+          "B07DL94CPX",
+          "B09KNNC73P",
+          "B07P56BYX8",
+          "B00VH2AKC8"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -2481,23 +2481,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B07DL94CPX",
+          "B002Z2I224",
+          "B07K81LNHG",
           "B096DM63T9",
+          "B08FR3QXYY",
+          "B08W58HSZQ",
+          "B07D24GKQQ",
+          "B01H447ZYS",
           "B07P56BYX8",
-          "B08T6NZCMR",
-          "B0B2YHWC65",
-          "B01G4DK01U",
-          "B0B2Q37VJR",
-          "B08HSH335C",
-          "B07DV4WG46",
-          "B09PTZ3XRM",
-          "B072KL7L31"
+          "B08T6NZCMR"
         ]
       },
       "title_intent": {
@@ -2516,45 +2516,45 @@
         "price_max": null
       },
       "title_keyword_profile": {
-        "attribute_overlap": 0.0,
-        "average_quality_score": 0.91295,
-        "average_rating_score": 0.93,
+        "attribute_overlap": 0.0125,
+        "average_quality_score": 0.8890600000000001,
+        "average_rating_score": 0.818,
         "catalog_coverage": 0.0,
-        "diversity": 0.9596908258078201,
+        "diversity": 0.9431012747527633,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6063573311738754,
+        "novelty": 0.7063881837564304,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.009477367183697532,
-        "semantic_recall": 0.047523895315524284,
-        "title_overlap": 0.007814303199860114
+        "semantic_ndcg": 0.009395578504345675,
+        "semantic_recall": 0.047555890214089444,
+        "title_overlap": 0.002857142857142857
       },
       "user_id": "AEHWKRPNWNMOAJSMO2F6O7RFRTNA"
     },
     {
       "bm25_history_profile": {
-        "attribute_overlap": 0.0125,
-        "average_quality_score": 0.9460599999999999,
-        "average_rating_score": 0.9279999999999999,
+        "attribute_overlap": 0.029166666666666664,
+        "average_quality_score": 0.93134,
+        "average_rating_score": 0.77,
         "catalog_coverage": 0.0,
-        "diversity": 0.930309912998009,
+        "diversity": 0.9385496520529935,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6116943480075542,
+        "novelty": 0.6725881313675774,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02072720010010023,
-        "semantic_recall": 0.08465288202476826,
-        "title_overlap": 0.005798319327731093
+        "semantic_ndcg": 0.01767974989420696,
+        "semantic_recall": 0.10066838760946735,
+        "title_overlap": 0.006066176470588235
       },
       "history_products": [
         "B08FBSCQ71",
@@ -2566,23 +2566,23 @@
         "B0BC87LQ7Q"
       ],
       "hybrid_rrf": {
-        "attribute_overlap": 0.0125,
-        "average_quality_score": 0.9460599999999999,
-        "average_rating_score": 0.9279999999999999,
+        "attribute_overlap": 0.029166666666666664,
+        "average_quality_score": 0.93134,
+        "average_rating_score": 0.77,
         "catalog_coverage": 0.0,
-        "diversity": 0.930309912998009,
+        "diversity": 0.9385496520529935,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6116943480075542,
+        "novelty": 0.6725881313675774,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02072720010010023,
-        "semantic_recall": 0.08465288202476826,
-        "title_overlap": 0.005798319327731093
+        "semantic_ndcg": 0.01767974989420696,
+        "semantic_recall": 0.10066838760946735,
+        "title_overlap": 0.006066176470588235
       },
       "kg_attribute_history": {
         "attribute_overlap": 0.0,
@@ -2645,33 +2645,33 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.020622204930692625,
+        "semantic_ndcg": 0.020642898791182772,
         "semantic_recall": 0.09915266798418973,
         "title_overlap": 0.01
       },
       "kg_semantic_history": {
-        "attribute_overlap": 0.0125,
-        "average_quality_score": 0.9460599999999999,
-        "average_rating_score": 0.9279999999999999,
+        "attribute_overlap": 0.029166666666666664,
+        "average_quality_score": 0.93134,
+        "average_rating_score": 0.77,
         "catalog_coverage": 0.0,
-        "diversity": 0.930309912998009,
+        "diversity": 0.9385496520529935,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6116943480075542,
+        "novelty": 0.6725881313675774,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02072720010010023,
-        "semantic_recall": 0.08465288202476826,
-        "title_overlap": 0.005798319327731093
+        "semantic_ndcg": 0.01767974989420696,
+        "semantic_recall": 0.10066838760946735,
+        "title_overlap": 0.006066176470588235
       },
       "kg_semantic_intent": {
         "attribute_filters": [
@@ -2722,39 +2722,39 @@
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6286976121923145,
+        "novelty": 0.657217322430147,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.020622204930692625,
+        "semantic_ndcg": 0.020642898791182772,
         "semantic_recall": 0.09915266798418973,
         "title_overlap": 0.01
       },
       "recommendations": {
         "bm25_history_profile": [
+          "B0BKZFLTTH",
+          "B09WD7M1WL",
+          "B09NCDK9T1",
+          "B08ZSKYZCK",
           "B0B2YHWC65",
           "B0B2Q37VJR",
           "B01F6BEV2A",
+          "B01L94SSHC",
           "B07TBVCHSS",
-          "B0974GWS7Z",
-          "B08HZ8DYLQ",
-          "B09D435KXF",
-          "B07DBFVSPN",
-          "B0BLJ29VW7",
-          "B08HSH335C"
+          "B0BJKHW3BT"
         ],
         "hybrid_rrf": [
+          "B0BKZFLTTH",
+          "B09WD7M1WL",
+          "B09NCDK9T1",
+          "B08ZSKYZCK",
           "B0B2YHWC65",
           "B0B2Q37VJR",
           "B01F6BEV2A",
+          "B01L94SSHC",
           "B07TBVCHSS",
-          "B0974GWS7Z",
-          "B08HZ8DYLQ",
-          "B09D435KXF",
-          "B07DBFVSPN",
-          "B0BLJ29VW7",
-          "B08HSH335C"
+          "B0BJKHW3BT"
         ],
         "kg_attribute_history": [],
         "kg_no_history_home": [
@@ -2763,23 +2763,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "kg_semantic_history": [
+          "B0BKZFLTTH",
+          "B09WD7M1WL",
+          "B09NCDK9T1",
+          "B08ZSKYZCK",
           "B0B2YHWC65",
           "B0B2Q37VJR",
           "B01F6BEV2A",
+          "B01L94SSHC",
           "B07TBVCHSS",
-          "B0974GWS7Z",
-          "B08HZ8DYLQ",
-          "B09D435KXF",
-          "B07DBFVSPN",
-          "B0BLJ29VW7",
-          "B08HSH335C"
+          "B0BJKHW3BT"
         ],
         "popularity_baseline": [
           "B07J6PNGGM",
@@ -2787,23 +2787,23 @@
           "B01IA9D3OC",
           "B01MXC2N1L",
           "B01I9ZA6C4",
-          "B01N26L078",
           "B016V17FMW",
-          "B07GLC13Y9",
+          "B01N26L078",
           "B01I0QW7QK",
+          "B07GLC13Y9",
           "B07N4DDF7K"
         ],
         "title_keyword_profile": [
+          "B0BKZFLTTH",
+          "B09WD7M1WL",
+          "B09NCDK9T1",
+          "B08ZSKYZCK",
           "B0B2YHWC65",
           "B0B2Q37VJR",
           "B01F6BEV2A",
+          "B01L94SSHC",
           "B07TBVCHSS",
-          "B0974GWS7Z",
-          "B08HZ8DYLQ",
-          "B09D435KXF",
-          "B07DBFVSPN",
-          "B0BLJ29VW7",
-          "B08HSH335C"
+          "B0BJKHW3BT"
         ]
       },
       "title_intent": {
@@ -2822,23 +2822,23 @@
         "price_max": null
       },
       "title_keyword_profile": {
-        "attribute_overlap": 0.0125,
-        "average_quality_score": 0.9460599999999999,
-        "average_rating_score": 0.9279999999999999,
+        "attribute_overlap": 0.029166666666666664,
+        "average_quality_score": 0.93134,
+        "average_rating_score": 0.77,
         "catalog_coverage": 0.0,
-        "diversity": 0.930309912998009,
+        "diversity": 0.9385496520529935,
         "hit_rate": 0.0,
         "list_fill_rate": 1.0,
         "mrr": 0.0,
         "ndcg": 0.0,
-        "novelty": 0.6116943480075542,
+        "novelty": 0.6725881313675774,
         "precision": 0.0,
         "price_coverage": 1.0,
         "recall": 0.0,
         "sellable_rate": 1.0,
-        "semantic_ndcg": 0.02072720010010023,
-        "semantic_recall": 0.08465288202476826,
-        "title_overlap": 0.005798319327731093
+        "semantic_ndcg": 0.01767974989420696,
+        "semantic_recall": 0.10066838760946735,
+        "title_overlap": 0.006066176470588235
       },
       "user_id": "AELHYMCYVS6T35HA3UH5UGFWTK6Q"
     }
@@ -2851,137 +2851,174 @@
   },
   "methods": {
     "bm25_history_profile": {
-      "attribute_overlap": 0.0753,
-      "average_quality_score": 0.859,
-      "average_rating_score": 0.9371,
-      "catalog_coverage": 0.0331,
-      "diversity": 0.8592,
-      "hit_rate": 0.0,
+      "attribute_overlap": 0.0754,
+      "average_quality_score": 0.8567,
+      "average_rating_score": 0.8319,
+      "catalog_coverage": 0.0166,
+      "diversity": 0.8381,
+      "hit_rate": 0.0333,
       "list_fill_rate": 1.0,
-      "mrr": 0.0,
-      "ndcg": 0.0,
-      "novelty": 0.6763,
-      "precision": 0.0,
+      "mrr": 0.0167,
+      "ndcg": 0.0129,
+      "novelty": 0.6994,
+      "precision": 0.0033,
       "price_coverage": 1.0,
-      "recall": 0.0,
+      "recall": 0.0167,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0794,
-      "semantic_recall": 0.1993,
-      "title_overlap": 0.0719
+      "semantic_ndcg": 0.0805,
+      "semantic_recall": 0.2238,
+      "title_overlap": 0.069
     },
     "hybrid_rrf": {
-      "attribute_overlap": 0.075,
-      "average_quality_score": 0.8742,
-      "average_rating_score": 0.9275,
-      "catalog_coverage": 0.0325,
-      "diversity": 0.8673,
-      "hit_rate": 0.0,
+      "attribute_overlap": 0.0744,
+      "average_quality_score": 0.8738,
+      "average_rating_score": 0.8439,
+      "catalog_coverage": 0.0163,
+      "diversity": 0.8572,
+      "hit_rate": 0.0333,
       "list_fill_rate": 1.0,
-      "mrr": 0.0,
-      "ndcg": 0.0,
-      "novelty": 0.6348,
-      "precision": 0.0,
+      "mrr": 0.0083,
+      "ndcg": 0.0088,
+      "novelty": 0.6601,
+      "precision": 0.0033,
       "price_coverage": 1.0,
-      "recall": 0.0,
+      "recall": 0.0167,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0804,
-      "semantic_recall": 0.2041,
-      "title_overlap": 0.0731
+      "semantic_ndcg": 0.0771,
+      "semantic_recall": 0.2181,
+      "title_overlap": 0.068
     },
     "kg_attribute_history": {
-      "attribute_overlap": 0.0676,
-      "average_quality_score": 0.8959,
-      "average_rating_score": 0.8589,
-      "catalog_coverage": 0.0283,
-      "diversity": 0.8924,
-      "hit_rate": 0.0667,
+      "attribute_overlap": 0.0771,
+      "average_quality_score": 0.8956,
+      "average_rating_score": 0.8561,
+      "catalog_coverage": 0.0128,
+      "diversity": 0.8865,
+      "hit_rate": 0.1,
       "list_fill_rate": 0.9667,
-      "mrr": 0.0139,
-      "ndcg": 0.0161,
-      "novelty": 0.4526,
-      "precision": 0.0067,
+      "mrr": 0.0172,
+      "ndcg": 0.022,
+      "novelty": 0.4986,
+      "precision": 0.01,
       "price_coverage": 0.9667,
-      "recall": 0.0333,
+      "recall": 0.05,
       "sellable_rate": 0.9667,
-      "semantic_ndcg": 0.0699,
-      "semantic_recall": 0.2049,
-      "title_overlap": 0.0597
+      "semantic_ndcg": 0.0749,
+      "semantic_recall": 0.2348,
+      "title_overlap": 0.0647
     },
     "kg_no_history_home": {
       "attribute_overlap": 0.024,
       "average_quality_score": 0.852,
       "average_rating_score": 1.0,
-      "catalog_coverage": 0.0013,
+      "catalog_coverage": 0.0006,
       "diversity": 0.9888,
       "hit_rate": 0.0,
       "list_fill_rate": 1.0,
       "mrr": 0.0,
       "ndcg": 0.0,
-      "novelty": 0.6287,
+      "novelty": 0.6572,
       "precision": 0.0,
       "price_coverage": 1.0,
       "recall": 0.0,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0154,
+      "semantic_ndcg": 0.0155,
       "semantic_recall": 0.0843,
       "title_overlap": 0.0085
     },
     "kg_semantic_history": {
-      "attribute_overlap": 0.0697,
-      "average_quality_score": 0.901,
-      "average_rating_score": 0.9111,
-      "catalog_coverage": 0.0316,
-      "diversity": 0.91,
-      "hit_rate": 0.0333,
+      "attribute_overlap": 0.0759,
+      "average_quality_score": 0.903,
+      "average_rating_score": 0.8597,
+      "catalog_coverage": 0.0149,
+      "diversity": 0.9019,
+      "hit_rate": 0.0667,
       "list_fill_rate": 1.0,
-      "mrr": 0.0048,
-      "ndcg": 0.0068,
-      "novelty": 0.5631,
-      "precision": 0.0033,
+      "mrr": 0.0108,
+      "ndcg": 0.0144,
+      "novelty": 0.6002,
+      "precision": 0.0067,
       "price_coverage": 1.0,
-      "recall": 0.0167,
+      "recall": 0.0333,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0744,
-      "semantic_recall": 0.2115,
-      "title_overlap": 0.0665
+      "semantic_ndcg": 0.0787,
+      "semantic_recall": 0.2414,
+      "title_overlap": 0.0712
     },
     "popularity_baseline": {
       "attribute_overlap": 0.024,
       "average_quality_score": 0.852,
       "average_rating_score": 1.0,
-      "catalog_coverage": 0.0013,
+      "catalog_coverage": 0.0006,
       "diversity": 0.9888,
       "hit_rate": 0.0,
       "list_fill_rate": 1.0,
       "mrr": 0.0,
       "ndcg": 0.0,
-      "novelty": 0.6287,
+      "novelty": 0.6572,
       "precision": 0.0,
       "price_coverage": 1.0,
       "recall": 0.0,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0154,
+      "semantic_ndcg": 0.0155,
       "semantic_recall": 0.0843,
       "title_overlap": 0.0085
     },
     "title_keyword_profile": {
-      "attribute_overlap": 0.0769,
-      "average_quality_score": 0.8608,
-      "average_rating_score": 0.9342,
-      "catalog_coverage": 0.0326,
-      "diversity": 0.8429,
-      "hit_rate": 0.0,
+      "attribute_overlap": 0.0702,
+      "average_quality_score": 0.8508,
+      "average_rating_score": 0.8341,
+      "catalog_coverage": 0.0166,
+      "diversity": 0.8065,
+      "hit_rate": 0.0333,
       "list_fill_rate": 1.0,
-      "mrr": 0.0,
-      "ndcg": 0.0,
-      "novelty": 0.659,
-      "precision": 0.0,
+      "mrr": 0.0056,
+      "ndcg": 0.0073,
+      "novelty": 0.6912,
+      "precision": 0.0033,
       "price_coverage": 1.0,
-      "recall": 0.0,
+      "recall": 0.0167,
       "sellable_rate": 1.0,
-      "semantic_ndcg": 0.0824,
-      "semantic_recall": 0.2013,
-      "title_overlap": 0.0755
+      "semantic_ndcg": 0.0787,
+      "semantic_recall": 0.1987,
+      "title_overlap": 0.071
     }
+  },
+  "ranking_diagnostics": {
+    "candidate_catalog_size": 17280,
+    "holdout_in_candidate_catalog": 60,
+    "holdout_total": 60,
+    "method_exact_hits": {
+      "bm25_history_profile": {
+        "exact_hits": 1,
+        "users_with_hit": 1
+      },
+      "hybrid_rrf": {
+        "exact_hits": 1,
+        "users_with_hit": 1
+      },
+      "kg_attribute_history": {
+        "exact_hits": 3,
+        "users_with_hit": 3
+      },
+      "kg_no_history_home": {
+        "exact_hits": 0,
+        "users_with_hit": 0
+      },
+      "kg_semantic_history": {
+        "exact_hits": 2,
+        "users_with_hit": 2
+      },
+      "popularity_baseline": {
+        "exact_hits": 0,
+        "users_with_hit": 0
+      },
+      "title_keyword_profile": {
+        "exact_hits": 1,
+        "users_with_hit": 1
+      }
+    },
+    "unique_holdout_in_candidate_catalog": 55,
+    "unique_holdout_total": 55
   }
 }
