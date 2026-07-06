@@ -40,9 +40,12 @@ METRIC_KEYS = [
     "title_overlap",
     "attribute_overlap",
     "diversity",
+    "list_fill_rate",
+    "average_quality_score",
+    "average_rating_score",
+    "novelty",
     "sellable_rate",
     "price_coverage",
-    "reason_coverage",
     "catalog_coverage",
 ]
 
@@ -182,6 +185,15 @@ def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_sc
 
 def safe_div(num: Any, den: Any) -> float:
     return round(float(num or 0) / float(den or 1), 6)
+
+
+def optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_fact_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -517,6 +529,7 @@ def metrics(
     holdout: list[dict[str, Any]],
     k: int,
     catalog_by_id: dict[str, dict[str, Any]],
+    max_popularity: float,
 ) -> dict[str, float]:
     top_k = recommended[:k]
     hits = [1 if product_id in relevant else 0 for product_id in top_k]
@@ -536,7 +549,24 @@ def metrics(
     known_rows = [catalog_by_id.get(product_id, {}) for product_id in top_k]
     sellable = [row for row in known_rows if row.get("sellable_status") == "available"]
     priced = [row for row in known_rows if row.get("price") is not None]
-    reasoned = [product_id for product_id in top_k if product_id]
+    quality_scores = [
+        optional_float(row.get("data_quality_score"))
+        for row in known_rows
+        if optional_float(row.get("data_quality_score")) is not None
+    ]
+    rating_scores = [
+        min(max(optional_float(row.get("average_rating")) or 0.0, 0.0), 5.0) / 5.0
+        for row in known_rows
+        if optional_float(row.get("average_rating")) is not None
+    ]
+    popularity_values = [
+        max(optional_float(row.get("rating_number")) or 0.0, 0.0)
+        for row in known_rows
+    ]
+    novelty_scores = [
+        1.0 - min(math.log1p(value) / math.log1p(max(max_popularity, 1.0)), 1.0)
+        for value in popularity_values
+    ]
     holdout_by_id = {row["product_id"]: row for row in holdout if row.get("product_id")}
     missing_holdout = [product_id for product_id in relevant if product_id not in catalog_by_id]
     if missing_holdout:
@@ -566,9 +596,12 @@ def metrics(
         "title_overlap": sum(title_scores) / denom,
         "attribute_overlap": sum(attribute_scores) / denom,
         "diversity": pairwise_diversity(known_rows),
+        "list_fill_rate": len(top_k) / max(k, 1),
+        "average_quality_score": sum(quality_scores) / max(len(quality_scores), 1),
+        "average_rating_score": sum(rating_scores) / max(len(rating_scores), 1),
+        "novelty": sum(novelty_scores) / max(len(novelty_scores), 1),
         "sellable_rate": len(sellable) / denom,
         "price_coverage": len(priced) / denom,
-        "reason_coverage": len(reasoned) / denom,
         "catalog_coverage": 0.0,
     }
 
@@ -663,8 +696,8 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
             "## Method Metrics",
             "",
-            "| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | Novelty@K | Quality@K | Rating@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for method, metrics_row in summary["methods"].items():
@@ -683,6 +716,9 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
                     f"{metrics_row['title_overlap']:.4f}",
                     f"{metrics_row['attribute_overlap']:.4f}",
                     f"{metrics_row['diversity']:.4f}",
+                    f"{metrics_row['novelty']:.4f}",
+                    f"{metrics_row['average_quality_score']:.4f}",
+                    f"{metrics_row['average_rating_score']:.4f}",
                     f"{metrics_row['catalog_coverage']:.4f}",
                     f"{metrics_row['sellable_rate']:.4f}",
                     f"{metrics_row['price_coverage']:.4f}",
@@ -697,9 +733,9 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
             "- Exact held-out ASIN prediction is intentionally strict; low HitRate/NDCG/MRR means the experiment rarely recovers the same future reviewed product in Top-K.",
             "- `SemanticNDCG@K`, `SemanticRecall@K`, `TitleOverlap@K`, and `AttributeOverlap@K` are softer discovery metrics for cases where the correct answer is a similar product rather than the exact future ASIN.",
-            "- `Diversity@K` and `CatalogCoverage@K` check whether a method collapses to the same narrow set of products.",
+            "- `Diversity@K`, `Novelty@K`, and `CatalogCoverage@K` check whether a method collapses to the same narrow set of popular products.",
+            "- `SellableRate@K` and `PriceCoverage@K` are constraint checks. They are expected to be near 1.0 because the candidate pool is filtered to recommendable products.",
             "- Low `recommendable_attribute_coverage` means KG attribute-history methods are limited by current LLM attribute coverage, not only by ranking quality.",
-            "- `SellableRate@K` and `PriceCoverage@K` verify that comparison methods are not winning by recommending unusable products.",
             "",
             "## Output Files",
             "",
@@ -775,6 +811,7 @@ def main() -> None:
         append_jsonl(intermediates_dir / "candidate_catalog.jsonl", catalog)
     bm25_index = build_bm25_index(catalog)
     no_history_home_ids = popularity_baseline(catalog, args.k * 3)
+    max_popularity = max((optional_float(row.get("rating_number")) or 0.0 for row in catalog), default=1.0)
 
     method_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
     method_unique_recommendations: dict[str, set[str]] = defaultdict(set)
@@ -857,7 +894,7 @@ def main() -> None:
             "title_intent": title_intent.model_dump(),
         }
         for method, recommendations in methods.items():
-            row_metrics = metrics(recommendations, relevant, holdout, args.k, catalog_by_id)
+            row_metrics = metrics(recommendations, relevant, holdout, args.k, catalog_by_id, max_popularity)
             method_metrics[method].append(row_metrics)
             method_unique_recommendations[method].update(recommendations[: args.k])
             user_metrics[method] = row_metrics
@@ -923,7 +960,7 @@ def main() -> None:
     plot_metric_group(
         summary,
         charts_dir / "operational_metrics.png",
-        ["sellable_rate", "price_coverage", "reason_coverage", "diversity", "catalog_coverage"],
+        ["list_fill_rate", "average_quality_score", "average_rating_score", "novelty", "diversity", "catalog_coverage"],
         "Operational Quality Metrics",
         fixed_ylim=True,
     )

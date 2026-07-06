@@ -1,6 +1,6 @@
 # Offline Recommender Comparison
 
-Created at: `2026-07-05T20:23:52.264671+00:00`
+Created at: `2026-07-06T00:33:29.732179+00:00`
 Evaluated users: `30`
 Ground-truth scope: `recommendable`
 
@@ -18,23 +18,23 @@ Ready for experiment: `True`
 
 ## Method Metrics
 
-| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `bm25_history_profile` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0794 | 0.1993 | 0.0719 | 0.0753 | 0.8592 | 0.0331 | 1.0000 | 1.0000 |
-| `hybrid_rrf` | 0.0167 | 0.0333 | 0.0064 | 0.0042 | 0.0033 | 0.0828 | 0.2209 | 0.0761 | 0.0788 | 0.8674 | 0.0331 | 1.0000 | 1.0000 |
-| `kg_attribute_history` | 0.0500 | 0.1000 | 0.0365 | 0.0472 | 0.0100 | 0.0805 | 0.2438 | 0.0661 | 0.0766 | 0.8886 | 0.0300 | 0.9667 | 0.9667 |
-| `kg_no_history_home` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0154 | 0.0843 | 0.0085 | 0.0240 | 0.9888 | 0.0013 | 1.0000 | 1.0000 |
-| `kg_semantic_history` | 0.0333 | 0.0667 | 0.0273 | 0.0381 | 0.0067 | 0.0830 | 0.2346 | 0.0709 | 0.0728 | 0.9099 | 0.0329 | 1.0000 | 1.0000 |
-| `popularity_baseline` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0154 | 0.0843 | 0.0085 | 0.0240 | 0.9888 | 0.0013 | 1.0000 | 1.0000 |
-| `title_keyword_profile` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0824 | 0.2013 | 0.0755 | 0.0769 | 0.8429 | 0.0326 | 1.0000 | 1.0000 |
+| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | Novelty@K | Quality@K | Rating@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `bm25_history_profile` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0794 | 0.1993 | 0.0719 | 0.0753 | 0.8592 | 0.6763 | 0.8590 | 0.9371 | 0.0331 | 1.0000 | 1.0000 |
+| `hybrid_rrf` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0804 | 0.2041 | 0.0731 | 0.0750 | 0.8673 | 0.6348 | 0.8742 | 0.9275 | 0.0325 | 1.0000 | 1.0000 |
+| `kg_attribute_history` | 0.0333 | 0.0667 | 0.0161 | 0.0139 | 0.0067 | 0.0699 | 0.2049 | 0.0597 | 0.0676 | 0.8924 | 0.4526 | 0.8959 | 0.8589 | 0.0283 | 0.9667 | 0.9667 |
+| `kg_no_history_home` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0154 | 0.0843 | 0.0085 | 0.0240 | 0.9888 | 0.6287 | 0.8520 | 1.0000 | 0.0013 | 1.0000 | 1.0000 |
+| `kg_semantic_history` | 0.0167 | 0.0333 | 0.0068 | 0.0048 | 0.0033 | 0.0744 | 0.2115 | 0.0665 | 0.0697 | 0.9100 | 0.5631 | 0.9010 | 0.9111 | 0.0316 | 1.0000 | 1.0000 |
+| `popularity_baseline` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0154 | 0.0843 | 0.0085 | 0.0240 | 0.9888 | 0.6287 | 0.8520 | 1.0000 | 0.0013 | 1.0000 | 1.0000 |
+| `title_keyword_profile` | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0824 | 0.2013 | 0.0755 | 0.0769 | 0.8429 | 0.6590 | 0.8608 | 0.9342 | 0.0326 | 1.0000 | 1.0000 |
 
 ## Interpretation Notes
 
 - Exact held-out ASIN prediction is intentionally strict; low HitRate/NDCG/MRR means the experiment rarely recovers the same future reviewed product in Top-K.
 - `SemanticNDCG@K`, `SemanticRecall@K`, `TitleOverlap@K`, and `AttributeOverlap@K` are softer discovery metrics for cases where the correct answer is a similar product rather than the exact future ASIN.
-- `Diversity@K` and `CatalogCoverage@K` check whether a method collapses to the same narrow set of products.
+- `Diversity@K`, `Novelty@K`, and `CatalogCoverage@K` check whether a method collapses to the same narrow set of popular products.
+- `SellableRate@K` and `PriceCoverage@K` are constraint checks. They are expected to be near 1.0 because the candidate pool is filtered to recommendable products.
 - Low `recommendable_attribute_coverage` means KG attribute-history methods are limited by current LLM attribute coverage, not only by ranking quality.
-- `SellableRate@K` and `PriceCoverage@K` verify that comparison methods are not winning by recommending unusable products.
 - Non-zero exact-hit scores show that the evaluation target is now aligned with the recommendable product pool.
 
 ## Output Files
