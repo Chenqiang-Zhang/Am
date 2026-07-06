@@ -46,12 +46,42 @@ Product -[HAS_ATTRIBUTE]-> Attribute
 | 实体 | 数量 |
 |---|---|
 | Product | 112,590 |
-| User | 168,659 |
+| User | 168,664 |
 | Review | 200,000 |
 | Store | 30,361 |
 | Feature | 89,666 |
 | Category | 2 |
-| Attribute（已提取） | ~1,000 个商品 |
+| Attribute 关系（已提取/导入） | 49,253 |
+| 带 Attribute 的商品 | 109,410 |
+| 默认可推荐商品 | 17,280 |
+
+当前推荐默认只进入 `sellable_status = "available"` 且 `data_quality_score >= 0.6` 的商品池。这样会牺牲覆盖率，但能避免无价格、严重缺字段、不可售商品进入默认推荐结果。
+
+---
+
+## 当前系统价值与推荐逻辑
+
+本项目不是单纯的热门商品推荐。当前系统结合了以下信号：
+
+1. **LLM 意图抽取**：自然语言输入先转换成 `SearchIntent`，包括商品类型、肤质/发质、香味、成分、预算、最低评分等。
+2. **受控 Query Plan**：LLM 不直接生成 Cypher。后端只执行白名单中的召回/排序动作，降低错误查询和不可控查询风险。
+3. **KG 召回**：通过 `Product -[:HAS_ATTRIBUTE]-> Attribute`、`HAS_FEATURE`、标题/分类/品牌字段召回候选。
+4. **行为召回**：基于用户历史商品做 item-CF 召回，以及“历史商品之后常被选择的商品” transition 召回。
+5. **二阶段排序**：先召回 Top-50 候选，再用 KG 匹配、行为信号、文本相似度、数据质量、评分、人气、评论 mention 信号重排 Top-10。
+6. **解释与定量化**：API 返回 `matched_attributes`、`matched_terms`、`matched_feature_evidence`、`score_breakdown` 和 `reason_quantification`，前端可以展示推荐理由和各理由贡献。
+
+发表/demo 时可以强调：系统目标不是只追求热门商品命中，而是在推荐精度、解释性、可控性、商品可销售性之间取得平衡。
+
+## 当前离线评估结论
+
+当前保存了两份离线评估报告：
+
+| 报告目录 | 评估口径 | 用户数 | 候选覆盖 | 主要结论 |
+|---|---|---:|---:|---|
+| `reports/evaluation/offline_comparison/` | `recommendable` | 45 | 90 / 90 holdout | 更接近当前线上推荐质量；`hybrid_rrf` 的 HitRate@50 为 0.5111 |
+| `reports/evaluation/offline_comparison_200_users/` | `all` | 200 | 70 / 400 holdout | 数据覆盖压力测试；大部分未来商品不在当前可推荐池中，因此 exact-ASIN 分数较低 |
+
+因此汇报时应区分两件事：一是“当前线上可推荐商品池内，混合推荐明显优于热门/文本基线”；二是“如果用全部未来评论商品作为精确 ASIN 目标，当前商品清洗和可售过滤会显著限制上限”。
 
 ---
 
@@ -166,9 +196,11 @@ uvicorn api.main:app --reload
 ```
 
 核心推荐流程：
-1. LLM 将用户自然语言查询解析为结构化属性过滤条件
-2. Cypher 查询匹配 `HAS_ATTRIBUTE` 边，按 `confidence × weight` 加权打分
-3. 返回推荐列表，每条结果附带匹配到的属性作为推荐根据
+1. LLM 或启发式解析器将自然语言输入解析为 `SearchIntent`
+2. 后端生成受控 `QueryPlan`，只允许白名单中的 Cypher 模板执行
+3. 通过 Attribute、Feature、标题/分类/品牌、item-CF、transition 五类路径召回 Top-50 候选
+4. 用 KG 匹配、行为信号、文本相似度、数据质量、评分、人气、评论 mention 等信号重排 Top-10
+5. 返回推荐列表，每条结果附带推荐路径、匹配证据、分数拆解和多语言展示字段
 
 ---
 

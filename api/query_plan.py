@@ -14,6 +14,8 @@ ALLOWED_QUERY_ACTIONS = {
     "apply_price_ceiling",
     "apply_min_rating",
     "apply_user_history_boost",
+    "item_cf_recall",
+    "transition_recall",
     "apply_review_mention_ranking",
     "deduplicate_products",
     "rerank_hybrid",
@@ -27,6 +29,8 @@ ACTION_CYPHER_TEMPLATES = {
     "filter_available": "embedded_in_recall_where_clause",
     "filter_quality": "embedded_in_recall_where_clause",
     "apply_user_history_boost": "USER_BEHAVIOR_ATTRIBUTE_CONTEXT",
+    "item_cf_recall": "ITEM_CF_RECALL_CYPHER",
+    "transition_recall": "TRANSITION_RECALL_CYPHER",
     "apply_review_mention_ranking": "REVIEW_MENTIONS_CONTEXT",
 }
 
@@ -52,6 +56,7 @@ def build_controlled_query_plan(
         "min_rating": intent.min_rating,
         "attribute_filter_count": len(intent.attribute_filters),
         "keyword_count": len(intent.keywords),
+        "second_stage_rerank_pool": 50,
     }
     history_terms = [term for term in (history_terms or []) if term]
     if history_terms:
@@ -101,6 +106,18 @@ def build_controlled_query_plan(
             _action(
                 "apply_user_history_boost",
                 "Boost candidates that share graph attributes with products from the user's positive behavior history.",
+            )
+        )
+        actions.append(
+            _action(
+                "item_cf_recall",
+                "Recall products co-consumed by other users who interacted with the user's history products.",
+            )
+        )
+        actions.append(
+            _action(
+                "transition_recall",
+                "Recall products that other users tended to interact with after the user's history products.",
             )
         )
 

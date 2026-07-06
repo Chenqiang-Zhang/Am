@@ -80,7 +80,8 @@ export interface Recommendation {
   matched_terms: string[];
   matched_feature_evidence: string[];
   /** スコア内訳。キー例: attribute_match / feature_text_match / field_match /
-   *  rating_quality / popularity / query_coverage（0〜1） */
+   *  text_similarity / data_quality / item_cf / transition / rating_quality /
+   *  popularity / query_coverage（0〜1） */
   score_breakdown: Record<string, number>;
   /** レコメンド理由の定量化。通常は score_breakdown と同じキーをユーザー説明用に返す。 */
   reason_quantification: Record<string, number>;

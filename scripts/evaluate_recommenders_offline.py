@@ -947,6 +947,7 @@ def main() -> None:
 
     catalog = fetch_catalog(driver, database, args.candidate_catalog_limit, args.min_quality_score)
     catalog_by_id = {row["product_id"]: row for row in catalog}
+    candidate_catalog_ids = set(catalog_by_id)
     if not args.skip_catalog_snapshot:
         append_jsonl(intermediates_dir / "candidate_catalog.jsonl", catalog)
     bm25_index = build_bm25_index(catalog)
@@ -1086,7 +1087,6 @@ def main() -> None:
     catalog_size = max(len(catalog), 1)
     for method, row in method_summary.items():
         row["catalog_coverage"] = round(len(method_unique_recommendations.get(method, set())) / catalog_size, 4)
-    catalog_ids = set(catalog_by_id)
     holdout_products = [
         product_id
         for row in per_user_rows
@@ -1111,8 +1111,8 @@ def main() -> None:
         "candidate_catalog_size": len(catalog),
         "holdout_total": len(holdout_products),
         "unique_holdout_total": len(unique_holdouts),
-        "holdout_in_candidate_catalog": sum(1 for product_id in holdout_products if product_id in catalog_ids),
-        "unique_holdout_in_candidate_catalog": len(unique_holdouts & catalog_ids),
+        "holdout_in_candidate_catalog": sum(1 for product_id in holdout_products if product_id in candidate_catalog_ids),
+        "unique_holdout_in_candidate_catalog": len(unique_holdouts & candidate_catalog_ids),
         "method_exact_hits": exact_hit_rows,
     }
 

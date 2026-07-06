@@ -12,6 +12,7 @@ RECOMMENDATION_FIELDS = {
     "product_id",
     "title",
     "display_title",
+    "display_language",
     "image_url",
     "price",
     "price_display",

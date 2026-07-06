@@ -254,9 +254,79 @@ ORDER BY field_score DESC
 LIMIT $candidate_limit
 """
 
+_ITEM_CF_RECALL_CYPHER = """
+MATCH (h:Product)<-[:RATED]-(u:User)-[r:RATED]->(p:Product)
+WHERE h.product_id IN $history_ids
+  AND u.user_id <> $user_id
+  AND NOT p.product_id IN $history_ids
+  AND coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+  AND ($min_rating IS NULL OR toFloat(p.average_rating) >= $min_rating)
+  AND ($price_max IS NULL OR (p.price IS NOT NULL AND toFloat(p.price) <= $price_max))
+WITH p,
+     count(DISTINCT u) AS co_users,
+     count(DISTINCT h) AS matched_history,
+     avg(toFloat(coalesce(r.rating, 0))) AS avg_neighbor_rating
+RETURN p.product_id AS product_id,
+       p.title AS title,
+       p.price AS price,
+       p.average_rating AS average_rating,
+       p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
+       co_users,
+       matched_history,
+       avg_neighbor_rating
+ORDER BY co_users DESC,
+         matched_history DESC,
+         avg_neighbor_rating DESC,
+         coalesce(toFloat(p.average_rating), 0.0) DESC,
+         coalesce(toInteger(p.rating_number), 0) DESC
+LIMIT $candidate_limit
+"""
+
+_TRANSITION_RECALL_CYPHER = """
+MATCH (h:Product)<-[hr:RATED]-(u:User)-[r:RATED]->(p:Product)
+WHERE h.product_id IN $history_ids
+  AND u.user_id <> $user_id
+  AND hr.timestamp IS NOT NULL
+  AND r.timestamp IS NOT NULL
+  AND r.timestamp > hr.timestamp
+  AND NOT p.product_id IN $history_ids
+  AND coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
+  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+  AND ($min_rating IS NULL OR toFloat(p.average_rating) >= $min_rating)
+  AND ($price_max IS NULL OR (p.price IS NOT NULL AND toFloat(p.price) <= $price_max))
+WITH p,
+     count(*) AS transitions,
+     count(DISTINCT u) AS transition_users,
+     min(r.timestamp - hr.timestamp) AS min_time_gap,
+     avg(toFloat(coalesce(r.rating, 0))) AS avg_next_rating
+RETURN p.product_id AS product_id,
+       p.title AS title,
+       p.price AS price,
+       p.average_rating AS average_rating,
+       p.rating_number AS rating_number,
+       properties(p).image_url AS image_url,
+       p.sellable_status AS sellable_status,
+       p.data_quality_score AS data_quality_score,
+       transitions,
+       transition_users,
+       min_time_gap,
+       avg_next_rating
+ORDER BY transitions DESC,
+         transition_users DESC,
+         min_time_gap ASC,
+         avg_next_rating DESC,
+         coalesce(toInteger(p.rating_number), 0) DESC
+LIMIT $candidate_limit
+"""
+
 RATING_PRIOR = 3.8
 RATING_PRIOR_COUNT = 50
 POPULARITY_REFERENCE_COUNT = 5000
+SECOND_STAGE_RECALL_LIMIT = 50
 DEFAULT_MIN_RECOMMENDATION_QUALITY_SCORE = 0.6
 FEEDBACK_LOG_PATH = Path("logs/recommendation_feedback.jsonl")
 BEHAVIOR_EVENT_WEIGHTS = {
@@ -813,7 +883,7 @@ class Recommender:
             {"attribute_type": f.attribute_type, "value": f.value, "weight": f.weight}
             for f in intent.attribute_filters
         ]
-        candidate_limit = max(100, min(500, limit * 50))
+        candidate_limit = max(SECOND_STAGE_RECALL_LIMIT, min(200, limit * 5))
         actions = enabled_action_names(query_plan)
 
         with self.driver.session(database=self.neo4j_database) as session:
@@ -875,13 +945,20 @@ class Recommender:
                     candidate = _candidate(candidates, record)
                     candidate["field_terms"].update(record["field_terms"] or [])
 
+            if user_id:
+                history_ids = self._history_product_ids(session, user_id)
+                if history_ids and "item_cf_recall" in actions:
+                    self._apply_item_cf_recall(session, candidates, user_id, history_ids, intent, candidate_limit)
+                if history_ids and "transition_recall" in actions:
+                    self._apply_transition_recall(session, candidates, user_id, history_ids, intent, candidate_limit)
+
             if candidates:
                 if "apply_user_history_boost" in actions:
                     self._apply_behavior_context(session, candidates, user_id)
                 if "apply_review_mention_ranking" in actions:
                     self._apply_review_mention_context(session, candidates, intent, terms)
 
-        return _rank_candidates(candidates, intent, terms, limit, lang)
+        return _rank_candidates(candidates, intent, terms, max(limit, SECOND_STAGE_RECALL_LIMIT), lang)[:limit]
 
     def make_query_plan(self, query: str, intent: SearchIntent, user_id: str | None = None) -> QueryPlan:
         return build_controlled_query_plan(
@@ -918,7 +995,7 @@ class Recommender:
             result = session.run(
                 _HOME_RECOMMEND_CYPHER,
                 min_quality_score=self.min_quality_score,
-                candidate_limit=max(100, min(500, limit * 50)),
+                candidate_limit=max(SECOND_STAGE_RECALL_LIMIT, min(200, limit * 5)),
             )
             for record in result:
                 candidate = _candidate(candidates, record)
@@ -930,7 +1007,8 @@ class Recommender:
                     self._apply_behavior_context(session, candidates, user_id)
                 if "apply_review_mention_ranking" in fallback_actions:
                     self._apply_review_mention_context(session, candidates, fallback_intent, ["popular"])
-        return fallback_intent, fallback_plan, _rank_candidates(candidates, fallback_intent, ["popular"], limit, lang)
+        reranked = _rank_candidates(candidates, fallback_intent, ["popular"], max(limit, SECOND_STAGE_RECALL_LIMIT), lang)
+        return fallback_intent, fallback_plan, reranked[:limit]
 
     def chat(
         self,
@@ -1164,6 +1242,91 @@ RETURN attribute_type, value, weight
             keywords = ["popular"]
         return SearchIntent(attribute_filters=filters, keywords=keywords[:5], price_max=None, min_rating=None)
 
+    def _history_product_ids(self, session: Any, user_id: str | None, limit: int = 20) -> list[str]:
+        user_id = _clean_user_id(user_id)
+        if not user_id:
+            return []
+        record = session.run(
+            """
+            MATCH (u:User {user_id: $user_id})
+            OPTIONAL MATCH (u)-[:PERFORMED]->(e:BehaviorEvent)-[:ON_PRODUCT]->(bp:Product)
+            WHERE e.event_type IN $positive_events
+            WITH u, collect(DISTINCT bp.product_id) AS behavior_ids
+            OPTIONAL MATCH (u)-[r:RATED]->(rp:Product)
+            WHERE toFloat(coalesce(r.rating, 0)) >= 4
+            WITH behavior_ids, collect(DISTINCT rp.product_id) AS rated_ids
+            RETURN behavior_ids + rated_ids AS product_ids
+            """,
+            user_id=user_id,
+            positive_events=POSITIVE_BEHAVIOR_EVENTS,
+        ).single()
+        raw_ids = record["product_ids"] if record else []
+        history_ids: list[str] = []
+        for product_id in raw_ids or []:
+            if isinstance(product_id, str) and product_id and product_id not in history_ids:
+                history_ids.append(product_id)
+            if len(history_ids) >= limit:
+                break
+        return history_ids
+
+    def _apply_item_cf_recall(
+        self,
+        session: Any,
+        candidates: dict[str, dict[str, Any]],
+        user_id: str,
+        history_ids: list[str],
+        intent: SearchIntent,
+        candidate_limit: int,
+    ) -> None:
+        result = session.run(
+            _ITEM_CF_RECALL_CYPHER,
+            user_id=_clean_user_id(user_id),
+            history_ids=history_ids,
+            min_rating=intent.min_rating,
+            price_max=intent.price_max,
+            min_quality_score=self.min_quality_score,
+            candidate_limit=candidate_limit,
+        )
+        for record in result:
+            candidate = _candidate(candidates, record)
+            co_users = float(record["co_users"] or 0.0)
+            matched_history = float(record["matched_history"] or 0.0)
+            rating_score = _clamp((float(record["avg_neighbor_rating"] or 0.0) - 3.0) / 2.0)
+            candidate["item_cf_score"] = max(
+                candidate.get("item_cf_score", 0.0),
+                _clamp((co_users / 8.0) * 0.55 + (matched_history / max(len(history_ids), 1)) * 0.30 + rating_score * 0.15),
+            )
+            candidate["recall_sources"].add("item_cf")
+
+    def _apply_transition_recall(
+        self,
+        session: Any,
+        candidates: dict[str, dict[str, Any]],
+        user_id: str,
+        history_ids: list[str],
+        intent: SearchIntent,
+        candidate_limit: int,
+    ) -> None:
+        result = session.run(
+            _TRANSITION_RECALL_CYPHER,
+            user_id=_clean_user_id(user_id),
+            history_ids=history_ids,
+            min_rating=intent.min_rating,
+            price_max=intent.price_max,
+            min_quality_score=self.min_quality_score,
+            candidate_limit=candidate_limit,
+        )
+        for record in result:
+            candidate = _candidate(candidates, record)
+            transitions = float(record["transitions"] or 0.0)
+            transition_users = float(record["transition_users"] or 0.0)
+            rating_score = _clamp((float(record["avg_next_rating"] or 0.0) - 3.0) / 2.0)
+            candidate["transition_score"] = max(
+                candidate.get("transition_score", 0.0),
+                _clamp((transitions / 8.0) * 0.50 + (transition_users / 6.0) * 0.35 + rating_score * 0.15),
+            )
+            candidate["recall_sources"].add("transition")
+
     def _apply_behavior_context(
         self,
         session: Any,
@@ -1331,6 +1494,23 @@ def _search_terms(intent: SearchIntent) -> list[str]:
     return terms
 
 
+def _text_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) >= 2 and token not in {"the", "and", "for", "with", "skin", "hair", "product"}
+    }
+
+
+def _title_text_similarity(title: str, terms: list[str]) -> float:
+    title_tokens = _text_tokens(title)
+    query_tokens = set().union(*(_text_tokens(term) for term in terms)) if terms else set()
+    if not title_tokens or not query_tokens:
+        return 0.0
+    overlap = len(title_tokens & query_tokens)
+    return _clamp(overlap / max(len(query_tokens), 1))
+
+
 def _candidate(candidates: dict[str, dict[str, Any]], record: Any) -> dict[str, Any]:
     product_id = record["product_id"]
     candidate = candidates.get(product_id)
@@ -1349,9 +1529,13 @@ def _candidate(candidates: dict[str, dict[str, Any]], record: Any) -> dict[str, 
             "attribute_score": 0.0,
             "field_score": _optional_float(record.get("field_score")) or 0.0,
             "behavior_score": 0.0,
+            "item_cf_score": 0.0,
+            "transition_score": 0.0,
+            "text_similarity_score": 0.0,
             "seen_penalty": 0.0,
             "review_positive_score": 0.0,
             "review_negative_score": 0.0,
+            "recall_sources": set(),
             "matched_attributes": [],
             "feature_terms": set(),
             "field_terms": set(),
@@ -1388,7 +1572,14 @@ def _rank_candidates(
         popularity_score = _popularity_score(candidate["rating_number"])
         query_coverage_score = min((len(matched_attributes) + len(matched_terms)) / total_signals, 1.0)
         price_availability_score = 1.0 if candidate["price"] is not None else 0.0
+        data_quality_score = _clamp(float(candidate.get("data_quality_score") or 0.0))
         user_behavior_score = float(candidate.get("behavior_score") or 0.0)
+        item_cf_score = float(candidate.get("item_cf_score") or 0.0)
+        transition_score = float(candidate.get("transition_score") or 0.0)
+        text_similarity_score = max(
+            float(candidate.get("text_similarity_score") or 0.0),
+            _title_text_similarity(candidate["title"], terms),
+        )
         seen_penalty_score = float(candidate.get("seen_penalty") or 0.0)
         review_positive_score = float(candidate.get("review_positive_score") or 0.0)
         review_negative_score = float(candidate.get("review_negative_score") or 0.0)
@@ -1397,11 +1588,15 @@ def _rank_candidates(
             4.5 * attribute_match_score
             + 2.0 * feature_text_match_score
             + 1.0 * field_match_score
+            + 1.1 * text_similarity_score
             + 1.5 * rating_quality_score
+            + 0.8 * data_quality_score
             + 0.75 * popularity_score
             + 1.25 * query_coverage_score
             + 2.0 * price_availability_score
             + 1.2 * user_behavior_score
+            + 1.6 * item_cf_score
+            + 1.8 * transition_score
             + 1.0 * review_positive_score
             - 1.2 * review_negative_score
             - 0.75 * seen_penalty_score
@@ -1411,11 +1606,15 @@ def _rank_candidates(
             "attribute_match": round(attribute_match_score, 4),
             "feature_text_match": round(feature_text_match_score, 4),
             "field_match": round(field_match_score, 4),
+            "text_similarity": round(text_similarity_score, 4),
             "rating_quality": round(rating_quality_score, 4),
+            "data_quality": round(data_quality_score, 4),
             "popularity": round(popularity_score, 4),
             "query_coverage": round(query_coverage_score, 4),
             "price_availability": round(price_availability_score, 4),
             "user_behavior": round(user_behavior_score, 4),
+            "item_cf": round(item_cf_score, 4),
+            "transition": round(transition_score, 4),
             "review_positive": round(review_positive_score, 4),
             "review_negative": round(review_negative_score, 4),
             "seen_penalty": round(seen_penalty_score, 4),
@@ -1475,6 +1674,10 @@ def _build_rich_explanation(candidate: dict[str, Any], matched_terms: list[str],
             parts.append(f"rating: {candidate['average_rating']:.1f} from {rating_number} ratings")
     if candidate.get("behavior_score", 0.0) > 0:
         parts.append("ユーザー行動と類似" if _normalize_lang(lang) == "ja" else "similar to your activity")
+    if candidate.get("item_cf_score", 0.0) > 0:
+        parts.append("似たユーザーの行動に基づく推薦" if _normalize_lang(lang) == "ja" else "co-used by similar users")
+    if candidate.get("transition_score", 0.0) > 0:
+        parts.append("履歴後の次の商品行動に基づく推薦" if _normalize_lang(lang) == "ja" else "often chosen after similar history")
     if candidate.get("review_positive_score", 0.0) > 0:
         parts.append("レビュー内の好意的な言及あり" if _normalize_lang(lang) == "ja" else "positive review mentions")
     fallback = "商品品質シグナルに基づく推薦" if _normalize_lang(lang) == "ja" else "Matched by product quality signals"
