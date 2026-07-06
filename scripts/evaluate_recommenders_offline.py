@@ -35,6 +35,12 @@ METRIC_KEYS = [
     "precision",
     "mrr",
     "ndcg",
+    "hit_rate_at_20",
+    "recall_at_20",
+    "ndcg_at_20",
+    "hit_rate_at_50",
+    "recall_at_50",
+    "ndcg_at_50",
     "semantic_recall",
     "semantic_ndcg",
     "title_overlap",
@@ -399,6 +405,92 @@ RETURN p.product_id AS product_id,
         }
 
 
+def item_cf_recommend(
+    driver: Any,
+    database: str,
+    user_id: str,
+    history_ids: set[str],
+    k: int,
+    min_quality_score: float,
+) -> list[str]:
+    if not history_ids:
+        return []
+    cypher = f"""
+MATCH (h:Product)<-[hr:RATED]-(u:User)-[r:RATED]->(p:Product)
+WHERE h.product_id IN $history_ids
+  AND u.user_id <> $user_id
+  AND NOT p.product_id IN $history_ids
+  AND {product_pool_filter("p")}
+WITH p,
+     count(DISTINCT u) AS co_users,
+     count(DISTINCT h) AS matched_history,
+     avg(toFloat(coalesce(r.rating, 0))) AS avg_neighbor_rating
+RETURN p.product_id AS product_id
+ORDER BY co_users DESC,
+         matched_history DESC,
+         avg_neighbor_rating DESC,
+         coalesce(toFloat(p.average_rating), 0.0) DESC,
+         coalesce(toInteger(p.rating_number), 0) DESC
+LIMIT $limit
+"""
+    with driver.session(database=database) as session:
+        return [
+            record["product_id"]
+            for record in session.run(
+                cypher,
+                user_id=user_id,
+                history_ids=list(history_ids),
+                min_quality_score=min_quality_score,
+                limit=k,
+            )
+        ]
+
+
+def transition_recommend(
+    driver: Any,
+    database: str,
+    user_id: str,
+    history_ids: set[str],
+    k: int,
+    min_quality_score: float,
+) -> list[str]:
+    if not history_ids:
+        return []
+    cypher = f"""
+MATCH (h:Product)<-[hr:RATED]-(u:User)-[r:RATED]->(p:Product)
+WHERE h.product_id IN $history_ids
+  AND u.user_id <> $user_id
+  AND hr.timestamp IS NOT NULL
+  AND r.timestamp IS NOT NULL
+  AND r.timestamp > hr.timestamp
+  AND NOT p.product_id IN $history_ids
+  AND {product_pool_filter("p")}
+WITH p,
+     count(*) AS transitions,
+     count(DISTINCT u) AS transition_users,
+     min(r.timestamp - hr.timestamp) AS min_time_gap,
+     avg(toFloat(coalesce(r.rating, 0))) AS avg_next_rating
+RETURN p.product_id AS product_id
+ORDER BY transitions DESC,
+         transition_users DESC,
+         min_time_gap ASC,
+         avg_next_rating DESC,
+         coalesce(toInteger(p.rating_number), 0) DESC
+LIMIT $limit
+"""
+    with driver.session(database=database) as session:
+        return [
+            record["product_id"]
+            for record in session.run(
+                cypher,
+                user_id=user_id,
+                history_ids=list(history_ids),
+                min_quality_score=min_quality_score,
+                limit=k,
+            )
+        ]
+
+
 def popularity_baseline(catalog: list[dict[str, Any]], k: int, exclude: set[str] | None = None) -> list[str]:
     exclude = exclude or set()
     return [row["product_id"] for row in catalog if row["product_id"] not in exclude][:k]
@@ -531,21 +623,30 @@ def metrics(
     catalog_by_id: dict[str, dict[str, Any]],
     max_popularity: float,
 ) -> dict[str, float]:
+    def ranking_at(cutoff: int) -> dict[str, float]:
+        top_n = recommended[:cutoff]
+        hits_n = [1 if product_id in relevant else 0 for product_id in top_n]
+        reciprocal_rank_n = 0.0
+        dcg_n = 0.0
+        for index, hit in enumerate(hits_n, start=1):
+            if hit and reciprocal_rank_n == 0.0:
+                reciprocal_rank_n = 1.0 / index
+            if hit:
+                dcg_n += 1.0 / math.log2(index + 1)
+        ideal_hits_n = min(len(relevant), cutoff)
+        idcg_n = sum(1.0 / math.log2(index + 1) for index in range(1, ideal_hits_n + 1))
+        return {
+            "hit_rate": 1.0 if any(hits_n) else 0.0,
+            "recall": sum(hits_n) / max(len(relevant), 1),
+            "precision": sum(hits_n) / max(cutoff, 1),
+            "mrr": reciprocal_rank_n,
+            "ndcg": dcg_n / idcg_n if idcg_n else 0.0,
+        }
+
     top_k = recommended[:k]
-    hits = [1 if product_id in relevant else 0 for product_id in top_k]
-    hit_rate = 1.0 if any(hits) else 0.0
-    recall = sum(hits) / max(len(relevant), 1)
-    precision = sum(hits) / max(k, 1)
-    reciprocal_rank = 0.0
-    dcg = 0.0
-    for index, hit in enumerate(hits, start=1):
-        if hit and reciprocal_rank == 0.0:
-            reciprocal_rank = 1.0 / index
-        if hit:
-            dcg += 1.0 / math.log2(index + 1)
-    ideal_hits = min(len(relevant), k)
-    idcg = sum(1.0 / math.log2(index + 1) for index in range(1, ideal_hits + 1))
-    ndcg = dcg / idcg if idcg else 0.0
+    rank_10 = ranking_at(k)
+    rank_20 = ranking_at(20)
+    rank_50 = ranking_at(50)
     known_rows = [catalog_by_id.get(product_id, {}) for product_id in top_k]
     sellable = [row for row in known_rows if row.get("sellable_status") == "available"]
     priced = [row for row in known_rows if row.get("price") is not None]
@@ -586,11 +687,17 @@ def metrics(
     semantic_idcg = sum(1.0 / math.log2(index + 1) for index in range(1, len(semantic_scores) + 1))
     denom = max(len(top_k), 1)
     return {
-        "hit_rate": hit_rate,
-        "recall": recall,
-        "precision": precision,
-        "mrr": reciprocal_rank,
-        "ndcg": ndcg,
+        "hit_rate": rank_10["hit_rate"],
+        "recall": rank_10["recall"],
+        "precision": rank_10["precision"],
+        "mrr": rank_10["mrr"],
+        "ndcg": rank_10["ndcg"],
+        "hit_rate_at_20": rank_20["hit_rate"],
+        "recall_at_20": rank_20["recall"],
+        "ndcg_at_20": rank_20["ndcg"],
+        "hit_rate_at_50": rank_50["hit_rate"],
+        "recall_at_50": rank_50["recall"],
+        "ndcg_at_50": rank_50["ndcg"],
         "semantic_recall": min(sum(semantic_scores) / max(len(relevant), 1), 1.0),
         "semantic_ndcg": semantic_dcg / semantic_idcg if semantic_idcg else 0.0,
         "title_overlap": sum(title_scores) / denom,
@@ -625,6 +732,10 @@ def exclude_seen(product_ids: list[str], exclude: set[str], k: int) -> list[str]
         if len(filtered) >= k:
             break
     return filtered
+
+
+def fill_recommendations(primary: list[str], fallback: list[str], k: int, exclude: set[str] | None = None) -> list[str]:
+    return exclude_seen([*primary, *fallback], exclude or set(), k)
 
 
 def plot_metric_group(
@@ -702,19 +813,23 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
                 f"Holdout products in candidate catalog: `{diagnostics.get('holdout_in_candidate_catalog', 0):,}` / `{diagnostics.get('holdout_total', 0):,}`",
                 f"Unique holdout products in candidate catalog: `{diagnostics.get('unique_holdout_in_candidate_catalog', 0):,}` / `{diagnostics.get('unique_holdout_total', 0):,}`",
                 "",
-                "| Method | Exact Hits | Users With Hit |",
-                "|---|---:|---:|",
+                "| Method | Exact Hits@10 | Exact Hits@20 | Exact Hits@50 | Users With Hit@50 |",
+                "|---|---:|---:|---:|---:|",
             ]
         )
         for method, row in diagnostics.get("method_exact_hits", {}).items():
-            lines.append(f"| `{method}` | {row.get('exact_hits', 0)} | {row.get('users_with_hit', 0)} |")
+            lines.append(
+                f"| `{method}` | {row.get('exact_hits_at_10', 0)} | "
+                f"{row.get('exact_hits_at_20', 0)} | {row.get('exact_hits_at_50', 0)} | "
+                f"{row.get('users_with_hit_at_50', 0)} |"
+            )
     lines.extend(
         [
             "",
             "## Method Metrics",
             "",
-            "| Method | Recall@K | HitRate@K | NDCG@K | MRR@K | Precision@K | SemanticNDCG@K | SemanticRecall@K | TitleOverlap@K | AttributeOverlap@K | Diversity@K | Novelty@K | Quality@K | Rating@K | CatalogCoverage@K | SellableRate@K | PriceCoverage@K |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Method | Recall@10 | Recall@20 | Recall@50 | HitRate@10 | HitRate@20 | HitRate@50 | NDCG@10 | NDCG@20 | NDCG@50 | MRR@10 | Precision@10 | SemanticNDCG@10 | SemanticRecall@10 | TitleOverlap@10 | AttributeOverlap@10 | Diversity@10 | Novelty@10 | Quality@10 | Rating@10 | CatalogCoverage@10 | SellableRate@10 | PriceCoverage@10 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for method, metrics_row in summary["methods"].items():
@@ -724,8 +839,14 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
                 [
                     f"`{method}`",
                     f"{metrics_row['recall']:.4f}",
+                    f"{metrics_row['recall_at_20']:.4f}",
+                    f"{metrics_row['recall_at_50']:.4f}",
                     f"{metrics_row['hit_rate']:.4f}",
+                    f"{metrics_row['hit_rate_at_20']:.4f}",
+                    f"{metrics_row['hit_rate_at_50']:.4f}",
                     f"{metrics_row['ndcg']:.4f}",
+                    f"{metrics_row['ndcg_at_20']:.4f}",
+                    f"{metrics_row['ndcg_at_50']:.4f}",
                     f"{metrics_row['mrr']:.4f}",
                     f"{metrics_row['precision']:.4f}",
                     f"{metrics_row['semantic_ndcg']:.4f}",
@@ -794,6 +915,7 @@ def main() -> None:
     _load_env()
     database = os.environ.get("NEO4J_DATABASE", "neo4j")
     effective_min_reviews = max(args.min_reviews, args.history_size + args.holdout_size)
+    eval_k = max(args.k, 50)
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     intermediates_dir = output_dir / "intermediates"
@@ -828,7 +950,7 @@ def main() -> None:
     if not args.skip_catalog_snapshot:
         append_jsonl(intermediates_dir / "candidate_catalog.jsonl", catalog)
     bm25_index = build_bm25_index(catalog)
-    no_history_home_ids = popularity_baseline(catalog, args.k * 3)
+    no_history_home_ids = popularity_baseline(catalog, eval_k)
     max_popularity = max((optional_float(row.get("rating_number")) or 0.0 for row in catalog), default=1.0)
 
     method_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
@@ -861,31 +983,58 @@ def main() -> None:
             rec_ids(
                 recommender.search_products(
                     kg_attribute_only_intent,
-                    args.k * 3,
+                    eval_k * 2,
                     "en",
                     user_id=None,
                     query_plan=kg_plan,
                 )
             ),
             history_ids,
-            args.k,
+            eval_k,
         )
         bm25_terms = title_intent.keywords + kg_semantic_intent.keywords + [f.value for f in kg_semantic_intent.attribute_filters]
-        bm25_recs = bm25_recommend(bm25_index, bm25_terms, args.k, exclude=history_ids)
-        bm25_semantic_pool = bm25_recommend(bm25_index, bm25_terms, args.k * 3, exclude=history_ids)
-        kg_semantic_recs = reciprocal_rank_fusion([kg_recs, bm25_semantic_pool], args.k, exclude=history_ids)
-        title_recs = bm25_recommend(bm25_index, title_intent.keywords, args.k, exclude=history_ids)
-        pop_recs = popularity_baseline(catalog, args.k, exclude=history_ids)
-        kg_no_history_recs = exclude_seen(no_history_home_ids, history_ids, args.k)
+        bm25_recs = bm25_recommend(bm25_index, bm25_terms, eval_k, exclude=history_ids)
+        bm25_semantic_pool = bm25_recommend(bm25_index, bm25_terms, eval_k, exclude=history_ids)
+        kg_semantic_recs = reciprocal_rank_fusion([kg_recs, bm25_semantic_pool], eval_k, exclude=history_ids)
+        pop_recs = popularity_baseline(catalog, eval_k, exclude=history_ids)
+        kg_no_history_recs = exclude_seen(no_history_home_ids, history_ids, eval_k)
+        title_recs = bm25_recommend(bm25_index, title_intent.keywords, eval_k, exclude=history_ids)
+        item_cf_raw_recs = item_cf_recommend(driver, database, user_id, history_ids, eval_k, args.min_quality_score)
+        transition_raw_recs = transition_recommend(driver, database, user_id, history_ids, eval_k, args.min_quality_score)
+        item_cf_recs = fill_recommendations(
+            item_cf_raw_recs,
+            pop_recs,
+            eval_k,
+            history_ids,
+        )
+        transition_recs = fill_recommendations(
+            transition_raw_recs,
+            pop_recs,
+            eval_k,
+            history_ids,
+        )
         hybrid_recs = reciprocal_rank_fusion(
-            [bm25_recs, bm25_recs, title_recs, title_recs, kg_semantic_recs, kg_recs],
-            args.k,
+            [
+                transition_raw_recs,
+                transition_raw_recs,
+                transition_raw_recs,
+                item_cf_raw_recs,
+                item_cf_raw_recs,
+                kg_semantic_recs,
+                kg_recs,
+                bm25_recs,
+                title_recs,
+                pop_recs,
+            ],
+            eval_k,
             exclude=history_ids,
         )
 
         methods = {
             "popularity_baseline": pop_recs,
             "bm25_history_profile": bm25_recs,
+            "item_cf_history": item_cf_recs,
+            "transition_history": transition_recs,
             "kg_no_history_home": kg_no_history_recs,
             "kg_attribute_history": kg_recs,
             "kg_semantic_history": kg_semantic_recs,
@@ -946,10 +1095,17 @@ def main() -> None:
     unique_holdouts = set(holdout_products)
     exact_hit_rows: dict[str, dict[str, Any]] = {}
     for method in sorted(method_metrics):
-        hit_rows = [row for row in recommendation_rows if row["method"] == method and row.get("is_relevant")]
+        method_rows = [row for row in recommendation_rows if row["method"] == method]
+        hit_rows_at_10 = [row for row in method_rows if row.get("is_relevant") and row.get("rank", 0) <= 10]
+        hit_rows_at_20 = [row for row in method_rows if row.get("is_relevant") and row.get("rank", 0) <= 20]
+        hit_rows_at_50 = [row for row in method_rows if row.get("is_relevant") and row.get("rank", 0) <= 50]
         exact_hit_rows[method] = {
-            "exact_hits": len(hit_rows),
-            "users_with_hit": len({row["user_id"] for row in hit_rows}),
+            "exact_hits_at_10": len(hit_rows_at_10),
+            "users_with_hit_at_10": len({row["user_id"] for row in hit_rows_at_10}),
+            "exact_hits_at_20": len(hit_rows_at_20),
+            "users_with_hit_at_20": len({row["user_id"] for row in hit_rows_at_20}),
+            "exact_hits_at_50": len(hit_rows_at_50),
+            "users_with_hit_at_50": len({row["user_id"] for row in hit_rows_at_50}),
         }
     ranking_diagnostics = {
         "candidate_catalog_size": len(catalog),
@@ -962,7 +1118,10 @@ def main() -> None:
 
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "config": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
+        "config": {
+            **{key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
+            "max_eval_k": eval_k,
+        },
         "effective_min_reviews": effective_min_reviews,
         "data_readiness": readiness,
         "ranking_diagnostics": ranking_diagnostics,
@@ -989,8 +1148,8 @@ def main() -> None:
     plot_metric_group(
         summary,
         charts_dir / "ranking_metrics.png",
-        ["recall", "hit_rate", "ndcg", "mrr", "precision"],
-        "Top-K Ranking Metrics",
+        ["recall", "recall_at_20", "recall_at_50", "hit_rate", "hit_rate_at_20", "hit_rate_at_50"],
+        "Exact-ASIN Ranking Metrics",
     )
     plot_metric_group(
         summary,
