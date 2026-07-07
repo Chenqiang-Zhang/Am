@@ -38,6 +38,7 @@ RETURN product_id,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) AS sellable_status,
+       p.recommendation_pool AS recommendation_pool,
        coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) AS data_quality_score,
        p.quality_flags AS quality_flags,
        p.title_duplicate_key AS title_duplicate_key,
@@ -204,6 +205,9 @@ def pool_label(row: dict[str, Any], in_candidate_catalog: bool, min_quality_scor
         return "available_pool"
     if not row.get("in_graph") or not valid_title(clean_text(row.get("title"))):
         return "excluded_pool"
+    graph_pool = clean_text(row.get("recommendation_pool"))
+    if graph_pool in {"available_pool", "discoverable_pool", "research_pool", "excluded_pool"}:
+        return graph_pool
     data_quality_score = optional_float(row.get("data_quality_score")) or 0.0
     image_url = clean_text(row.get("image_url"))
     rating_number = optional_int(row.get("rating_number")) or 0
