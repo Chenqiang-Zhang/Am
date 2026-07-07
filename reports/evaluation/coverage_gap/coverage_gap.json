@@ -1,0 +1,3689 @@
+{
+  "config": {
+    "meta_path": "data/meta_All_Beauty.jsonl.gz",
+    "min_quality_score": 0.6,
+    "priority_limit": 1000
+  },
+  "created_at": "2026-07-07T17:17:53.150818+00:00",
+  "evaluation_dir": "reports/evaluation/offline_comparison_200_users",
+  "output_files": {
+    "attribute_priority_meta_subset": "reports/evaluation/coverage_gap/attribute_priority_candidates_meta.jsonl",
+    "chart": "reports/evaluation/coverage_gap/coverage_gap_by_reason.png",
+    "json_report": "reports/evaluation/coverage_gap/coverage_gap.json",
+    "markdown_report": "reports/evaluation/coverage_gap/coverage_gap.md",
+    "priority_candidates": "reports/evaluation/coverage_gap/priority_candidates.jsonl",
+    "priority_meta_subset": "reports/evaluation/coverage_gap/priority_candidates_meta.jsonl",
+    "product_rows": "reports/evaluation/coverage_gap/coverage_gap_products.jsonl"
+  },
+  "pool_counts": {
+    "available_pool": {
+      "unique_products": 69,
+      "weighted_events": 70
+    },
+    "discoverable_pool": {
+      "unique_products": 316,
+      "weighted_events": 329
+    },
+    "excluded_pool": {
+      "unique_products": 1,
+      "weighted_events": 1
+    }
+  },
+  "priority_candidates": [
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5481,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51gt5wmIbJS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 14.871,
+      "product_id": "B00OS9YWJY",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 640,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 76,
+      "sellable_status": "low_quality",
+      "title": "Pure Hyaluronic Acid Serum with Vitamin C for Face - Organic Anti Aging & Anti-Wrinkle Skin Treatment - Penetrates Deeply & Activates Collagen Production for a Younger, Firmer & Brighter Complexion",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "pure hyaluronic acid serum with vitamin c for face organic anti aging anti wrinkle skin treatment penetrates deeply activates collagen production for a younger firmer brighter complexion"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5485,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51Q+TEqcHZL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 14.596,
+      "product_id": "B087G54FLM",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 715,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 25,
+      "sellable_status": "low_quality",
+      "title": "Poly Nail Gel Kit, 7 Colors Nail Extension Gel with UV Lamp, Poly Extension Decoration Kit, Base Top Coat Set with Rhinestone, Nail Molds, Complete Nail Art Gel Kits for DIY Manicure, Pink Nude Series",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "poly nail gel kit 7 colors nail extension gel with uv lamp poly extension decoration kit base top coat with rhinestone nail molds complete nail art gel kits for diy manicure pink nude series"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 3.6,
+      "data_quality_score": 0.5455,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51jR82a9bRL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 14.4974,
+      "product_id": "B01AYTGWA8",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 351,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 128,
+      "sellable_status": "low_quality",
+      "title": "Fungus Nail Treatment,Sky-shop Fungus Nail Repair Oil, Fungal Nail Eliminator for Fingernails and Toenails, Repairs & Protects from Discoloration, Brittle and Cracked Nails (35ml)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "fungus nail treatment sky shop fungus nail repair oil fungal nail eliminator for fingernails and toenails repairs protects from discoloration brittle and cracked nails 35ml"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5406,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51CJswRxb7L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 14.1092,
+      "product_id": "B09473GGM4",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 115,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 14,
+      "sellable_status": "low_quality",
+      "title": "Tirtyl Hand Soap Sheet Variety Pack - 240 Pack with Portable Storage Tin - Camping/Outdoor/Travel/Handbag - Lavender & Aloe - Bergamot & Ylang Ylang - Jasmine & Patchouli",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "tirtyl hand soap sheet variety 240 with portable storage tin camping outdoor travel handbag lavender aloe bergamot ylang ylang jasmine patchouli"
+    },
+    {
+      "attribute_count": 6,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5379,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/41i9SA4dTXL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.8279,
+      "product_id": "B08CPF22H2",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 61,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 14,
+      "sellable_status": "low_quality",
+      "title": "Gold Collagen Under Eye Patches Mask for dark circles and puffiness by Levitural - Golden Eye Bags Treatment - Mother's Day Gift for Women",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "gold collagen under eye patches mask for dark circles and puffiness by levitural golden eye bags treatment mother s day gift for women"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.5,
+      "data_quality_score": 0.4873,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/41xDLGTnqgL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.6981,
+      "product_id": "B09L563Q84",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "duplicate_suspect",
+        "low_quality"
+      ],
+      "rating_number": 53,
+      "reasons": [
+        "duplicate_suspect",
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment",
+        "deduplicate_or_keep_best_variant"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "Large Silk Scrunchies For Hair - Tara Sartoria Artisan Handmade",
+      "title_duplicate_count": 3,
+      "title_duplicate_key": "large silk scrunchies for hair tara sartoria artisan handmade"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5375,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/31tZoM46t0L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.5301,
+      "product_id": "B07QN8B5VG",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 55,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "N3 No Name Necessary Pore-Minimizing Mattifying Oil and Shine Control Anti-aging Makeup Face Primer Spray (200ml)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "n3 no name necessary pore minimizing mattifying oil and shine control anti aging makeup face primer spray 200ml"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.5,
+      "data_quality_score": 0.5363,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51R+PD-KyIL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.5224,
+      "product_id": "B08LCB741R",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 42,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 5,
+      "sellable_status": "low_quality",
+      "title": "Microfiber Hair Towel Two Layers Turban Wrap YANJIE Super Absorbent Shower Head Towel Hair Caps with 2 Buttons,Quick Dryer Hat,Bathing Wrapped Cap for Women Girls Mom Daughter(Blue&Purple)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "microfiber hair towel two layers turban wrap yanjie super absorbent shower head towel hair caps with 2 buttons quick dryer hat bathing wrapped cap for women girls mom daughter blue purple"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5358,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/41MTHzKwfvL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.4815,
+      "product_id": "B07FP11ZN6",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 37,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "Fifth & Skin (MEDIUM) Better'n Ur Skin - Prep n Set Blur Powder - Natural Face Powder - Organic Pressed Makeup - Cruelty Free - TALC Free - Blurs Fine Lines - Controls Shine - Prolongs Foundation",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "fifth skin medium better n ur skin prep n blur powder natural face powder organic pressed makeup cruelty free talc free blurs fine lines controls shine prolongs foundation"
+    },
+    {
+      "attribute_count": 21,
+      "average_rating": 3.5,
+      "data_quality_score": 0.7455,
+      "feature_count": 6,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/5138DlFWW8L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.4491,
+      "product_id": "B01HIIT4TE",
+      "quality_flags": [
+        "missing_price"
+      ],
+      "rating_number": 353,
+      "reasons": [
+        "missing_price",
+        "status_currently_unavailable"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price"
+      ],
+      "review_count": 78,
+      "sellable_status": "currently_unavailable",
+      "title": "Anti Aging Eye Wrinkle Cream for Women & Men with Hyaluronic Acid Matrixyl 3000 Complex to Moisturize Your Skin Day And Night – 1.8 Fl. Oz",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "anti aging eye wrinkle cream for women men with hyaluronic acid matrixyl 3000 complex to moisturize your skin day and night 1 8 fl oz"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.7438,
+      "feature_count": 5,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/41nWkPaQuiS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.0334,
+      "product_id": "B07H53GCV2",
+      "quality_flags": [
+        "missing_price"
+      ],
+      "rating_number": 238,
+      "reasons": [
+        "missing_price",
+        "status_currently_unavailable"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price"
+      ],
+      "review_count": 11,
+      "sellable_status": "currently_unavailable",
+      "title": "10 Pcs Brown and 10 Pcs Black Wig Grip Headband for women",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "10 brown and 10 black wig grip headband for women"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 3.7,
+      "data_quality_score": 0.5336,
+      "feature_count": 0,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/51nb1pUNwRL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 13.0001,
+      "product_id": "B089KBMST6",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 22,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 6,
+      "sellable_status": "low_quality",
+      "title": "Mini Rubber Bands Soft Elastic Bands for Kids Hair Non-slip Rubber Hair Bands Soft Hair Elastics Ties Bands Braids Hair for Girls - STRONG - REUSEABLE (Colorful1000+Black1000)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "mini rubber bands soft elastic bands for kids hair non slip rubber hair bands soft hair elastics ties bands braids hair for girls strong reuseable colorful1000 black1000"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 4.7,
+      "data_quality_score": 0.538,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41fQsbpTerL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "Premium Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 12.9278,
+      "product_id": "B08H4SYXR4",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 62,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "Caudalie Vinosource SOS Intense Hydration Set: Hydrating Trio for Sensitive Skin including a Daily Foam Cleanser, Hydrating Serum, Facial Moisturizer",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "caudalie vinosource sos intense hydration hydrating trio for sensitive skin including a daily foam cleanser hydrating serum facial moisturizer"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.0,
+      "data_quality_score": 0.7375,
+      "feature_count": 5,
+      "holdout_count": 2,
+      "image_url": "https://m.media-amazon.com/images/I/31WsvyCfUeL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 12.6984,
+      "product_id": "B07T3Z58HL",
+      "quality_flags": [
+        "missing_price"
+      ],
+      "rating_number": 55,
+      "reasons": [
+        "missing_price",
+        "status_currently_unavailable"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price"
+      ],
+      "review_count": 14,
+      "sellable_status": "currently_unavailable",
+      "title": "Hand Crafted Ceramic Aromatherapy Essential Oil Diffuser,100ml Fragrant Room Sprays Ultrasonic Aroma Mist Atomizer BPA-Free, Waterless Auto Shut-Off and 7 Color Night Lights for Office Home Study Yoga",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "hand crafted ceramic aromatherapy essential oil diffuser 100ml fragrant room sprays ultrasonic aroma mist atomizer bpa free waterless auto shut off and 7 color night lights for office home study yoga"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5353,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41+ri2G4JiL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 12.4188,
+      "product_id": "B01IVICJXS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 33,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 11,
+      "sellable_status": "low_quality",
+      "title": "Makeup Palette ,Start Makers 6 Colors Contour Highlighting Kit Oval Toothbrush and Mini Sponge",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "makeup palette start makers 6 colors contour highlighting kit oval toothbrush and mini sponge"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 3.0,
+      "data_quality_score": 0.5362,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/412PoVDqGpL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.9605,
+      "product_id": "B00MFWKN9E",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 41,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "Anti Aging Moisturizer with Peptides-Advanced Luxury Concentrated Argireline Cream for Face, Eyes, and Neck by Paloma Skin Therapy",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "anti aging moisturizer with peptides advanced luxury concentrated argireline cream for face eyes and neck by paloma skin therapy"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 3.0,
+      "data_quality_score": 0.5354,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51J-7jvSERL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.7716,
+      "product_id": "B01EST7TBQ",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 34,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 6,
+      "sellable_status": "low_quality",
+      "title": "Hair Growth Serum - Help Anti-Hair Loss & Promotes Hair Long - Fast Effective in 2 Weeks with Jojoba Oil, Dimethicone, Panax Ginseng, Hydrolyzed Protein - Daily Use For Men and Women",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "hair growth serum help anti hair loss promotes hair long fast effective in 2 weeks with jojoba oil dimethicone panax ginseng hydrolyzed protein daily use for men and women"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 4.4,
+      "data_quality_score": 0.527,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41w0W4ClBWL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.585,
+      "product_id": "B01FFM6Q1Y",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 4,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 2,
+      "sellable_status": "low_quality",
+      "title": "Pentop New Design Wearable Silicone Nail Polish Holder Rubber Nail Polish Bottle Holder Ring",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "pentop design wearable silicone nail polish holder rubber nail polish bottle holder ring"
+    },
+    {
+      "attribute_count": 0,
+      "average_rating": 3.5,
+      "data_quality_score": 0.5315,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/410f8H8az9L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.2784,
+      "product_id": "B01G6IJ66S",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 13,
+      "reasons": [
+        "low_quality_score",
+        "missing_attributes",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "extract_attributes",
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 1,
+      "sellable_status": "low_quality",
+      "title": "TIAMALL Makeup Brush Cleaner Brush Cleaning Mat Silicone Cleaning Pad Cosmetic Brush Mini Washing Scrubber with Suction Cup",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "tiamall makeup brush cleaner brush cleaning mat silicone cleaning pad cosmetic brush mini washing scrubber with suction cup"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.7,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41SDFOdvAqL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.1722,
+      "product_id": "B0848VJ18X",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 1402,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 31,
+      "sellable_status": "low_quality",
+      "title": "Native Deodorant - Natural Deodorant For Women and Men - 3 Pack - Aluminum Free, Free of Parabens and Sulfates - Vegan, Contains Probiotics - Linen & Cotton Flower, Peony & Jasmine Tea, Sweet Almond & Honey",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "native deodorant natural deodorant for women and men 3 aluminum free free of parabens and sulfates vegan contains probiotics linen cotton flower peony jasmine tea sweet almond honey"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.6,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51JyS-ihVDL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 11.0846,
+      "product_id": "B0811YBYVR",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 1654,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 28,
+      "sellable_status": "low_quality",
+      "title": "Nail Files and Buffers, Teenitor 16PCS Professional Nail Manicure Tool for Acrylic Nails, 100/180 and 120/240 Grits Emery Boards 120 Grits Nail Buffer Block for Shaping and Buffing Nails",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "nail files and buffers teenitor 16pcs professional nail manicure tool for acrylic nails 100 180 and 120 240 grits emery boards 120 grits nail buffer block for shaping and buffing nails"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.6,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31UXy9M08pL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.9615,
+      "product_id": "B0758V2K3K",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 1066,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 20,
+      "sellable_status": "low_quality",
+      "title": "Bar5F Twist Top Applicator Bottle 8.5-Ounce Applicator for Hair Color Oil Cream Adjustable Nozzle for Dispensing or Dripping, Translucent Measuring Scale Pack of 3",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "bar5f twist top applicator bottle 8 5 ounce applicator for hair color oil cream adjustable nozzle for dispensing or dripping translucent measuring scale of 3"
+    },
+    {
+      "attribute_count": 6,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5496,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51Mj21VupzL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.923,
+      "product_id": "B08QKXY1KN",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 911,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 50,
+      "sellable_status": "low_quality",
+      "title": "Purple Shampoo and Conditioner Set - Sulfate Free Salon Grade (2 x 16.9 fl oz) - Hydrating Toner - Shimmer Correction for Platinum Blonde, Silver, Light, and Grey Hair - New Formula",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "purple shampoo and conditioner sulfate free salon grade 2 x 16 9 fl oz hydrating toner shimmer correction for platinum blonde silver light and grey hair formula"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5483,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51+6ggFvmeL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.8385,
+      "product_id": "B01GS7QKQQ",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 680,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 152,
+      "sellable_status": "low_quality",
+      "title": "Argan Oil Shampoo and Conditioner Set - Sulfate Free All Natural Hair Repair Treatment, Clarifying Volumizing & Moisturizing, Color Safe, Gentle for Curly & Color Treated Hair Gift Set (2x 8oz)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "argan oil shampoo and conditioner sulfate free all natural hair repair treatment clarifying volumizing moisturizing color safe gentle for curly color treated hair gift 2x 8oz"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5472,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/517y0YeClrL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.811,
+      "product_id": "B00VXEQ0WO",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 520,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 75,
+      "sellable_status": "low_quality",
+      "title": "Retinol 2.5% Cream From Majestic Pure for Face and Eye Area Will Nourish Your Skin, Potent Anti Aging Formula Reduces Wrinkles, Stretch Marks & Redness, 50ml",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "retinol 2 5 cream from majestic pure for face and eye area will nourish your skin potent anti aging formula reduces wrinkles stretch marks redness 50ml"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/515M1EZQkjL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.8101,
+      "product_id": "B08G4W8BH9",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 1168,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 30,
+      "sellable_status": "low_quality",
+      "title": "6pcs Milk Silk Starry Sky Button Headbands- Non Slip Elastic Headbands with Button in 6 Colors Hair accessories for Moisture Wicking Sweatband Sports Head Wrap for Yoga Sports Outdoor Activities",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "6pcs milk silk starry sky button headbands non slip elastic headbands with button in 6 colors hair accessories for moisture wicking sweatband sports head wrap for yoga sports outdoor activities"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.3,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51JUeEdZp8L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.598,
+      "product_id": "B08C72C56Z",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 2795,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 11,
+      "sellable_status": "low_quality",
+      "title": "Nail Files 16 Pcs, Double Sided Emery Board Manicure Tools for Filing Natural Gel and Acrylic Nails for Home and Salon Use",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "nail files 16 double sided emery board manicure tools for filing natural gel and acrylic nails for home and salon use"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5473,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51jQ7nYX3yL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.5501,
+      "product_id": "B08DJ1BMHX",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 535,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 16,
+      "sellable_status": "low_quality",
+      "title": "Portable Electric Nail Drill,Professional Nail Drill Kit for Acrylic Gel Nails,Efile Nail Drill Manicure Polishing Shape Tools for Beginners Home Salon Use,Purple",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "portable electric nail drill professional nail drill kit for acrylic gel nails efile nail drill manicure polishing shape tools for beginners home salon use purple"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.3,
+      "data_quality_score": 0.55,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41x+DJCtUjL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.5284,
+      "product_id": "B08DFR98QT",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 2306,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "PHOERA 30ml Foundation Liquid Full Coverage 24HR Matte Oil Control Concealer (Nude & Buff Beige) with 6ml Makeup Face Primer & Kabuki Foundation Brush Flat Top",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "phoera 30ml foundation liquid full coverage 24hr matte oil control concealer nude buff beige with 6ml makeup face primer kabuki foundation brush flat top"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.5,
+      "data_quality_score": 0.5462,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41dXXeB8gEL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.504,
+      "product_id": "B08F4WH8LY",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 417,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 13,
+      "sellable_status": "low_quality",
+      "title": "InnoGear 150ml Essential Oil Diffuser, Ultrasonic Aromatherapy Diffusers Cool Mist Humidifier with Colorful Mood Lights Waterless Auto Off for Home Office Baby Room (Yellow)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "innogear 150ml essential oil diffuser ultrasonic aromatherapy diffusers cool mist humidifier with colorful mood lights waterless auto off for home office baby room yellow"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5479,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/412-IbzR3CL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.4908,
+      "product_id": "B085ZRVDKP",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 621,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 12,
+      "sellable_status": "low_quality",
+      "title": "Gel UV Nail Lamp, AsperX 150W LED Nail Dryer Gel Nail Polish Light Curing Lamp Kit Smart Auto-sensing with 10/30/60/99s Timer",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "gel uv nail lamp asperx 150w led nail dryer gel nail polish light curing lamp kit smart auto sensing with 10 30 60 99s timer"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5456,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31f+dQyi45L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.4856,
+      "product_id": "B08NC4378M",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 362,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 21,
+      "sellable_status": "low_quality",
+      "title": "Plant Therapy Natural Acetone Free Nail Polish Remover 6 fl oz One Touch Dispensing Bottle with Flip Top Cap Tropical Flower Scent",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "plant therapy natural acetone free nail polish remover 6 fl oz one touch dispensing bottle with flip top cap tropical flower scent"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.4,
+      "data_quality_score": 0.545,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51LsgyXngwL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.3993,
+      "product_id": "B086VYKNDF",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 315,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 14,
+      "sellable_status": "low_quality",
+      "title": "Aloe Vera Gel 100% Natural Moisturisers - Pure Organic Fresh Soothing Aloe-Vera Moisturizing Gel Skin Hair, Aloe Leaf Wash-free Clean After Sun Face Body (8.8 oz)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "aloe vera gel 100 natural moisturisers pure organic fresh soothing aloe vera moisturizing gel skin hair aloe leaf wash free clean after sun face body 8 8 oz"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5458,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41CLb9h4vhL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.3969,
+      "product_id": "B08XWMC536",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 378,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 24,
+      "sellable_status": "low_quality",
+      "title": "Najukyy Hot Air Brush 6 in 1 Detachable Hair Dryer Styler, One-Step Hair Dryer Brush for Straightening Curling Drying Combing Scalp Massage Styling",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "najukyy hot air brush 6 in 1 detachable hair dryer styler one step hair dryer brush for straightening curling drying combing scalp massage styling"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 3.1,
+      "data_quality_score": 0.5475,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41lsxHHNyuL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.3824,
+      "product_id": "B011JG1K3E",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 560,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 139,
+      "sellable_status": "low_quality",
+      "title": "Eyelash Growth Serum for Long Eyelashes From Uptown Cosmeceuticals Contains Stem Cell & Myristoyl Pentapeptide-17, Dermatologist Lab Tested Lash & Eyebrow Growth Formula, 4 Months Supply, 3.5ml",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "eyelash growth serum for long eyelashes from uptown cosmeceuticals contains stem cell myristoyl pentapeptide 17 dermatologist lab tested lash eyebrow growth formula 4 months supply 3 5ml"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.6,
+      "data_quality_score": 0.5411,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51udutd3mpL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.3497,
+      "product_id": "B087F14JSH",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 128,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 19,
+      "sellable_status": "low_quality",
+      "title": "Natwag Makeup Remover Pads,18 Pack 3.74 Inch Reusable Microfiber Cleansing Pad with Laundry Bag Suitable for All Skin Types,3 Color Facial Cleansing Pad Set.",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "natwag makeup remover pads 18 3 74 inch reusable microfiber cleansing pad with laundry bag suitable for all skin types 3 color facial cleansing pad"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.5,
+      "data_quality_score": 0.5428,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41AGXn945PS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.3297,
+      "product_id": "B01MQF7PYV",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 191,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 15,
+      "sellable_status": "low_quality",
+      "title": "Boar Bristle Hair Brush With Nylon Pins and Free Comb | Pins To Detangle and Better Stimulate Your Scalp | Luxurious For Healthier And Shinier Hair For The Whole Family",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "boar bristle hair brush with nylon pins and free comb pins to detangle and better stimulate your scalp luxurious for healthier and shinier hair for the whole family"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5431,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51opLRZoewL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.2534,
+      "product_id": "B071YPRG4C",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 204,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 23,
+      "sellable_status": "low_quality",
+      "title": "30,000rpm Professional Electric Nail Drill Machine Pen Shape File Drill Set for Manicure or Pedicure UL Certificate Adapter",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "30 000rpm professional electric nail drill machine pen shape file drill for manicure or pedicure ul certificate adapter"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5422,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/414JE1POC7L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.2393,
+      "product_id": "B0719PBC44",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 166,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 15,
+      "sellable_status": "low_quality",
+      "title": "BQAN 12Pcs Chess Board Magnetic Nail Tip Crystal Stand Set Salon Display Holder Set",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "bqan 12pcs chess board magnetic nail tip crystal stand salon display holder"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5419,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31onmMNpmuL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.2174,
+      "product_id": "B07CV15PFN",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 154,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 26,
+      "sellable_status": "low_quality",
+      "title": "Handcrafted Angled, Winged Eye Brush. One Touch Cat Eye - UNDONE BEAUTY Eye Shadow + Liner Brush. For Precise Outer Eye & Lash Line Definition. Soft & Durable Bristles. Vegan & Cruelty Free.",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "handcrafted angled winged eye brush one touch cat eye undone beauty eye shadow liner brush for precise outer eye lash line definition soft durable bristles vegan cruelty free"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.6,
+      "data_quality_score": 0.54,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51k5Di1cq2L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.137,
+      "product_id": "B088LWRYJC",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 98,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 13,
+      "sellable_status": "low_quality",
+      "title": "NATWAG Reusable Update Makeup Remover Cloths for Sensitive Skin - Microfiber Face Cloth Makeup Remover | Washable Round Makeup Remover Pads | Natural Facial Towels (2 Pads,2 Cloth) (Purple)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "natwag reusable update makeup remover cloths for sensitive skin microfiber face cloth makeup remover washable round makeup remover pads natural facial towels 2 pads 2 cloth purple"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.5,
+      "data_quality_score": 0.5411,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31vl4oxGhoS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.1331,
+      "product_id": "B08HRNPNR5",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 127,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 12,
+      "sellable_status": "low_quality",
+      "title": "EASYDEW DW-EGF Double Synergy Moist Ampoule1.01 fl oz -K Beauty Award-Winning Anti Aging Ampoule with EGF to Plump, Moisturize Skin I For Sensitive Skin, Gift for Mom, Wife, Her",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "easydew dw egf double synergy moist ampoule1 01 fl oz k beauty award winning anti aging ampoule with egf to plump moisturize skin i for sensitive skin gift for mom wife her"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5425,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41J0mlPE10L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.1132,
+      "product_id": "B01BZFN1BS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 178,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 20,
+      "sellable_status": "low_quality",
+      "title": "City Color Face Matte Setting Spray Enhanced with Aloe Vera Long-lasting 75ml NEW",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "city color face matte setting spray enhanced with aloe vera long lasting 75ml"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5443,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/513HVrFK9-L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.1002,
+      "product_id": "B07PLFY2DL",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 270,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "SEATTLE Eyelashes 5 Pairs Pack 3D Fake Eyelashes Mink Fur Hand-Made Dramatic Thick Crisscross Deluxe False Lashes Black Nature Fluffy Long Soft Reusable",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "seattle eyelashes 5 pairs 3d fake eyelashes mink fur hand made dramatic thick crisscross deluxe false lashes black nature fluffy long soft reusable"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.3,
+      "data_quality_score": 0.543,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/21hxTk0IKnL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.1,
+      "product_id": "B07Z4CVTRP",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 200,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Cleancult Soap Dispenser with Pump, 12oz Frosted Glass Refillable Bottle with Non-Slip Grip, Pre filled with Natural Liquid Handsoap, Lavender Scent, Eco Friendly",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "cleancult soap dispenser with pump 12oz frosted glass refillable bottle with non slip grip pre filled with natural liquid handsoap lavender scent eco friendly"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.3,
+      "data_quality_score": 0.544,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41E7-OfF1aL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0901,
+      "product_id": "B01G1KKCPK",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 252,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Jmkcoz Wedding Coronal Tiara Rhinestones Crystal Bridal Headband Pageant Silver Princess Crown",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "jmkcoz wedding coronal tiara rhinestones crystal bridal headband pageant silver princess crown"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5412,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41FWGi0YYeL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0893,
+      "product_id": "B00N6WHTRG",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 130,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 24,
+      "sellable_status": "low_quality",
+      "title": "Pure Rosehip Seed Oil Certified Organic Large 4 Ounce Bottle (120 Ml) By Jarosa Beauty - Cold Pressed, Virgin & Unrefined, Carrier, Face & Hair Oil - No Fillers or Fragrance",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "pure rosehip seed oil certified organic large 4 ounce bottle 120 ml by jarosa beauty cold pressed virgin unrefined carrier face hair oil no fillers or fragrance"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.2,
+      "data_quality_score": 0.4922,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51FtpTU9rvL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0584,
+      "product_id": "B076MPFLY3",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "duplicate_suspect",
+        "low_quality"
+      ],
+      "rating_number": 165,
+      "reasons": [
+        "duplicate_suspect",
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment",
+        "deduplicate_or_keep_best_variant"
+      ],
+      "review_count": 12,
+      "sellable_status": "low_quality",
+      "title": "Exclusive Nail Couture Gummy Jelly UV/LED Gel & Shine E Gel Top coat Bundle",
+      "title_duplicate_count": 2,
+      "title_duplicate_key": "exclusive nail couture gummy jelly uv led gel shine e gel top coat bundle"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5442,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51XQ7y0LZ9L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0546,
+      "product_id": "B00KU8NYZU",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 265,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Rosa Virginity Soap Bar Feminine Tighten with gift box (2)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "rosa virginity soap bar feminine tighten with gift box 2"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5412,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51I9dsRb5DL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0261,
+      "product_id": "B0885W8GCL",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 130,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Girzzur fashion headbands for women-(6 Pack) yoga running headbands for women nonslip of wide boho Face washing makeup cloth hair bands",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "girzzur fashion headbands for women 6 yoga running headbands for women nonslip of wide boho face washing makeup cloth hair bands"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.0,
+      "data_quality_score": 0.4898,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41GlBV5P4aL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0175,
+      "product_id": "B01I0SJXQA",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "duplicate_suspect",
+        "low_quality"
+      ],
+      "rating_number": 95,
+      "reasons": [
+        "duplicate_suspect",
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment",
+        "deduplicate_or_keep_best_variant"
+      ],
+      "review_count": 22,
+      "sellable_status": "low_quality",
+      "title": "LOVATIC Teeth Whitening Pen - 2 Packs - Advance Teeth Whitening Solution - 35% Carbamide Peroxide - Safe, Convenient and Effective",
+      "title_duplicate_count": 3,
+      "title_duplicate_key": "lovatic teeth whitening pen 2 packs advance teeth whitening solution 35 carbamide peroxide safe convenient and effective"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.8,
+      "data_quality_score": 0.5445,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51Dh23H5fRL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 10.0149,
+      "product_id": "B08TRPM9V2",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 284,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 12,
+      "sellable_status": "low_quality",
+      "title": "Shower Cap,shower caps for women reusable,8-Pack waterproof shower cap,large shower cap,shower cap for women,kids shower cap.",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "shower cap shower caps for women reusable 8 waterproof shower cap large shower cap shower cap for women kids shower cap"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5451,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31gTqktU0jL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.964,
+      "product_id": "B07RSKZCHZ",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 321,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 6,
+      "sellable_status": "low_quality",
+      "title": "3 Pieces Nail Dappen Dish with Lid Glass Dapping Dish Nail Crystal Bowl for Acrylic Liquid and Powder",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "3 nail dappen dish with lid glass dapping dish nail crystal bowl for acrylic liquid and powder"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5397,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/21aK3sT722L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9632,
+      "product_id": "B08GMW3HNG",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 93,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 11,
+      "sellable_status": "low_quality",
+      "title": "Black Wolf - Men’s Gentle Hydrating Face Wash - 5 Fl Oz - Hydrating Sugar Technology Blend Helps Replenish Moisture - Natural Oils Argan, Coconut, & Safflower Hydrate Your Skin, Great for Dry Skin",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "black wolf men s gentle hydrating face wash 5 fl oz hydrating sugar technology blend helps replenish moisture natural oils argan coconut safflower hydrate your skin great for dry skin"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5402,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51WSGIJFw+L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9621,
+      "product_id": "B08G149DSD",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 104,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Nxconsu 8Pcs Rhinestone Headbands for Women Girls Teens Kids Fashion Comfort No Hurting Hair Accessories Thin Hair Bands Crystal Exquisite Color Selection",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "nxconsu 8pcs rhinestone headbands for women girls teens kids fashion comfort no hurting hair accessories thin hair bands crystal exquisite color selection"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.4,
+      "data_quality_score": 0.6962,
+      "feature_count": 6,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41RAR74VW1L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9451,
+      "product_id": "B0009MFUOA",
+      "quality_flags": [
+        "missing_price",
+        "duplicate_suspect"
+      ],
+      "rating_number": 414,
+      "reasons": [
+        "duplicate_suspect",
+        "missing_price",
+        "status_duplicate_suspect"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "deduplicate_or_keep_best_variant"
+      ],
+      "review_count": 76,
+      "sellable_status": "duplicate_suspect",
+      "title": "Philips Norelco 8140XL SpeedXL Men's Shaver",
+      "title_duplicate_count": 2,
+      "title_duplicate_key": "philips norelco 8140xl speedxl men s shaver"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.8,
+      "data_quality_score": 0.5373,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/21FKCRboqkL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9332,
+      "product_id": "B0B6QK5ML2",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 53,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "L’ANGE HAIR Pocket Size Comb | Blush Acetate | Compact Design for Travel | Easy Glide Mini Wide Tooth Comb",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "l ange hair pocket size comb blush acetate compact design for travel easy glide mini wide tooth comb"
+    },
+    {
+      "attribute_count": 6,
+      "average_rating": 4.6,
+      "data_quality_score": 0.5428,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41DajIVYQZL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.933,
+      "product_id": "B08CS762PT",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 189,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 4,
+      "sellable_status": "low_quality",
+      "title": "minihope Women's Elastic Hair Tiea, Black, 120 Count (Pack of 1), 4MM for Medium Hair.Value pack.",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "minihope women s elastic hair tiea black 120 count of 1 4mm for medium hair value"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5396,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/410Xhnf4YxL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9206,
+      "product_id": "B09CQ5XB97",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 90,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Hair Straightener Hair Flat Iron Ionic Curler, 2 in 1 Hair Straightening Iron-Black",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "hair straightener hair flat iron ionic curler 2 in 1 hair straightening iron black"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 3.6,
+      "data_quality_score": 0.5404,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31xvSbmkdtL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.9155,
+      "product_id": "B00Q5V41NK",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 108,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 26,
+      "sellable_status": "low_quality",
+      "title": "Anti-Aging Peptide MegaMUD - Enhanced with Matrixyl, Argireline, Hyaluronic, Argan Oil, and Green Tea Extract",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "anti aging peptide megamud enhanced with matrixyl argireline hyaluronic argan oil and green tea extract"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.5,
+      "data_quality_score": 0.5419,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51LB2sf0z7L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8892,
+      "product_id": "B017AGMC3O",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 154,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 21,
+      "sellable_status": "low_quality",
+      "title": "Argan Oil Shampoo - Best For Dry, Damaged, Thinning Hair & Split Ends - Natural, Enriched With Vitamin E - Restoration, Shine And Repair Treatment For Women - Sulfate Free - From Andre Lorent",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "argan oil shampoo best for dry damaged thinning hair split ends natural enriched with vitamin e restoration shine and repair treatment for women sulfate free from andre lorent"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.6,
+      "data_quality_score": 0.5417,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41Hv--tjXdL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8719,
+      "product_id": "B01AKTK50U",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 148,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 18,
+      "sellable_status": "low_quality",
+      "title": "EYE CREAM FOR WRINKLES, DARK CIRCLES and PUFFINESS with Vitamin C and Glycolic Acid. Enriched with Coenzyme Q10 for Eye Tightening & Superior Anti-wrinkle Results",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "eye cream for wrinkles dark circles and puffiness with vitamin c and glycolic acid enriched with coenzyme q10 for eye tightening superior anti wrinkle results"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.5,
+      "data_quality_score": 0.538,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41HvSL-g1xL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8642,
+      "product_id": "B0971Z28DS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 62,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "BABOR Power Serum Ampoule: Beta Glucan | Calms, Strengthens, Soothes | 2D Hyaluronic Acid & Microsilver | Clean & Vegan | Visible Results in 7 Days",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "babor power serum ampoule beta glucan calms strengthens soothes 2d hyaluronic acid microsilver clean vegan visible results in 7 days"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5411,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/418IuXKPl0L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8502,
+      "product_id": "B08BLX72TP",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 128,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "LeiCare Tweezers Precision 2-Pack - Stainless Steel Slant Tweezers for Ingrown Hair – Professional Tweezer Set with Slanted Tips for Eyebrows and Splinter Removal - Eyebrow Plucker Kit",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "leicare tweezers precision 2 stainless steel slant tweezers for ingrown hair professional tweezer with slanted tips for eyebrows and splinter removal eyebrow plucker kit"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5397,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31U0K-zgN-S.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8437,
+      "product_id": "B08L6GXY2S",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 93,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "UV LED Nail Lamp – 128W Rapid-Curing Gel Nails Dryer for Manicures and Pedicures – Dual-Voltage with Extra-Long Cable, Multi-Language Manual – Professional Gel Lamp for Homes or Salons by OVLUX, Gold",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "uv led nail lamp 128w rapid curing gel nails dryer for manicures and pedicures dual voltage with extra long cable multi language manual professional gel lamp for homes or salons by ovlux gold"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.5,
+      "data_quality_score": 0.5422,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41g8KDq0YgL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8343,
+      "product_id": "B01G3EYET4",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 166,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 17,
+      "sellable_status": "low_quality",
+      "title": "Belen Thermal Temperature Color Changing Gel Nail Polish Soak Off UV LED Nail Lacquer 4219",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "belen thermal temperature color changing gel nail polish soak off uv led nail lacquer 4219"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5404,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51nWAeEuArL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8229,
+      "product_id": "B086W18W1W",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 108,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Biutee Starry Sky Nail Gel Firework Nail Gel With black Nail Polish Gel 8ml UV LED",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "biutee starry sky nail gel firework nail gel with black nail polish gel 8ml uv led"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5384,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41CYF1siPIL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8088,
+      "product_id": "B088PYN4VM",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 68,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 14,
+      "sellable_status": "low_quality",
+      "title": "Cutting Scissors Set 10 Pcs Professional Hairdressing Scissors Kit, Hair Cutting Scissors, Thinning Shears, Hair Razor Comb, Clips, Cape, Shears Kit for Home, Salon, Barber",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "cutting scissors 10 professional hairdressing scissors kit hair cutting scissors thinning shears hair razor comb clips cape shears kit for home salon barber"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5384,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51F8IBHbRYL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.8084,
+      "product_id": "B08DHZW3LK",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 69,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 12,
+      "sellable_status": "low_quality",
+      "title": "Glitter Poly Nail Gel Extensions Builder Gel UV/LED Soak Off Acrylic Fashion Gel Polish Set for Nails Beginner DIY Nail Art at Home 8 colors-15g (Pink series)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "glitter poly nail gel extensions builder gel uv led soak off acrylic fashion gel polish for nails beginner diy nail art at home 8 colors 15g pink series"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5394,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41+lv2zeePL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7894,
+      "product_id": "B08N6YHQXT",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 87,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "Heyedrate Activated Charcoal Soap Bar and Face Wash | Organic, Vegan, Natural Soap made with Dead Sea Mud and Our Essential Oil Blend (1 Pack (5 Ounces))",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "heyedrate activated charcoal soap bar and face wash organic vegan natural soap made with dead sea mud and our essential oil blend 1 5 ounces"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5402,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41zJ9WpdZ9L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7869,
+      "product_id": "B07P4LLZS6",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 103,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 6,
+      "sellable_status": "low_quality",
+      "title": "Easydew 2-Step Face Contour Sheet Mask - Tightening & Anti-Aging & Hydrating Korean Face Mask with DW-EGF, Hyaluronic Acid for Anti-Winkle, Reducing Fine Line & Producing Collagen (Qty 5)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "easydew 2 step face contour sheet mask tightening anti aging hydrating korean face mask with dw egf hyaluronic acid for anti winkle reducing fine line producing collagen qty 5"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5424,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31hk8hsbZ6L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7737,
+      "product_id": "B08K8G8XRF",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 171,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 5,
+      "sellable_status": "low_quality",
+      "title": "Natrogix Essential Oil Diffuser Humidifier Aromatherapy Diffuser for Essential Oils with Cool Mist Humidifying Function, LED Lights Waterless Auto Off BPA-Free",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "natrogix essential oil diffuser humidifier aromatherapy diffuser for essential oils with cool mist humidifying function led lights waterless auto off bpa free"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5372,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51Rh2XB8SEL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7571,
+      "product_id": "B00IUI0QFS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 52,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 15,
+      "sellable_status": "low_quality",
+      "title": "SensatioNail LED Lamp",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "sensationail led lamp"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5424,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41ag0BzZAkL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7368,
+      "product_id": "B07YYXVW48",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 173,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "Beard Straightener for Men - Hair Straightener Brush, Ionic Beard Straightening Brush - 3 Heat Settings - Hair Straightening Comb with Dual Voltage 110-240V Great Gifts for Men",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "beard straightener for men hair straightener brush ionic beard straightening brush 3 heat settings hair straightening comb with dual voltage 110 240v great gifts for men"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5384,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/511O8gTTLDL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7232,
+      "product_id": "B0BKLCF1CL",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 69,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "SalonSilk Round Brush Set",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "salonsilk round brush"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5376,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41ZHCqXNOSL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7137,
+      "product_id": "B08XQYZWCS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 57,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "NeoCell Overnighter Collagen, 9.3oz",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "neocell overnighter collagen 9 3oz"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5376,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41NqapFPZ4L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7087,
+      "product_id": "B08FF6LQ3G",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 56,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Travel Bottles Keychain, 1.7oz/50ml Portable Hand Sanitizer Bottles, Fine Mist Spray Keychain Bottles, Empty Leakproof Refillable Containers with Flip/Spray Cap Plastic Travel Bottles (5PC)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "travel bottles keychain 1 7oz 50ml portable hand sanitizer bottles fine mist spray keychain bottles empty leakproof refillable containers with flip spray cap plastic travel bottles 5pc"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5372,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51UKU35T0VL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7062,
+      "product_id": "B086YBQ8M7",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 52,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 13,
+      "sellable_status": "low_quality",
+      "title": "BJÖRN HALL Nurse Headband with Buttons for Face Mask | Elastic Swimsuit Material, Smooth & Stretchy | Ear Saver Headband with Buttons | Perfect for Nurses, Doctors & Medical Students",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "bj rn hall nurse headband with buttons for face mask elastic swimsuit material smooth stretchy ear saver headband with buttons perfect for nurses doctors medical students"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5406,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31jMOrr9ubL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.702,
+      "product_id": "B086M8MZGB",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 114,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "Pretty Frank Natural Deodorant - No Aluminum Deodorant for Women, Men, Teens, & Kids – Paraben Sulfate Free Solid Deodorant Featuring Shea Butter, Coconut Oil, Vitamin E & Baking Soda (Lavender)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "pretty frank natural deodorant no aluminum deodorant for women men teens kids paraben sulfate free solid deodorant featuring shea butter coconut oil vitamin e baking soda lavender"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5411,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51dAFC-jKKL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.7002,
+      "product_id": "B083TLNBJJ",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 128,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "BE PLAIN Vitamin Ampoule 1.01 fl oz. - Korean Multi Vitamin Serum for Face with Vitamin B, Vitamin C, Vitamin E, Hyaluronic Acid",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "be plain vitamin ampoule 1 01 fl oz korean multi vitamin serum for face with vitamin b vitamin c vitamin e hyaluronic acid"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.8,
+      "data_quality_score": 0.5403,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41qbV4KPrjL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.698,
+      "product_id": "B07DY9JY3K",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 105,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 11,
+      "sellable_status": "low_quality",
+      "title": "Nose Hair Trimmer, 4 in 1 Electric Rechargeable Facial Ear Eyebrow Beard Hair Clippers Nose Trimmer Wet Dry Trimming for Men Women",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "nose hair trimmer 4 in 1 electric rechargeable facial ear eyebrow beard hair clippers nose trimmer wet dry trimming for men women"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.2,
+      "data_quality_score": 0.5422,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/61TMxe8OAzS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6973,
+      "product_id": "B0964VYMML",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 167,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 4,
+      "sellable_status": "low_quality",
+      "title": "FEQO 48 Pieces Nail Pom Fluffy Balls 3D Detachable Nail Pom Pom Faux Fur Pom Ball with Removable Base Pom for Nail Art Design Decoration",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "feqo 48 nail pom fluffy balls 3d detachable nail pom pom faux fur pom ball with removable base pom for nail art design decoration"
+    },
+    {
+      "attribute_count": 6,
+      "average_rating": 4.6,
+      "data_quality_score": 0.535,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/514-9A+-XkL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6817,
+      "product_id": "B0B7DQ98PR",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 31,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "LLTGMV 50 Pcs Baby Hair Ties, Cotton Toddler Hair Ties for Girls and Kids, Multicolor Small Seamless Hair Bands Elastic Ponytail Holders",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "lltgmv 50 baby hair ties cotton toddler hair ties for girls and kids multicolor small seamless hair bands elastic ponytail holders"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.4,
+      "data_quality_score": 0.7,
+      "feature_count": 6,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31mGSVTIsyL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6785,
+      "product_id": "B081NH5KNB",
+      "quality_flags": [
+        "missing_price",
+        "duplicate_suspect"
+      ],
+      "rating_number": 1084,
+      "reasons": [
+        "duplicate_suspect",
+        "missing_price",
+        "status_duplicate_suspect"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "deduplicate_or_keep_best_variant"
+      ],
+      "review_count": 12,
+      "sellable_status": "duplicate_suspect",
+      "title": "4 pieces No Bend Hair Clips, No Crease Hair Clips, Makeup No Bend Hair Clips for Hair Styling and Makeup Application",
+      "title_duplicate_count": 2,
+      "title_duplicate_key": "4 no bend hair clips no crease hair clips makeup no bend hair clips for hair styling and makeup application"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.8,
+      "data_quality_score": 0.5354,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/410TuCdNuIL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6716,
+      "product_id": "B07T3WQPRF",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 34,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 6,
+      "sellable_status": "low_quality",
+      "title": "6 Pcs Pink Baby Girl Hair Bow Clips Set, Alligator Clip Hair Accessories with Gift Box, Back to School Dress",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "6 pink baby girl hair bow clips alligator clip hair accessories with gift box back to school dress"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 3.8,
+      "data_quality_score": 0.7466,
+      "feature_count": 6,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41fnxoi4j9L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6705,
+      "product_id": "B00P0BLZFI",
+      "quality_flags": [
+        "missing_price"
+      ],
+      "rating_number": 452,
+      "reasons": [
+        "missing_price",
+        "status_currently_unavailable"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price"
+      ],
+      "review_count": 83,
+      "sellable_status": "currently_unavailable",
+      "title": "Sannysis Fashion Women Silver Flower Plated Crystal Rhinestone Stud Earrings",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "sannysis fashion women silver flower plated crystal rhinestone stud earrings"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 3.8,
+      "data_quality_score": 0.5389,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41vWD6FKBZL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6643,
+      "product_id": "B08FD2KP9R",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 76,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 13,
+      "sellable_status": "low_quality",
+      "title": "35.4 Inch Extra Long Silicone Back Scrubber for Shower, 2021 Updated Lengthen Back Scrubber Brush for Men and Women, Exfoliating Back Washer with Wall Hooks, Easy Clean, Comfortable Massage (Green 27.5in)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "35 4 inch extra long silicone back scrubber for shower 2021 updated lengthen back scrubber brush for men and women exfoliating back washer with wall hooks easy clean comfortable massage green 27 5in"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.6,
+      "data_quality_score": 0.54,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/51mDWUHuzTS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.662,
+      "product_id": "B08R9YW6JD",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 99,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 3,
+      "sellable_status": "low_quality",
+      "title": "DAYAMY 6 Pcs Big Matte Hair Claw Clips - 4.3 Inch Large Hair Claw Clips for Women and Girls Jaw Hair Clips Hair Styling Accessories Strong Hold for Thick & Thin Hair",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "dayamy 6 big matte hair claw clips 4 3 inch large hair claw clips for women and girls jaw hair clips hair styling accessories strong hold for thick thin hair"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5374,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41xpZT3ej6L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6483,
+      "product_id": "B0851QJPZY",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 54,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Gentlehomme Face Moisturizer For Men - Mens Facial Lotion with Neroli Essential Oil Scent - Collagen & Stem Cells - Daily Anti-Aging Moisturizer for Dry & Oily Skin - 4 oz",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "gentlehomme face moisturizer for men mens facial lotion with neroli essential oil scent collagen stem cells daily anti aging moisturizer for dry oily skin 4 oz"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.5,
+      "data_quality_score": 0.5382,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41OrS5ZfOgL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6464,
+      "product_id": "B07K1QJH5P",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 65,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 5,
+      "sellable_status": "low_quality",
+      "title": "Mane Tame Deluxe Pomade 3.3oz/97mL - Firm Hold, Medium Shine - Made in USA, Water-Based, Combable, Rinses Out Easily, BARBER RECOMMENDED - Best used on dry hair",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "mane tame deluxe pomade 3 3oz 97ml firm hold medium shine made in usa water based combable rinses out easily barber recommended best used on dry hair"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5378,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41Jpm8QZYML.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6286,
+      "product_id": "B07YC9GNKS",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 59,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 7,
+      "sellable_status": "low_quality",
+      "title": "JPNK 10PCS Makeup tool set, Blender Sponges& Air cushion puff&Sponge Holder for Blending Liquid, Cream or Flawless Powder Cosmetics",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "jpnk 10pcs makeup tool blender sponges air cushion puff sponge holder for blending liquid cream or flawless powder cosmetics"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.0,
+      "data_quality_score": 0.5381,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/316SzkEycxL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6232,
+      "product_id": "B0B5VP6TZ7",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 64,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Eye Corrector Serum With Triple Peptides 1 oz. (28g) by BeautyLux",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "eye corrector serum with triple peptides 1 oz 28g by beautylux"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5381,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41BenRSUIuL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6064,
+      "product_id": "B086GST51S",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 64,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 11,
+      "sellable_status": "low_quality",
+      "title": "3D Mink Eyelashes Natural Long Lashes 2 in 1 Self-adhesive Eyeliner Instead of Adhesive 5 Different Styles Pairs Kits Sets with Tweezers , NO NEED GLUE",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "3d mink eyelashes natural long lashes 2 in 1 self adhesive eyeliner instead of adhesive 5 different styles pairs kits sets with tweezers no need glue"
+    },
+    {
+      "attribute_count": 2,
+      "average_rating": 3.9,
+      "data_quality_score": 0.5421,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/512xCGznKuL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6064,
+      "product_id": "B08DCY6PYY",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 161,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 5,
+      "sellable_status": "low_quality",
+      "title": "SATINIOR 10 Pieces Button Headbands Ear Protection Holder Non Slip Elastic Yoga Sports Hair Band Head Wrap for Women (Lively Color)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "satinior 10 button headbands ear protection holder non slip elastic yoga sports hair band head wrap for women lively color"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5361,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41EyNlhyNoL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.6035,
+      "product_id": "B08SQ31H8P",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 40,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "5-Pack Hair Scalp scrubber Massager Shampoo Brush for Straight Curly Long Short Thick Thin Wet Dry Hair, Men Women Kids Scalp Care Hair Cleaning Shower, Scalp Care Brush,100% comfortable",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "5 hair scalp scrubber massager shampoo brush for straight curly long short thick thin wet dry hair men women kids scalp care hair cleaning shower scalp care brush 100 comfortable"
+    },
+    {
+      "attribute_count": 5,
+      "average_rating": 4.1,
+      "data_quality_score": 0.5375,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/31lRNYQKmJS.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.5937,
+      "product_id": "B086N136NH",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 55,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 9,
+      "sellable_status": "low_quality",
+      "title": "Follain Everybody Bar Soap | Lavender & Bergamot, Skin Moisturizing Hand & Body Cleanser with Shea Butter, Argan Oil, Hydrate for Softer Skin, Non-Drying, Rich-Lather, Cruelty Free, 5 oz",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "follain everybody bar soap lavender bergamot skin moisturizing hand body cleanser with shea butter argan oil hydrate for softer skin non drying rich lather cruelty free 5 oz"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.3,
+      "data_quality_score": 0.5353,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41d3VStetqL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.5856,
+      "product_id": "B0B591YB3B",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 33,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 10,
+      "sellable_status": "low_quality",
+      "title": "Shower Cap for Women Reusable Long Hair Double Waterproof Large Shower Hair Hat Adjustable (11 inches, Black, Blue, Bowknot)",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "shower cap for women reusable long hair double waterproof large shower hair hat adjustable 11 inches black blue bowknot"
+    },
+    {
+      "attribute_count": 1,
+      "average_rating": 4.4,
+      "data_quality_score": 0.5354,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41WlRyVse8L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.5675,
+      "product_id": "B08GYJY8F2",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 34,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Karuna 7 Days of Glow - Face & Eye Mask Variety Pack (7 Sheets), Hydrate, Brighten and Glow",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "karuna 7 days of glow face eye mask variety 7 sheets hydrate brighten and glow"
+    },
+    {
+      "attribute_count": 3,
+      "average_rating": 4.6,
+      "data_quality_score": 0.5338,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41Cqz4xYWRL.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.5583,
+      "product_id": "B0B1M8SBML",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 23,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 8,
+      "sellable_status": "low_quality",
+      "title": "Everyday Beauty Radiance Cleanser, Rejuvenating Antioxidant Gel Cleanser with Rose Hip Seed Oil, Vitamin A, C, and E for All Skin Types to Soothe and Nourish Dry Damaged Skin, 4fl oz. Pump Bottle",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "everyday beauty radiance cleanser rejuvenating antioxidant gel cleanser with rose hip seed oil vitamin a c and e for all skin types to soothe and nourish dry damaged skin 4fl oz pump bottle"
+    },
+    {
+      "attribute_count": 4,
+      "average_rating": 4.8,
+      "data_quality_score": 0.5369,
+      "feature_count": 0,
+      "holdout_count": 1,
+      "image_url": "https://m.media-amazon.com/images/I/41mItf2aT4L.jpg",
+      "in_candidate_catalog": false,
+      "in_graph": true,
+      "main_category": "All Beauty",
+      "pool": "discoverable_pool",
+      "price": null,
+      "priority_score": 9.5555,
+      "product_id": "B08KZQKD4G",
+      "quality_flags": [
+        "missing_price",
+        "missing_useful_content",
+        "low_quality"
+      ],
+      "rating_number": 48,
+      "reasons": [
+        "low_quality_score",
+        "missing_features",
+        "missing_price",
+        "status_low_quality"
+      ],
+      "repair_actions": [
+        "keep_unavailable_or_source_price",
+        "reaudit_quality_after_enrichment"
+      ],
+      "review_count": 3,
+      "sellable_status": "low_quality",
+      "title": "8 PCS 40ML Mini Spray Bottles, FANDAMEI Fine Mist Plastic Spray Bottles, Empty Refillable Clear Atomizer for Cleaning, Travel, Essential Oils, Perfume, Makeup Liquids. Travel Size, Pink & Blue",
+      "title_duplicate_count": 1,
+      "title_duplicate_key": "8 40ml mini spray bottles fandamei fine mist plastic spray bottles empty refillable clear atomizer for cleaning travel essential oils perfume makeup liquids travel size pink blue"
+    }
+  ],
+  "reason_counts": {
+    "duplicate_suspect": {
+      "unique_products": 11,
+      "weighted_events": 12
+    },
+    "in_candidate_catalog": {
+      "unique_products": 69,
+      "weighted_events": 70
+    },
+    "low_quality_score": {
+      "unique_products": 269,
+      "weighted_events": 279
+    },
+    "missing_attributes": {
+      "unique_products": 6,
+      "weighted_events": 6
+    },
+    "missing_features": {
+      "unique_products": 272,
+      "weighted_events": 282
+    },
+    "missing_or_short_title": {
+      "unique_products": 1,
+      "weighted_events": 1
+    },
+    "missing_price": {
+      "unique_products": 316,
+      "weighted_events": 329
+    },
+    "status_currently_unavailable": {
+      "unique_products": 45,
+      "weighted_events": 48
+    },
+    "status_duplicate_suspect": {
+      "unique_products": 3,
+      "weighted_events": 3
+    },
+    "status_low_quality": {
+      "unique_products": 269,
+      "weighted_events": 279
+    }
+  },
+  "repair_action_counts": {
+    "deduplicate_or_keep_best_variant": 10,
+    "extract_attributes": 6,
+    "keep_unavailable_or_source_price": 316,
+    "reaudit_quality_after_enrichment": 268
+  },
+  "summary": {
+    "attribute_priority_meta_rows_written": 6,
+    "candidate_catalog_size": 17280,
+    "priority_candidate_count": 316,
+    "priority_meta_rows_written": 316,
+    "unique_holdouts": 386,
+    "unique_holdouts_in_candidate_catalog": 69,
+    "unique_holdouts_outside_candidate_catalog": 317,
+    "weighted_holdouts": 400
+  }
+}
