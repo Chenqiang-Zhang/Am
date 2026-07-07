@@ -386,6 +386,27 @@ Current generated reports:
 
 Interpretation: the strict `recommendable` report is the best proxy for current online product quality because it only evaluates products the API is allowed to recommend. The 200-user `all` report is a data-coverage stress test; its low exact-ASIN score is expected because most future reviewed products are outside the current sellable + quality-filtered candidate pool.
 
+### Coverage gap analysis
+
+After running the 200-user all-scope evaluation, analyze why future holdout products are outside the current recommendable catalog:
+
+```bash
+conda run -n py312 python scripts/analyze_coverage_gap.py
+```
+
+Current output: `reports/evaluation/coverage_gap/`.
+
+Latest finding:
+
+- Unique holdout products: 386
+- Holdouts already in the recommendable candidate catalog: 69
+- Holdouts outside the candidate catalog: 317
+- Priority repair candidates: 316
+- Main gap reason: missing price and low graph quality/feature coverage, not missing LLM attributes
+- Attribute-extraction priority subset: 6 products
+
+This means the next data step should not be a blind full-catalog LLM expansion. The better path is to introduce or validate a discoverable-but-currently-unavailable pool, re-audit quality after metadata enrichment, and only run LLM extraction on the small set that truly lacks attributes.
+
 ### Review mention extraction
 
 Run review mention extraction when you want review-derived attribute signals:

@@ -83,6 +83,33 @@ Product -[HAS_ATTRIBUTE]-> Attribute
 
 因此汇报时应区分两件事：一是“当前线上可推荐商品池内，混合推荐明显优于热门/文本基线”；二是“如果用全部未来评论商品作为精确 ASIN 目标，当前商品清洗和可售过滤会显著限制上限”。
 
+## 覆盖缺口分析
+
+针对 200 用户 `all` 口径实验，已新增并执行：
+
+```bash
+conda run -n py312 python scripts/analyze_coverage_gap.py
+```
+
+输出目录：`reports/evaluation/coverage_gap/`
+
+关键结果：
+
+| 指标 | 数量 |
+|---|---:|
+| 唯一 holdout 商品 | 386 |
+| 已在当前可推荐候选池 | 69 |
+| 不在当前可推荐候选池 | 317 |
+| 优先修复候选 | 316 |
+| 真正需要优先补 LLM 属性的商品 | 6 |
+
+主要缺口不是大面积缺属性，而是 `missing_price`、`low_quality_score`、`missing_features` 和 `currently_unavailable`。因此下一步不应盲目对全量 112k 商品跑 LLM，而应优先处理：
+
+1. 建立/验证 `discoverable_pool`，允许缺价格但信息较完整的商品作为“当前不可销售/发现型商品”参与研究评估。
+2. 对 coverage gap 中的 316 个优先候选重新审计质量，尤其检查原始 metadata 中是否有 feature/detail 没有进入图谱。
+3. 仅对 `attribute_priority_candidates_meta.jsonl` 中的 6 个商品做小批量 LLM 属性补全。
+4. 对 duplicate_suspect 商品保留最优变体，避免重复商品影响推荐结果。
+
 ---
 
 ## 构建基础图谱
