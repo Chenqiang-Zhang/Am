@@ -91,7 +91,7 @@ export default function SearchPage() {
 
         {status === "success" && response && (
           <>
-            {devMode && <IntentPanel intent={response.intent} />}
+            {devMode && <IntentPanel intent={response.intent} queryPlan={response.query_plan} />}
             <RecommendationList
               items={response.recommendations}
               devMode={devMode}

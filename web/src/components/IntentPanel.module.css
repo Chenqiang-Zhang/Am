@@ -88,6 +88,15 @@
   font-size: 13px;
 }
 
+.actionChip {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: #eef6f3;
+  border: 1px solid #c7ddd5;
+  color: #285a4b;
+  font-size: 12px;
+}
+
 .scalar {
   font-size: 14px;
 }
@@ -95,4 +104,12 @@
 .none {
   color: var(--color-text-muted);
   font-size: 13px;
+}
+
+.notes {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }

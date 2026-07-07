@@ -35,6 +35,24 @@ export interface SearchIntent {
   min_rating: number | null;
 }
 
+/** LLM が直接 Cypher を書かず、バックエンドが許可した検索動作だけを実行する計画 */
+export interface QueryAction {
+  name: string;
+  enabled: boolean;
+  reason: string;
+  cypher_template: string | null;
+}
+
+export interface QueryPlan {
+  source: string;
+  objective: string;
+  user_input: string;
+  history_policy: string;
+  constraints: Record<string, string | number | boolean | null | string[]>;
+  actions: QueryAction[];
+  safety_notes: string[];
+}
+
 /** 推薦根拠となった、商品に一致した構造化属性 1 件 */
 export interface MatchedAttribute {
   attribute_type: string;
@@ -62,7 +80,8 @@ export interface Recommendation {
   matched_terms: string[];
   matched_feature_evidence: string[];
   /** スコア内訳。キー例: attribute_match / feature_text_match / field_match /
-   *  rating_quality / popularity / query_coverage（0〜1） */
+   *  text_similarity / data_quality / item_cf / transition / rating_quality /
+   *  popularity / query_coverage（0〜1） */
   score_breakdown: Record<string, number>;
   /** レコメンド理由の定量化。通常は score_breakdown と同じキーをユーザー説明用に返す。 */
   reason_quantification: Record<string, number>;
@@ -74,6 +93,7 @@ export interface Recommendation {
 export interface RecommendResponse {
   query: string;
   intent: SearchIntent;
+  query_plan: QueryPlan | null;
   recommendations: Recommendation[];
 }
 
@@ -104,6 +124,7 @@ export interface ChatResponse {
   options: string[];
   preference_summary: string[];
   intent: SearchIntent | null;
+  query_plan: QueryPlan | null;
   recommendations: Recommendation[];
 }
 

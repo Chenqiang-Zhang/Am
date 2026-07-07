@@ -156,8 +156,17 @@ def first_words(text: str, max_words: int = 18) -> str:
     return " ".join(text.split()[:max_words])
 
 
+def normalize_attribute_value(value: Any, max_words: int = 12, max_chars: int = 96) -> str:
+    text = clean_text(value)
+    text = re.sub(r"\s*see\s+more\s*$", "", text, flags=re.I).strip()
+    text = re.sub(r"(.{20,}?)\1+", r"\1", text)
+    if len(text) > max_chars:
+        text = first_words(text, max_words)
+    return text[:max_chars].strip(" ,.;:")
+
+
 def add_attr(attrs: list[dict[str, Any]], seen: set[tuple[str, str]], name: str, value: Any, attr_type: str, evidence: str, confidence: float) -> None:
-    value_text = clean_text(value)
+    value_text = normalize_attribute_value(value)
     if not value_text:
         return
     key = (name.lower(), value_text.lower())

@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,15 @@ def clean_text(value: Any) -> str:
 
 def normalize(value: Any) -> str:
     return clean_text(value).lower()
+
+
+def normalize_attribute_value(value: Any, max_words: int = 12, max_chars: int = 96) -> str:
+    text = normalize(value)
+    text = re.sub(r"\s*see\s+more\s*$", "", text, flags=re.I).strip()
+    text = re.sub(r"(.{20,}?)\1+", r"\1", text)
+    if len(text) > max_chars:
+        text = " ".join(text.split()[:max_words])
+    return text[:max_chars].strip(" ,.;:")
 
 
 def stable_id(prefix: str, value: str) -> str:
@@ -40,42 +50,46 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> 
     return len(rows)
 
 
-def convert(input_path: Path, output_dir: Path) -> dict[str, int]:
+def convert(input_paths: list[Path], output_dir: Path) -> dict[str, int]:
     attributes: dict[str, dict[str, Any]] = {}
     edges: dict[tuple[str, str], dict[str, Any]] = {}
+    source_rows = 0
 
-    for record in read_jsonl(input_path):
-        product_id = clean_text(record.get("product_id"))
-        if not product_id:
-            continue
-
-        model = clean_text(record.get("model"))
-        for attr in record.get("attributes", []):
-            name = normalize(attr.get("name"))
-            value = normalize(attr.get("value"))
-            attr_type = normalize(attr.get("attribute_type")) or "other"
-            if not name or not value:
+    for input_path in input_paths:
+        for record in read_jsonl(input_path):
+            source_rows += 1
+            product_id = clean_text(record.get("product_id"))
+            if not product_id:
                 continue
 
-            attribute_id = stable_id("attribute", f"{attr_type}|{name}|{value}")
-            attributes[attribute_id] = {
-                "attribute_id": attribute_id,
-                "name": name,
-                "value": value,
-                "attribute_type": attr_type,
-            }
+            model = clean_text(record.get("model"))
+            for attr in record.get("attributes", []):
+                name = normalize(attr.get("name"))
+                value = normalize_attribute_value(attr.get("value"))
+                attr_type = normalize(attr.get("attribute_type")) or "other"
+                if not name or not value:
+                    continue
 
-            edge_key = (product_id, attribute_id)
-            confidence = attr.get("confidence", "")
-            edges[edge_key] = {
-                "product_id": product_id,
-                "attribute_id": attribute_id,
-                "confidence": confidence,
-                "evidence": clean_text(attr.get("evidence")),
-                "model": model,
-            }
+                attribute_id = stable_id("attribute", f"{attr_type}|{name}|{value}")
+                attributes[attribute_id] = {
+                    "attribute_id": attribute_id,
+                    "name": name,
+                    "value": value,
+                    "attribute_type": attr_type,
+                }
+
+                edge_key = (product_id, attribute_id)
+                confidence = attr.get("confidence", "")
+                edges[edge_key] = {
+                    "product_id": product_id,
+                    "attribute_id": attribute_id,
+                    "confidence": confidence,
+                    "evidence": clean_text(attr.get("evidence")),
+                    "model": model,
+                }
 
     counts = {
+        "source_rows": source_rows,
         "attributes": write_csv(
             output_dir / "nodes_attributes.csv",
             list(attributes.values()),
@@ -93,13 +107,21 @@ def convert(input_path: Path, output_dir: Path) -> dict[str, int]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert LLM product attribute JSONL to Neo4j-ready CSV files.")
     parser.add_argument("--input-path", type=Path, default=Path("kg_output/attributes/product_attributes_llm.jsonl"))
+    parser.add_argument(
+        "--input-paths",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="One or more JSONL files to merge. Overrides --input-path when provided.",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("kg_output/all_beauty"))
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    counts = convert(args.input_path, args.output_dir)
+    input_paths = args.input_paths or [args.input_path]
+    counts = convert(input_paths, args.output_dir)
     for name, count in counts.items():
         print(f"{name}: {count:,}")
     print(f"CSV files written to: {args.output_dir}")
