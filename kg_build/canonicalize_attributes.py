@@ -2,14 +2,14 @@
 Canonicalize attr_type / value spelling drift after extraction.
 
 Rule-based extraction (details keys) and LLM extraction (free text) run
-independently and get merged by build_attribute_csvs.py with exact-string
+independently and get merged by build_attribute_graph.py with exact-string
 dedup only. That leaves near-duplicates on the table, e.g.:
-  attr_type: "item_form" vs "texture"          (same concept, different name)
+  attr_type: "platform" vs "system"            (same concept, different name)
   value:     "long lasting" vs "long-lasting"  (same value, different spelling)
 
 This script scans the extraction outputs, asks the LLM once for an attr_type
 merge map, then once per batch of attr_types for a value merge map, and
-writes both to a single canonicalization file. build_attribute_csvs.py
+writes both to a single canonicalization file. build_attribute_graph.py
 applies it (if present) before computing attribute_id, so synonyms collapse
 into one Attribute node instead of staying split.
 
@@ -23,7 +23,7 @@ Writes:
      "value_map": {"canonical_attr_type": {"raw_value": "canonical_value", ...}}}
 
 Usage:
-    python3 scripts/normalize_attributes.py
+    python3 kg_build/canonicalize_attributes.py
 """
 from __future__ import annotations
 
@@ -34,22 +34,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from llm_client import build_client, provider_from_config
 
-
-# ── I/O ──────────────────────────────────────────────────────────────────────
-
-def read_jsonl(path: Path):
-    if not path.exists():
-        return
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+from utils.csv_io import read_jsonl
+from utils.llm_client import build_client, provider_from_config
+from utils.llm_json import chat_json_call
 
 
 def collect_counts(product_attrs_path: Path, review_mentions_path: Path) -> dict[str, dict[str, int]]:
@@ -73,37 +61,17 @@ def collect_counts(product_attrs_path: Path, review_mentions_path: Path) -> dict
 
 # ── LLM helpers ────────────────────────────────────────────────────────────────
 
-def parse_json_text(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        import re
-        text = re.sub(r"^```(?:json)?", "", text).strip()
-        text = re.sub(r"```$", "", text).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(text[start:end + 1])
-        raise
-
-
 def call_llm(client: Any, model: str, system: str, user: str) -> dict[str, Any]:
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        response_format={"type": "json_object"},
-        temperature=0,
-        max_tokens=2000,
-    )
-    return parse_json_text(resp.choices[0].message.content or "{}")
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    parsed, _usage = chat_json_call(client, model, messages, max_output_tokens=2000)
+    return parsed
 
 
 ATTR_TYPE_SYSTEM_PROMPT = """\
 You are cleaning up the attribute taxonomy of a product knowledge graph for {genre}.
 Below is every attr_type name currently in use, with how many attributes use it.
 Some names are synonyms or near-duplicates created by independent extraction passes
-(rule-based + LLM), e.g. "item_form" and "texture" mean the same thing.
+(rule-based + LLM), e.g. "platform" and "system" mean the same thing.
 
 Return valid JSON only: {{"map": {{"raw_name": "canonical_name", ...}}}}
 - Only include an entry for a name that should be MERGED into a different name.
@@ -122,7 +90,7 @@ Return valid JSON only: {{"maps": {{"attr_type_name": {{"raw_value": "canonical_
 - Only include an entry for a value that should be MERGED into a different value.
 - Omit any value that is already fine as-is — it stays unchanged.
 - When merging, prefer the more frequent spelling as canonical.
-- Do not merge values that are genuinely different (e.g. "dry" and "oily").
+- Do not merge values that are genuinely different (e.g. "pc" and "console").
 """
 
 
@@ -217,7 +185,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
     config_dir = args.config.resolve().parent
-    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/all_beauty")
+    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3")
     attrs_dir = out_dir / "attributes"
 
     product_attrs_path = args.product_attrs or (attrs_dir / "product_attributes.jsonl")

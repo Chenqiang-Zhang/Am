@@ -1,18 +1,20 @@
 import { useState } from "react";
 import type { ReviewItem } from "../types/recommend";
 import { useI18n } from "../i18n";
-import { fetchReviews } from "../api/client";
+import { fetchReviews, logView } from "../api/client";
 import RatingStars from "./RatingStars";
 import styles from "./ReviewList.module.css";
 
 interface Props {
   productId: string;
   ratingNumber?: number | null;
+  userId: string | null;
+  searchId: string | null;
 }
 
 type Status = "idle" | "loading" | "done" | "error";
 
-export default function ReviewList({ productId, ratingNumber }: Props) {
+export default function ReviewList({ productId, ratingNumber, userId, searchId }: Props) {
   const { lang, t } = useI18n();
   const [status, setStatus] = useState<Status>("idle");
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -21,6 +23,8 @@ export default function ReviewList({ productId, ratingNumber }: Props) {
   async function load() {
     if (status !== "idle") return;
     setStatus("loading");
+    // レビュー詳細を見る = VIEWED（商品への強い関心のシグナル）として記録する
+    if (userId) logView({ user_id: userId, product_id: productId, search_id: searchId });
     try {
       const data = await fetchReviews(productId, 5);
       setReviews(data.reviews);

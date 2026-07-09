@@ -15,13 +15,11 @@ env/
 .DS_Store
 Thumbs.db
 
-# Frontend (web/) build artifacts and dependencies
-web/node_modules/
-web/dist/
-web/*.local
+# Frontend (app/web/) build artifacts and dependencies
+app/web/node_modules/
+app/web/dist/
+app/web/*.local
 
-# Runtime logs
-logs/
 .npm-cache/
 
 # Local secrets

@@ -7,18 +7,16 @@ Writes: review_mentions.jsonl  (one line per review)
 
 Output schema per line:
   {"review_id": "...", "product_id": "...", "mentions": [
-    {"attr_type": "scent", "value": "floral", "sentiment": "positive", "confidence": 0.9}
+    {"attr_type": "build_quality", "value": "sturdy", "sentiment": "positive", "confidence": 0.9}
   ]}
 
-Run build_attribute_csvs.py afterwards to produce Neo4j import CSVs.
+Run build_attribute_graph.py afterwards to produce Neo4j import CSVs.
 """
 from __future__ import annotations
 
 import argparse
 import csv
-import html
 import json
-import re
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -26,36 +24,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from llm_client import build_client, provider_from_config
 
-
-# ── text utilities ─────────────────────────────────────────────────────────────
-
-_HTML_TAG = re.compile(r"<[^>]+>")
-_TEXT_WS = re.compile(r"\s+")
-_ATTR_WS = re.compile(r"[\s\-]+")
-_ATTR_NON_ALPHA = re.compile(r"[^a-z0-9_]")
-
-
-def clean_text(value: Any) -> str:
-    if not value:
-        return ""
-    text = str(value).replace("\x00", " ")
-    text = _HTML_TAG.sub(" ", text)
-    text = html.unescape(text)
-    return _TEXT_WS.sub(" ", text).strip()
-
-
-def normalize_attr_type(raw: str) -> str:
-    lower = raw.lower().strip()
-    snaked = _ATTR_WS.sub("_", lower)
-    cleaned = _ATTR_NON_ALPHA.sub("", snaked)
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    return cleaned or "other"
-
-
-def normalize_value(raw: str) -> str:
-    return clean_text(raw).lower()
+from utils.csv_io import load_done_ids
+from utils.llm_client import build_client, provider_from_config
+from utils.llm_json import batch_extract_with_fallback
+from utils.text_utils import clean_text, normalize_attr_type, normalize_value
 
 
 # ── LLM schema / prompts ───────────────────────────────────────────────────────
@@ -116,12 +89,12 @@ FORBIDDEN attr_type — never use:
   feature, other  (too generic)
 
 Rules for value:
-- Short, lowercase, normalized (e.g. "floral", "vitamin c")
+- Short, lowercase, normalized (e.g. "wireless", "co_op")
 - Do not repeat the attr_type in the value
 
 Rules for sentiment:
-- positive: reviewer views this attribute favorably ("smells amazing", "great texture")
-- negative: reviewer views this attribute unfavorably ("terrible scent", "too thick")
+- positive: reviewer views this attribute favorably ("battery lasts forever", "great build quality")
+- negative: reviewer views this attribute unfavorably ("battery dies fast", "cheap plastic feel")
 - neutral: mentioned without clear opinion
 
 General rules:
@@ -134,102 +107,26 @@ General rules:
 
 # ── API helpers ────────────────────────────────────────────────────────────────
 
-def parse_json_text(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text).strip()
-        text = re.sub(r"```$", "", text).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(text[start:end + 1])
-        raise
-
-
-def normalize_usage(usage: Any) -> dict[str, int]:
-    if hasattr(usage, "model_dump"):
-        usage = usage.model_dump()
-    if not isinstance(usage, dict):
-        usage = {}
-    return {
-        "input_tokens": int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
-        "output_tokens": int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
-        "total_tokens": int(usage.get("total_tokens") or 0),
-    }
-
-
-def extract_batch(
-    client: Any,
-    model: str,
-    reviews: list[dict[str, Any]],
-    system_prompt: str,
-    max_output_tokens: int,
-    retries: int,
-    use_responses_api: bool,
-) -> tuple[dict[str, list[dict]], dict[str, int]]:
-    user_content = json.dumps(
-        {"task": "Extract attribute mentions from reviews.", "reviews": reviews},
-        ensure_ascii=False,
-    )
-    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
-    last_err: Exception | None = None
-
-    for attempt in range(retries + 1):
-        try:
-            if use_responses_api:
-                resp = client.responses.create(
-                    model=model, input=messages,
-                    text={"format": {"type": "json_schema", "name": "mentions", "schema": MENTIONS_SCHEMA, "strict": True}},
-                    temperature=0, max_output_tokens=max_output_tokens,
-                )
-                raw = getattr(resp, "output_text", None) or "".join(
-                    c.text for item in (getattr(resp, "output", []) or []) for c in (getattr(item, "content", []) or []) if getattr(c, "type", "") == "output_text"
-                )
-                usage = normalize_usage(getattr(resp, "usage", {}))
-            else:
-                resp = client.chat.completions.create(
-                    model=model, messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0, max_tokens=max_output_tokens,
-                )
-                raw = resp.choices[0].message.content or "{}"
-                usage = normalize_usage(getattr(resp, "usage", {}))
-
-            parsed = parse_json_text(raw)
-            return {r["review_id"]: r.get("mentions", []) for r in parsed.get("reviews", [])}, usage
-        except Exception as exc:
-            last_err = exc
-            if attempt >= retries:
-                break
-            time.sleep(min(2 ** attempt, 30))
-
-    raise RuntimeError(f"LLM mention extraction failed: {last_err}") from last_err
-
-
 def extract_with_fallback(
     client: Any, model: str, reviews: list[dict], system_prompt: str,
     max_output_tokens: int, retries: int, use_responses_api: bool,
 ) -> tuple[dict[str, list[dict]], dict[str, int]]:
-    try:
-        return extract_batch(client, model, reviews, system_prompt, max_output_tokens, retries, use_responses_api)
-    except Exception as batch_err:
-        if len(reviews) <= 1:
-            raise
-        print(f"Batch failed; retrying one-by-one: {batch_err}", file=sys.stderr)
-        merged: dict[str, list[dict]] = {}
-        total: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-        for r in reviews:
-            try:
-                m, u = extract_batch(client, model, [r], system_prompt, max_output_tokens, retries, use_responses_api)
-                merged.update(m)
-                for k in total:
-                    total[k] += u.get(k, 0)
-            except Exception as exc:
-                print(f"Single fallback failed for {r.get('review_id')}: {exc}", file=sys.stderr)
-                merged[str(r.get("review_id", ""))] = []
-        return merged, total
+    def build_messages(batch: list[dict]) -> list[dict]:
+        user_content = json.dumps(
+            {"task": "Extract attribute mentions from reviews.", "reviews": batch},
+            ensure_ascii=False,
+        )
+        return [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+
+    def parse_result(parsed: dict) -> dict[str, list]:
+        return {r["review_id"]: r.get("mentions", []) for r in parsed.get("reviews", [])}
+
+    return batch_extract_with_fallback(
+        client, model, reviews, item_id=lambda r: r["review_id"],
+        build_messages=build_messages, parse_result=parse_result,
+        max_output_tokens=max_output_tokens, retries=retries, use_responses_api=use_responses_api,
+        response_schema=MENTIONS_SCHEMA, schema_name="mentions", label="review",
+    )
 
 
 # ── normalization ──────────────────────────────────────────────────────────────
@@ -284,21 +181,6 @@ def load_about(about_csv: Path) -> dict[str, str]:
     return result
 
 
-def load_done_ids(output_path: Path) -> set[str]:
-    if not output_path.exists():
-        return set()
-    done: set[str] = set()
-    with output_path.open(encoding="utf-8") as f:
-        for line in f:
-            try:
-                row = json.loads(line)
-                if rid := row.get("review_id"):
-                    done.add(str(rid))
-            except json.JSONDecodeError:
-                continue
-    return done
-
-
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
@@ -332,7 +214,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/all_beauty")
+    out_dir = args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games_kcore3")
     reviews_csv = args.reviews_csv or (out_dir / "nodes_reviews.csv")
     about_csv = args.about_csv or (out_dir / "rel_about.csv")
     output_path = args.output_path or (out_dir / "attributes" / "review_mentions.jsonl")
@@ -361,11 +243,9 @@ def main() -> None:
                 except json.JSONDecodeError:
                     pass
     if not known_attr_types:
-        # Fallback: default types if attributes file not yet available
+        # Fallback: generic, genre-neutral defaults if attributes file not yet available
         known_attr_types = {
-            "skin_type", "hair_type", "scent", "texture", "benefit",
-            "ingredient", "material", "color", "size", "target_area",
-            "usage", "product_type",
+            "product_type", "material", "color", "size", "target_audience", "usage",
         }
     system_prompt = build_system_prompt(genre, sorted(known_attr_types))
     print(f"Prompt built for genre={genre!r}, known attr_types ({len(known_attr_types)}): {sorted(known_attr_types)}")
@@ -378,7 +258,7 @@ def main() -> None:
     about = load_about(about_csv)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    done_ids = load_done_ids(output_path) if args.resume else set()
+    done_ids = load_done_ids(output_path, "review_id") if args.resume else set()
     limit = None if args.limit < 0 else args.limit
 
     all_review_ids = [rid for rid in reviews_by_id if rid not in done_ids and rid in about]

@@ -12,7 +12,7 @@ React + Vite + TypeScript。バックエンド（`../api`）の `POST /chat` を
 
 ```bash
 # ターミナル1 — バックエンド（リポジトリ Am/ 直下で）
-uvicorn api.main:app --reload          # → http://localhost:8000
+uvicorn app.api.main:app --reload      # → http://localhost:8000
 
 # ターミナル2 — フロントエンド（この web/ で）
 npm install

@@ -4,7 +4,7 @@ import { useI18n } from "../i18n";
 import type { Lang } from "../i18n";
 import { friendlyTags } from "../lib/explain";
 import { useUsdToJpy } from "../lib/exchangeRate";
-import { logView, sendRecommendationFeedback } from "../api/client";
+import { logView } from "../api/client";
 import ReviewList from "./ReviewList";
 
 function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
@@ -61,8 +61,12 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
         </div>
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
-        <ReasonFeedback productId={rec.product_id} lang={lang} userId={userId} searchId={searchId} />
-        <ReviewList productId={rec.product_id} ratingNumber={rec.rating_count} />
+        <ReviewList
+          productId={rec.product_id}
+          ratingNumber={rec.rating_count}
+          userId={userId}
+          searchId={searchId}
+        />
         <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
@@ -135,65 +139,6 @@ function DevExplanation({ rec }: { rec: Recommendation }) {
       <Section label={t.matchedAttributes}>
         <AttributeChips attributes={rec.matched_attrs} />
       </Section>
-    </div>
-  );
-}
-
-function ReasonFeedback({
-  productId,
-  lang,
-  userId,
-  searchId,
-}: {
-  productId: string;
-  lang: Lang;
-  userId: string | null;
-  searchId: string | null;
-}) {
-  const [state, setState] = useState<"idle" | "sent" | "error">("idle");
-
-  // 匿名ユーザーのフィードバックはUserノードに紐付けられず記録されないため、
-  // 「送信できたように見えて実は保存されない」誤解を避けるためボタン自体を出さない。
-  if (!userId) return null;
-
-  async function send(helpful: boolean) {
-    try {
-      await sendRecommendationFeedback(productId, {
-        helpful,
-        user_id: userId,
-        search_id: searchId,
-        lang,
-      });
-      setState("sent");
-    } catch {
-      setState("error");
-    }
-  }
-
-  if (state === "sent") {
-    return (
-      <div className={styles.feedbackDone}>
-        {lang === "ja" ? "フィードバックありがとうございます。" : "Thanks for the feedback."}
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.feedback}>
-      <span className={styles.feedbackLabel}>
-        {lang === "ja" ? "この推薦理由は役に立ちましたか？" : "Was this recommendation reason helpful?"}
-      </span>
-      <button type="button" onClick={() => send(true)}>
-        {lang === "ja" ? "はい" : "Yes"}
-      </button>
-      <button type="button" onClick={() => send(false)}>
-        {lang === "ja" ? "いいえ" : "No"}
-      </button>
-      {state === "error" && (
-        <span className={styles.feedbackError}>
-          {lang === "ja" ? "送信できませんでした" : "Could not send"}
-        </span>
-      )}
     </div>
   );
 }

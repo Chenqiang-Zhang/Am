@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-_cfg_path = Path(__file__).parent.parent / "config.yaml"
+_cfg_path = Path(__file__).parent.parent.parent / "config.yaml"
 _api_cfg: dict = {}
 if _cfg_path.exists():
     with _cfg_path.open(encoding="utf-8") as f:
@@ -86,7 +86,7 @@ class ChatResponse(BaseModel):
     preference_summary: list[str] = Field(default_factory=list)
     intent: SearchIntent | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
-    search_id: str | None = None  # action="search"のとき、VIEWED/feedbackと紐付けるためのSearchLog ID
+    search_id: str | None = None  # action="search"のとき、VIEWEDと紐付けるためのSearchLog ID
 
 
 # ===== レビュー取得 =====
@@ -101,19 +101,6 @@ class ReviewItem(BaseModel):
 class ReviewsResponse(BaseModel):
     product_id: str
     reviews: list[ReviewItem]
-
-
-# ===== レコメンド理由フィードバック =====
-class RecommendationFeedbackRequest(BaseModel):
-    helpful: bool
-    user_id: str | None = None  # 匿名(None)の場合は記録しない（Userノードに紐付けられないため）
-    search_id: str | None = None  # どの検索結果に対する反応かをSearchLogと紐付ける
-    lang: str = "ja"
-
-
-class RecommendationFeedbackResponse(BaseModel):
-    status: str
-    product_id: str
 
 
 # ===== デモ用テストユーザー選択 =====

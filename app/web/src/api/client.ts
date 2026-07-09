@@ -7,8 +7,6 @@ import type {
   ChatMessage,
   ChatResponse,
   HomeRecommendRequest,
-  RecommendationFeedbackRequest,
-  RecommendationFeedbackResponse,
   RecommendRequest,
   RecommendResponse,
   ReviewsResponse,
@@ -173,20 +171,6 @@ export async function fetchReviews(
   const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}`);
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as ReviewsResponse;
-}
-
-/** レコメンド理由フィードバック（POST /recommendations/{id}/feedback） */
-export async function sendRecommendationFeedback(
-  productId: string,
-  feedback: RecommendationFeedbackRequest,
-): Promise<RecommendationFeedbackResponse> {
-  const res = await fetch(`${BASE}/recommendations/${productId}/feedback`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(feedback),
-  });
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as RecommendationFeedbackResponse;
 }
 
 /** 商品閲覧ログ（POST /behavior/view）。失敗しても画面には影響させない（fire-and-forget）。 */

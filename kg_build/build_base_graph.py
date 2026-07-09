@@ -5,83 +5,37 @@ Nodes: Product / User / Review / Category / Brand
 Edges: RATED, WROTE, ABOUT, BELONGS_TO, SUBCATEGORY_OF, MADE_BY
 
 HAS_ATTRIBUTE (Product→Attribute) is built by extract_product_attributes.py
-+ build_attribute_csvs.py. MENTIONS (Review→Attribute) is built by
-extract_review_mentions.py + build_attribute_csvs.py.
++ build_attribute_graph.py. MENTIONS (Review→Attribute) is built by
+extract_review_mentions.py + build_attribute_graph.py.
+
+商品・ユーザーの選定は常に select_kcore.py が確定した k-core を使う
+（全ユーザー・全商品が最低k件の相互作用を持つことを保証するため）。
+先に以下を実行してから本スクリプトを実行すること:
+    python kg_build/select_kcore.py --config config.yaml --k 3
 """
 from __future__ import annotations
 
 import argparse
-import csv
 import gzip
-import hashlib
-import html
 import json
-import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 import yaml
 
+from utils.csv_io import write_csv
+from utils.text_utils import as_list, clean_text, sha1_id
 
-# ── text cleaning ──────────────────────────────────────────────────────────────
-
-_HTML_TAG = re.compile(r"<[^>]+>")
-_TEXT_WS = re.compile(r"\s+")
-
-
-def _strip_html(text: str) -> str:
-    text = _HTML_TAG.sub(" ", text)
-    return html.unescape(text)
+clean_id = clean_text
 
 
-def clean_text(value: Any) -> str:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return ""
-    text = str(value).replace("\x00", " ")
-    text = _strip_html(text)
-    return _TEXT_WS.sub(" ", text).strip()
-
-
-def clean_id(value: Any) -> str:
-    return clean_text(value)
-
-
-def sha1_id(prefix: str, key: str) -> str:
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
-    return f"{prefix}_{digest}"
-
-
-def as_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return []
-    return [value]
-
-
-# ── I/O helpers ────────────────────────────────────────────────────────────────
-
-def read_jsonl_gz(path: Path, max_rows: int | None = None) -> pd.DataFrame:
+def _dataframe_from_jsonl_gz(path: Path) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     with gzip.open(path, "rt", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if max_rows is not None and i >= max_rows:
-                break
+        for line in f:
             rows.append(json.loads(line))
     return pd.DataFrame(rows)
-
-
-def write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str]) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    count = 0
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k, "") for k in fieldnames})
-            count += 1
-    return count
 
 
 # ── category hierarchy ─────────────────────────────────────────────────────────
@@ -183,14 +137,17 @@ def build_kg(
     review_path: Path,
     meta_path: Path,
     output_dir: Path,
-    max_reviews: int | None,
-    max_meta: int | None,
     min_feature_len: int,
+    selected_user_ids: set[str],
+    selected_product_ids: set[str],
 ) -> dict[str, int]:
+    """selected_user_ids/selected_product_ids（select_kcore.py が確定したk-core）
+    との一致だけで商品・レビューを絞り込む。件数ベースの間引きは一切行わない
+    （k-coreで保証された「全ノードが最低k件の相互作用を持つ」性質を崩さないため）。"""
     print("Loading JSONL data...")
 
-    # ── meta: read all, sort by review count desc, take top max_meta ──────────
-    meta_all = read_jsonl_gz(meta_path, None)
+    # ── meta: keep only k-core selected products ────────────────────────────
+    meta_all = _dataframe_from_jsonl_gz(meta_path)
     meta_all = meta_all.dropna(subset=["parent_asin"]).copy()
     meta_all["price"] = pd.to_numeric(
         meta_all["price"] if "price" in meta_all.columns else pd.Series(dtype=float),
@@ -200,16 +157,16 @@ def build_kg(
         meta_all.sort_values("rating_number", ascending=False, na_position="last")
         .drop_duplicates("parent_asin")
     )
-    meta = meta_all.head(max_meta) if max_meta is not None else meta_all
+    meta = meta_all[meta_all["parent_asin"].astype(str).isin(selected_product_ids)]
+    print(f"  Selected {len(meta):,} products (from k-core selection file)")
     selected_ids: set[str] = set(meta["parent_asin"].astype(str))
-    print(f"  Selected {len(selected_ids):,} products (top by rating_number)")
 
-    # ── reviews: read all, keep only reviews for selected products ─────────────
-    # max_reviews is ignored — we use ALL reviews for the chosen products.
-    reviews_all = read_jsonl_gz(review_path, None)
+    # ── reviews: keep only k-core selected (user, product) pairs ───────────────
+    reviews_all = _dataframe_from_jsonl_gz(review_path)
     reviews_all = reviews_all.dropna(subset=["user_id", "parent_asin"]).copy()
     reviews = reviews_all[reviews_all["parent_asin"].astype(str).isin(selected_ids)].copy()
-    print(f"  Found {len(reviews):,} reviews for selected products")
+    reviews = reviews[reviews["user_id"].astype(str).isin(selected_user_ids)].copy()
+    print(f"  Found {len(reviews):,} reviews for selected (product, user) k-core pairs")
 
     reviews["rating"] = pd.to_numeric(reviews.get("rating"), errors="coerce")
     reviews["timestamp"] = (
@@ -224,13 +181,6 @@ def build_kg(
         reviews.sort_values("timestamp", ascending=False, na_position="last")
         .drop_duplicates(subset=["user_id", "parent_asin"], keep="first")
     )
-    # Cap reviews per product (most recent first) to avoid popular products dominating
-    if max_reviews is not None:
-        reviews = (
-            reviews.groupby("parent_asin", group_keys=False)
-            .head(max_reviews)
-        )
-        print(f"  Capped to {max_reviews:,} reviews per product → {len(reviews):,} total")
 
     # ── product / brand / category ─────────────────────────────────────────────
     product_rows: dict[str, dict] = {}
@@ -394,9 +344,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--review-path", type=Path)
     parser.add_argument("--meta-path", type=Path)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--max-reviews", type=int, help="Use -1 to load all reviews.")
-    parser.add_argument("--max-meta", type=int, help="Use -1 to load all metadata rows.")
     parser.add_argument("--min-feature-len", type=int)
+    parser.add_argument(
+        "--kcore-selection-dir", type=Path, default=None,
+        help="select_kcore.py の出力ディレクトリ（selected_user_ids.txt / "
+             "selected_product_ids.txt を含む）。省略時は <output_dir>/kcore_selection "
+             "（select_kcore.py 自体のデフォルト出力先と同じ）を使う。",
+    )
     return parser.parse_args()
 
 
@@ -414,24 +368,34 @@ def main() -> None:
     scale_cfg = cfg.get("scale", {})
     config_dir = args.config.resolve().parent
 
-    review_path = args.review_path or (config_dir / data_cfg.get("review_path", "data/All_Beauty.jsonl.gz"))
-    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
-    output_dir = args.output_dir or (config_dir / data_cfg.get("output_dir", "kg_output/all_beauty"))
+    review_path = args.review_path or (config_dir / data_cfg.get("review_path", "data/Video_Games.jsonl.gz"))
+    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_Video_Games.jsonl.gz"))
+    output_dir = args.output_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
 
-    max_reviews_raw = args.max_reviews if args.max_reviews is not None else scale_cfg.get("max_reviews", 50000)
-    max_meta_raw = args.max_meta if args.max_meta is not None else scale_cfg.get("max_meta", -1)
     min_feature_len = args.min_feature_len if args.min_feature_len is not None else scale_cfg.get("min_feature_len", 8)
 
-    max_reviews = None if max_reviews_raw < 0 else max_reviews_raw
-    max_meta = None if max_meta_raw < 0 else max_meta_raw
+    kcore_selection_dir = args.kcore_selection_dir or (output_dir / "kcore_selection")
+    users_file = kcore_selection_dir / "selected_user_ids.txt"
+    items_file = kcore_selection_dir / "selected_product_ids.txt"
+    if not users_file.exists() or not items_file.exists():
+        raise SystemExit(
+            f"k-core selection not found at {kcore_selection_dir}. Run first:\n"
+            f"  python kg_build/select_kcore.py --config {args.config} --k <k>"
+        )
+    selected_user_ids = set(users_file.read_text(encoding="utf-8").splitlines())
+    selected_product_ids = set(items_file.read_text(encoding="utf-8").splitlines())
+    print(
+        f"Using k-core selection from {kcore_selection_dir}: "
+        f"{len(selected_user_ids):,} users, {len(selected_product_ids):,} products"
+    )
 
     counts = build_kg(
         review_path=review_path,
         meta_path=meta_path,
         output_dir=output_dir,
-        max_reviews=max_reviews,
-        max_meta=max_meta,
         min_feature_len=min_feature_len,
+        selected_user_ids=selected_user_ids,
+        selected_product_ids=selected_product_ids,
     )
 
     print()

@@ -17,8 +17,8 @@
 | avg_rating | average_rating | float | |
 | rating_count | rating_number | int | |
 | description | features + description を連結 | string | 生テキスト。LLM属性抽出とFull-Text検索に使う |
-| image_url | images | string | 欠損あり。`enrich_product_images.py` で後付け |
-| title_ja | title（LLM翻訳） | string | 欠損あり。`translate_titles.py` で後付け。表示言語が日本語のときのみAPIが使う |
+| image_url | images | string | 欠損あり。`enrich_products.py --images` で後付け |
+| title_ja | title（LLM翻訳） | string | 欠損あり。`enrich_products.py --titles-ja` で後付け。表示言語が日本語のときのみAPIが使う |
 
 ### ユーザ（User）
 | プロパティ | データ元 | 型 | 備考 |
@@ -58,7 +58,7 @@
 | attr_type | string | ジャンル非依存。LLM抽出または `details` のルールベース抽出で自動生成 |
 | value | string | 属性値（小文字・正規化済み） |
 
-> **ジャンル非依存の仕組み**: `attr_type` は LLM が自由に命名するか、`extract_product_attributes.py` が metadata の `details` キーを自動で snake_case 化して生成する（手動の対応表は持たない）。config.yaml にジャンル別の属性リストは持たない。プロンプトで「snake_case・既存の型を再利用」と指示することに加え、抽出完了後に `normalize_attributes.py` が全体の attr_type／value を見て同義語の統合マップを LLM に作らせ、`build_attribute_csvs.py` が適用することで表記ゆれを解消する（例: `item_form` と `texture` の統合）。スキーマ・エッジ・Cypher クエリはジャンルによらず共通。
+> **ジャンル非依存の仕組み**: `attr_type` は LLM が自由に命名するか、`extract_product_attributes.py` が metadata の `details` キーを自動で snake_case 化して生成する（手動の対応表は持たない）。config.yaml にジャンル別の属性リストは持たない。プロンプトで「snake_case・既存の型を再利用」と指示することに加え、抽出完了後に `canonicalize_attributes.py` が全体の attr_type／value を見て同義語の統合マップを LLM に作らせ、`build_attribute_graph.py` が適用することで表記ゆれを解消する（例: `item_form` と `texture` の統合）。スキーマ・エッジ・Cypher クエリはジャンルによらず共通。
 
 ### 検索ログ（SearchLog）
 | プロパティ | 型 | 備考 |
@@ -71,7 +71,7 @@
 | result_count | int | 検索結果件数 |
 | timestamp | int | Unix ms |
 
-> パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）のために `api/recommender.py` の `log_search()` が書き込む。ユーザごとに直近 30 件のみ保持し、古いものは削除する。
+> パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）のために `app/api/recommender.py` の `log_search()` が書き込む。ユーザごとに直近 30 件のみ保持し、古いものは削除する。
 
 ---
 
@@ -130,18 +130,6 @@
 
 > ユーザごとに直近 20 件のみ保持し、古いものは削除する。
 
-### GAVE_FEEDBACK：User → Product
-ユーザが推薦理由（explanation）に対して「役に立ったか」を明示的に答えた関係。`VIEWED`（暗黙的なクリック行動）と対になる、明示的な行動ログ。
-
-| エッジ属性 | 型 | 備考 |
-|-----------|-----|------|
-| helpful | bool | 推薦理由が役に立ったか |
-| search_id | string\|null | どの検索結果への反応かを示す SearchLog.log_id（あれば） |
-| lang | string | フィードバック時の表示言語（"ja" \| "en"） |
-| timestamp | int | Unix ms |
-
-> ユーザごとに直近 20 件のみ保持し、古いものは削除する。匿名ユーザー（user_id 無し）はUserノードに紐付けられないため記録しない。以前はローカルJSONLファイル（`logs/recommendation_feedback.jsonl`）に保存していたが、本番環境（Renderなど）ではファイルシステムが再デプロイ・再起動のたびに消えて永続しないため、他の行動ログと同じくNeo4jに統合した。
-
 ### SEARCHED：User → SearchLog
 ユーザが検索を実行した関係。属性なし。
 
@@ -153,7 +141,6 @@
 User  -[WROTE]->        Review -[ABOUT]->        Product
 User  -[RATED]->                                 Product
 User  -[VIEWED]->                                Product
-User  -[GAVE_FEEDBACK]->                         Product
 User  -[SEARCHED]->     SearchLog
                         Review -[MENTIONS]->      Attribute
                                                  Product -[HAS_ATTRIBUTE]-> Attribute
@@ -239,7 +226,7 @@ CREATE FULLTEXT INDEX review_text_ft IF NOT EXISTS FOR (n:Review) ON EACH [n.tit
 - `review_id` は `SHA1(user_id|product_id|timestamp)` で生成する（リビルド時の ID 安定性のため行インデックスは使わない）。
 - `attribute_id` は `SHA1(attr_type|value)` で生成する（同じ属性は同一ノードとして共有される）。
 - `Product.description` は `features` と `description` フィールドを空白で連結した生テキスト。
-- `HAS_ATTRIBUTE` は `extract_product_attributes.py` + `build_attribute_csvs.py` で、`MENTIONS` は `extract_review_mentions.py` + `build_attribute_csvs.py` で生成する。
-- `SearchLog` ノードと `SEARCHED`／`VIEWED`／`GAVE_FEEDBACK` エッジは、KG構築パイプラインではなく `api/recommender.py`（`log_search()`／`log_view()`／`save_feedback()`）が API 呼び出し時に書き込む。パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）専用のデータで、Text2Cypher の商品検索クエリ自体は対象としない。
+- `HAS_ATTRIBUTE` は `extract_product_attributes.py` + `build_attribute_graph.py` で、`MENTIONS` は `extract_review_mentions.py` + `build_attribute_graph.py` で生成する。
+- `SearchLog` ノードと `SEARCHED`／`VIEWED` エッジは、KG構築パイプラインではなく `app/api/recommender.py`（`log_search()`／`log_view()`）が API 呼び出し時に書き込む。パーソナライゼーション（ユーザ文脈・過去の成功クエリの few-shot）専用のデータで、Text2Cypher の商品検索クエリ自体は対象としない。
 - データ規模は `config.yaml` の `scale` セクションで制御する。
 - Am/ の `Feature` ノード・`HAS_FEATURE` エッジは廃止。テキストは `Product.description` に統合。

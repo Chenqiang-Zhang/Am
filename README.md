@@ -1,22 +1,22 @@
 # Amazon Reviews'23 Knowledge Graph Recommender
 
-An experimental product recommendation system built on the Amazon Reviews'23 `All_Beauty` dataset. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM writes and runs Cypher queries directly against the graph — so every recommendation reason is a real, inspectable graph path, not a black box.
+An experimental product recommendation system built on the Amazon Reviews'23 dataset. The genre/category is configurable via `config.yaml` (currently `Video_Games`) — the schema, pipeline scripts, and Cypher queries are all genre-agnostic. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM writes and runs Cypher queries directly against the graph — so every recommendation reason is a real, inspectable graph path, not a black box.
 
 ## Architecture
 
 ```
 Raw Data (Amazon Reviews'23)
-    ↓ build_kg_csvs.py
+    ↓ select_kcore.py (decide the k-core user/product selection — data scale)
+    ↓ build_base_graph.py
 Base graph CSVs (Product/User/Review/Category/Brand)
     ↓ extract_product_attributes.py (rule-based `details` extraction + LLM text extraction, merged)
     ↓ extract_review_mentions.py (LLM, from review text)
-    ↓ normalize_attributes.py (optional — LLM-driven attr_type/value synonym canonicalization)
-    ↓ build_attribute_csvs.py
+    ↓ canonicalize_attributes.py (optional — LLM-driven attr_type/value synonym canonicalization)
+    ↓ build_attribute_graph.py
 Attribute node/edge CSVs (genre-agnostic attr_type)
     ↓ import_kg_to_neo4j.py  (imports everything above in one pass)
 Neo4j Knowledge Graph
-    ↓ enrich_product_images.py (optional — Product.image_url)
-    ↓ translate_titles.py (optional — Product.title_ja)
+    ↓ enrich_products.py --images --titles-ja (optional — Product.image_url / Product.title_ja)
     ↓
 REST API (FastAPI)
     ├── Text2Cypher search      (LLM writes and runs a Cypher query per request; graph schema and the
@@ -35,7 +35,7 @@ REST API (FastAPI)
     ├── Conversational chat     (LLM decides what to ask and when to search, based on the same live
     │                            attr_type vocabulary — genre-agnostic; Python only enforces a hard cap
     │                            on the number of questions and a fallback if the LLM call itself fails)
-    └── Review lookup, view logging, and reason feedback logging (all written to Neo4j)
+    └── Review lookup and view logging (all written to Neo4j)
 ```
 
 ## Graph Schema
@@ -62,7 +62,6 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 | `ABOUT` | Review → Product | — |
 | `RATED` | User → Product | `rating`, `timestamp` |
 | `VIEWED` | User → Product | `timestamp`, `search_id` |
-| `GAVE_FEEDBACK` | User → Product | `helpful`, `search_id`, `lang`, `timestamp` |
 | `SEARCHED` | User → SearchLog | — |
 | `BELONGS_TO` | Product → Category | — |
 | `SUBCATEGORY_OF` | Category → Category | — |
@@ -83,21 +82,30 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 ├── data/                  # Raw data — local only, not committed
 ├── kg_output/             # Generated CSVs — local only, not committed
 ├── docs/                  # Local documentation — not committed
-├── scripts/               # Data pipeline scripts
-│   ├── build_kg_csvs.py               # Build base graph CSVs (Product/User/Review/Category/Brand)
-│   ├── llm_client.py                  # Shared LLM client builder (gemini/groq/deepseek/openai/ollama)
-│   ├── extract_product_attributes.py  # Attribute extraction: zero-cost rule-based (metadata `details`, genre-agnostic) + LLM (title/features/description), merged
-│   ├── extract_review_mentions.py     # LLM attribute-mention extraction from review text
-│   ├── normalize_attributes.py        # (optional) LLM-driven attr_type/value synonym canonicalization
-│   ├── build_attribute_csvs.py        # Merge extraction output above → Attribute node/edge CSVs
-│   ├── import_kg_to_neo4j.py          # Import everything via Bolt (local Neo4j or Aura)
-│   ├── enrich_product_images.py       # (optional) Add Product.image_url from metadata
-│   └── translate_titles.py            # (optional) Add Product.title_ja via LLM translation
-├── api/                   # Recommendation REST API
-│   ├── main.py            # FastAPI app / routes
-│   ├── recommender.py     # Text2Cypher generation, chat, personalization, reviews, feedback
-│   └── models.py          # Pydantic request/response models
-├── web/                   # React + TypeScript conversational UI
+├── kg_build/              # KG-build pipeline — data creation (run: python kg_build/<name>.py)
+│   ├── select_kcore.py            # 1. Decide the k-core user/product selection (data scale)
+│   ├── build_base_graph.py        # 2. Build base graph CSVs (Product/User/Review/Category/Brand)
+│   ├── extract_product_attributes.py  # 3a. Attribute extraction: zero-cost rule-based (metadata `details`, genre-agnostic) + LLM (title/features/description), merged
+│   ├── extract_review_mentions.py     # 3b. LLM attribute-mention extraction from review text
+│   ├── canonicalize_attributes.py     # 4. (optional) LLM-driven attr_type/value synonym canonicalization
+│   ├── build_attribute_graph.py       # 5. Merge extraction output above → Attribute node/edge CSVs
+│   ├── import_kg_to_neo4j.py          # 6. Import everything via Bolt (local Neo4j or Aura)
+│   ├── enrich_products.py             # 7. (optional) Add Product.image_url / Product.title_ja to existing nodes
+│   ├── wipe_neo4j.py                  # (utility) Delete all data from the configured Neo4j instance
+│   └── utils/                         # Shared helper modules used only within kg_build/ — not run directly
+│       ├── llm_client.py              #   LLM client builder (gemini/groq/deepseek/openai/ollama)
+│       ├── llm_json.py                #   Chat/responses JSON-call + batch-with-fallback helpers
+│       ├── neo4j_io.py                #   .env loading + Neo4j connection resolution
+│       ├── csv_io.py                  #   JSONL/CSV read-write helpers
+│       └── text_utils.py              #   Text-cleaning / attr_type-normalization / ID-hashing helpers
+├── eval/                  # Evaluation — reads the live graph + app/api/, independent of kg_build/
+│   └── eval_offline.py            # Offline leave-one-out evaluation (HR@K/NDCG@K vs. an Item-KNN baseline)
+├── app/                   # The running application (backend + frontend)
+│   ├── api/                       # Recommendation REST API
+│   │   ├── main.py                # FastAPI app / routes
+│   │   ├── recommender.py         # Text2Cypher generation, chat, personalization, reviews
+│   │   └── models.py              # Pydantic request/response models
+│   └── web/                       # React + TypeScript conversational UI
 └── data.ipynb             # Data exploration notebook
 ```
 
@@ -121,7 +129,7 @@ Edit `.env` with:
 - `NEO4J_URI` / `NEO4J_PASSWORD` (Neo4j Aura connection info)
 - An API key for whichever LLM provider you choose in `config.yaml` (`llm.provider`): `GEMINI_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, or `OPENAI_API_KEY`. Gemini and Groq both have a free tier.
 
-`config.yaml` controls the LLM provider/model, data scale (`scale.max_meta`/`scale.max_reviews`), and Text2Cypher retry settings — see the comments in that file.
+`config.yaml` controls the LLM provider/model, data paths, and Text2Cypher retry settings — see the comments in that file. Product/user selection is controlled separately by the k-core size (`--k` on `select_kcore.py`, see step 4 below), not by a config value.
 
 ### 3. Start Neo4j
 
@@ -146,48 +154,58 @@ NEO4J_DATABASE=neo4j
 
 ### 4. Build and Import the Knowledge Graph
 
-Place the Amazon Reviews'23 data files locally:
+Place the Amazon Reviews'23 data files locally (paths from `config.yaml`'s `data` section; currently the `Video_Games` category):
 ```text
-data/All_Beauty.jsonl.gz
-data/meta_All_Beauty.jsonl.gz
+data/Video_Games.jsonl.gz
+data/meta_Video_Games.jsonl.gz
 ```
 
-Run the pipeline in order (matches the docstring in `import_kg_to_neo4j.py`):
+Download them directly from the dataset's raw file host (~1 GB combined for `Video_Games`; swap the category name in both URLs to use a different genre):
+```bash
+wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Video_Games.jsonl.gz
+wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
+```
+
+Run the pipeline in order (all under `kg_build/`; matches the docstring in `import_kg_to_neo4j.py`):
 
 ```bash
-# 1. Base graph (Product/User/Review/Category/Brand)
-python3 scripts/build_kg_csvs.py
+# 1. Decide which users/products to include: a bipartite k-core where every
+#    user and every product has at least k interactions (k=3 by default).
+#    Writes selected_user_ids.txt / selected_product_ids.txt to
+#    <output_dir>/kcore_selection.
+python3 kg_build/select_kcore.py --k 3
 
-# 2. Attribute extraction (product metadata + review mentions).
+# 2. Base graph (Product/User/Review/Category/Brand), scoped to the k-core
+#    selection from step 1.
+python3 kg_build/build_base_graph.py
+
+# 3. Attribute extraction (product metadata + review mentions).
 #    --product-ids-file scopes extraction to the products actually selected
-#    into the base graph in step 1 (scale.max_meta) — omit it only if you
-#    intend to pre-warm the zero-cost rule-based cache for the full catalog
-#    ahead of a future scale.max_meta increase.
-python3 scripts/extract_product_attributes.py --resume --product-ids-file kg_output/all_beauty/nodes_products.csv
-python3 scripts/extract_review_mentions.py --resume
+#    into the base graph in step 2.
+python3 kg_build/extract_product_attributes.py --resume --product-ids-file kg_output/video_games_kcore3/nodes_products.csv
+python3 kg_build/extract_review_mentions.py --resume
 
-# 3. (optional) Canonicalize attr_type/value synonyms created by the two
+# 4. (optional) Canonicalize attr_type/value synonyms created by the two
 #    independent extraction passes above (e.g. "item_form" vs "texture")
-python3 scripts/normalize_attributes.py
+python3 kg_build/canonicalize_attributes.py
 
-# 4. Merge extraction output into Attribute node/edge CSVs
-#    (applies the canonicalization map from step 3, and drops any attributes
+# 5. Merge extraction output into Attribute node/edge CSVs
+#    (applies the canonicalization map from step 4, and drops any attributes
 #    for products outside nodes_products.csv, if present)
-python3 scripts/build_attribute_csvs.py
+python3 kg_build/build_attribute_graph.py
 
-# 5. Import everything (base graph + attributes, if CSVs exist) via Bolt
-python3 scripts/import_kg_to_neo4j.py
+# 6. Import everything (base graph + attributes, if CSVs exist) via Bolt
+python3 kg_build/import_kg_to_neo4j.py
 
-# 6. (optional) Add Product.image_url from metadata — enables product thumbnails in the UI
-python3 scripts/enrich_product_images.py
-
-# 7. (optional) Translate Product.title to Japanese (Product.title_ja) — enables
-#    localized titles when a request's lang="ja". Safe to re-run after scaling up
-#    (only untranslated products are picked up).
-python3 scripts/translate_titles.py
+# 7. (optional) Add Product.image_url from metadata (enables product thumbnails in the UI)
+#    and/or translate Product.title to Japanese (Product.title_ja, used when a request's
+#    lang="ja"). Safe to re-run after scaling up — only untranslated products are picked up.
+python3 kg_build/enrich_products.py --images --titles-ja
 ```
 
-`--provider`/`--model` on step 2 default to `config.yaml`'s `llm.provider`/`llm.model`; pass them explicitly to override.
+k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。
+
+`--provider`/`--model` on step 3 default to `config.yaml`'s `llm.provider`/`llm.model`; pass them explicitly to override.
 
 `extract_product_attributes.py` always runs a zero-cost, genre-agnostic rule-based
 pass over the metadata `details` field first (deterministic, no LLM call, no hand-maintained
@@ -196,7 +214,7 @@ attributes are passed to the LLM as `known_attributes` so it extracts only genui
 information instead of re-deriving the same facts. To skip the LLM entirely and extract
 attributes for every product at zero cost:
 ```bash
-python3 scripts/extract_product_attributes.py --rule-only --limit -1
+python3 kg_build/extract_product_attributes.py --rule-only --limit -1
 ```
 This is useful when running the costed LLM pass only on a small `--limit` for budget
 reasons, while still covering the full catalog with rule-based attributes.
@@ -204,12 +222,12 @@ reasons, while still covering the full catalog with rule-based attributes.
 ### 5. Start the Recommendation API
 
 ```bash
-uvicorn api.main:app --reload
+uvicorn app.api.main:app --reload
 ```
 
 Or, to honor `config.yaml`'s `api.host`/`api.port` instead of uvicorn's defaults:
 ```bash
-python -m api.main
+python -m app.api.main
 ```
 
 Open `http://localhost:8000/docs` (or your configured host/port) for the interactive Swagger UI.
@@ -217,7 +235,7 @@ Open `http://localhost:8000/docs` (or your configured host/port) for the interac
 ### 6. Start the Frontend UI
 
 ```bash
-cd web
+cd app/web
 npm install
 npm run dev
 ```
@@ -235,8 +253,8 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
    "匿名" (anonymous, no personalization), the built-in "オリジナルテストユーザー" demo ID, or one of
    the real `user_id`s fetched live from `GET /users/sample` (these are real users with ≥3 ratings
    in the current graph, so their picks will actually show personalized results/home recommendations).
-3. Type a query in natural language (Japanese or English), e.g. "乾燥肌向けの保湿クリームが欲しい"
-   or "a gentle fragrance-free moisturizer for dry skin".
+3. Type a query in natural language (Japanese or English), e.g. "小学生の子供と一緒に遊べる協力プレイのSwitchゲームが欲しい"
+   or "a co-op couch game for the PS5 that's fun for kids and adults together".
 4. The assistant will either ask a clarifying question (answer it, or pick "こだわらない" / "no
    preference" to skip) or go straight to search once it has enough signal.
 5. Recommendations show the LLM's one-sentence `explanation` — written in the UI's current language
@@ -244,12 +262,9 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
    Cypher (`intent.cypher`) so every recommendation reason is inspectable, not a black box. If Text2Cypher
    generation/execution fails, or the query legitimately matches nothing, the list falls back to popular
    highly-rated products instead of showing an empty screen (`fallback: true` in the response).
-6. Click 👍/👎 under a recommendation (only shown when a test user is selected — anonymous feedback
-   can't be attached to a `User` node) to send `/recommendations/{id}/feedback`, stored as a
-   `GAVE_FEEDBACK` edge in Neo4j alongside the other behavior logs. Clicking "Amazon.comで見る" also
-   logs a `VIEWED` edge via `/behavior/view`. Neither currently feeds back into ranking, but both are
-   now durable and linked to the originating `search_id`, so a future pass can use them (e.g. weight
-   `_get_dynamic_few_shot()` by explicit feedback, not just clicks).
+6. Opening "レビューを見る" or clicking "Amazon.comで見る" logs a `VIEWED` edge via `/behavior/view`,
+   linked to the originating `search_id`. `_get_dynamic_few_shot()` reads these back (joined against
+   `SearchLog`) to prioritize past queries that led to a click when building this user's next prompt.
 7. Once a test user with history has loaded home recommendations, switching tabs away or closing the
    tab fires a beacon to `POST /recommend/home/warm`, which regenerates and caches that user's
    personalized query server-side in the background. The next time the page is opened (within the
@@ -306,7 +321,7 @@ Accepts a natural-language query. The LLM generates one Cypher query against the
 }
 ```
 
-`lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `translate_titles.py` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
+`lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `enrich_products.py --titles-ja` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
 
 If Cypher generation/execution fails after retries, **or the generated query runs successfully but returns zero rows**, the response falls back to a popularity-based query (`fallback: true`) instead of showing an empty result.
 
@@ -333,7 +348,7 @@ Runs one turn of conversational recommendation. Each turn, the LLM is given the 
 ```json
 {
   "messages": [
-    {"role": "user", "content": "乾燥肌向けの保湿クリームが欲しい"}
+    {"role": "user", "content": "小学生の子供と一緒に遊べる協力プレイのSwitchゲームが欲しい"}
   ],
   "limit": 8,
   "lang": "ja",
@@ -344,7 +359,7 @@ Runs one turn of conversational recommendation. Each turn, the LLM is given the 
 The response has either:
 - `action: "ask"` with one question and quick-reply options (`search_id: null`)
 - `action: "search"` with `preference_summary`, `intent` (cypher/explanation), recommendations, and
-  `search_id` (so a later `/behavior/view` or feedback call can be linked back to this search)
+  `search_id` (so a later `/behavior/view` call can be linked back to this search)
 
 ### `GET /users/sample`
 
@@ -354,34 +369,18 @@ Returns a handful of real `user_id`s with rating history, for demoing personaliz
 
 Returns top reviews for a product, ordered by helpful votes.
 
-### `POST /recommendations/{product_id}/feedback`
-
-Stores user feedback on whether a recommendation reason was useful, as a `GAVE_FEEDBACK` edge from
-`User` to `Product` in Neo4j (not a local file — a local file wouldn't survive a redeploy on most
-PaaS hosts). Requires `user_id`; silently no-ops for anonymous requests since there's no `User` node
-to attach the edge to (the web UI hides the feedback buttons in that case).
-
-```json
-{
-  "helpful": true,
-  "user_id": "AFXF3EGQTQDXMRLDWFU7UBFQZB7Q",
-  "search_id": "37cde655-2495-4270-aa07-eb558eb4c573",
-  "lang": "en"
-}
-```
-
 ## Data Scale
 
-Data scale is controlled by `config.yaml`'s `scale` section (`max_meta` = number of products, `max_reviews` = per-product review cap). After running `build_kg_csvs.py`, the actual counts for the current config are written to `kg_output/<output_dir>/build_summary.json`.
+Data scale is controlled by the k-core size (`--k` on `select_kcore.py`, default 3): the largest bipartite subgraph where every user and every product has at least k interactions. This guarantees every user/product in the graph has enough history for personalization and offline evaluation to be meaningful (unlike naive top-N-products sampling, which leaves most users with only a single rating). `<output_dir>/kcore_selection/kcore_summary.json` records the resulting user/item/edge counts for a given k; after running `build_base_graph.py`, the actual imported counts are written to `kg_output/<output_dir>/build_summary.json`.
 
 ## Next Steps
 
 - Expand LLM attribute extraction coverage to the full product set
 - Add a collaborative-filtering few-shot path using shared rating history across users
 - Add a multi-step graph exploration endpoint (`GET /product/{id}/related`)
-- `VIEWED` and `GAVE_FEEDBACK` are now written to Neo4j and linked to `search_id`, but nothing reads
-  them back into ranking yet — e.g. `_get_dynamic_few_shot()` could prefer past searches with positive
-  feedback, or downweight attribute matches a user explicitly marked unhelpful
+- Explicit feedback on recommendation reasons (a `GAVE_FEEDBACK` edge / thumbs up-down UI) was tried
+  and removed — `_get_dynamic_few_shot()`'s implicit click signal (`VIEWED` joined against `SearchLog`)
+  covers the same "was this search useful" need without the extra UI/endpoint surface
 - The home-recommendation cache (`Recommender._home_cache`) lives in process memory — it resets on
   restart and wouldn't be shared if the API were ever scaled to multiple instances; move it to Neo4j
   or a shared store (e.g. Redis) if that becomes an issue

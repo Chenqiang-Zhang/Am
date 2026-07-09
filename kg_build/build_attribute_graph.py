@@ -4,8 +4,8 @@ Convert LLM extraction outputs to Neo4j import CSVs.
 Reads:
   product_attributes.jsonl     (from extract_product_attributes.py)
   review_mentions.jsonl        (from extract_review_mentions.py)
-  attribute_canonical_map.json (optional, from normalize_attributes.py)
-  nodes_products.csv           (from build_kg_csvs.py; used to drop attributes for
+  attribute_canonical_map.json (optional, from canonicalize_attributes.py)
+  nodes_products.csv           (from build_base_graph.py; used to drop attributes for
                                  products outside the current scale.max_meta selection)
 
 Writes:
@@ -20,40 +20,16 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
-
-def sha1_id(prefix: str, key: str) -> str:
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
-    return f"{prefix}_{digest}"
+from utils.csv_io import read_jsonl, write_csv
+from utils.text_utils import sha1_id
 
 
 def attr_id(attr_type: str, value: str) -> str:
     return sha1_id("attr", f"{attr_type}|{value}")
-
-
-def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k, "") for k in fieldnames})
-    return len(rows)
-
-
-def read_jsonl(path: Path):
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
 
 
 def load_canonical_map(path: Path) -> dict[str, Any]:
@@ -71,7 +47,7 @@ def canonicalize(t: str, v: str, canon: dict[str, Any]) -> tuple[str, str]:
 
 
 def load_valid_product_ids(nodes_products_path: Path) -> set[str] | None:
-    """Products actually selected into the base graph (build_kg_csvs.py's scale.max_meta cap).
+    """Products actually selected into the base graph (build_base_graph.py's scale.max_meta cap).
 
     Extraction scripts may process a broader set (e.g. --rule-only --limit -1 warms a
     cache ahead of a future scale.max_meta increase). Filtering here guarantees we never
@@ -189,12 +165,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument(
         "--canonical-map", type=Path,
-        help="Path to attribute_canonical_map.json (from normalize_attributes.py). "
+        help="Path to attribute_canonical_map.json (from canonicalize_attributes.py). "
              "Auto-detected in attributes_dir if omitted; skipped entirely if absent.",
     )
     parser.add_argument(
         "--nodes-products", type=Path,
-        help="Path to nodes_products.csv (from build_kg_csvs.py), used to drop attributes for "
+        help="Path to nodes_products.csv (from build_base_graph.py), used to drop attributes for "
              "products outside the current scale.max_meta selection. Auto-detected in output_dir "
              "if omitted; if not found, no filtering is applied.",
     )
@@ -213,7 +189,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = args.output_dir or (args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/all_beauty"))
+    out_dir = args.output_dir or (args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
     attrs_dir = out_dir / "attributes"
 
     product_attrs_path = args.product_attrs or (attrs_dir / "product_attributes.jsonl")

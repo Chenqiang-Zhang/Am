@@ -231,48 +231,6 @@
   color: var(--color-text-muted);
 }
 
-.feedback {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
-
-.feedbackLabel,
-.feedbackDone,
-.feedbackError {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.feedback button {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.feedback button:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.feedbackDone {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
-
-.feedbackError {
-  color: var(--color-danger);
-}
-
 @media (max-width: 560px) {
   .card {
     gap: var(--space-3);

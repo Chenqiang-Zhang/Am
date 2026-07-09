@@ -3,72 +3,28 @@ Extract product attributes from meta JSONL using LLM.
 
 Output (JSONL, one line per product):
   {"product_id": "...", "model": "...", "attributes": [
-    {"attr_type": "skin_type", "value": "dry", "evidence": "...", "confidence": 0.9}
+    {"attr_type": "platform", "value": "pc", "evidence": "...", "confidence": 0.9}
   ]}
 
 attr_type is LLM-defined in snake_case. Post-normalization merges spelling variants.
-Run build_attribute_csvs.py afterwards to produce Neo4j import CSVs.
+Run build_attribute_graph.py afterwards to produce Neo4j import CSVs.
 """
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-import gzip
-import html
 import json
 import re
-import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import yaml
-from llm_client import build_client, provider_from_config
 
-
-# ── text utilities ─────────────────────────────────────────────────────────────
-
-_HTML_TAG = re.compile(r"<[^>]+>")
-_TEXT_WS = re.compile(r"\s+")
-_ATTR_WS = re.compile(r"[\s\-]+")
-_ATTR_NON_ALPHA = re.compile(r"[^a-z0-9_]")
-
-
-def clean_text(value: Any) -> str:
-    if value is None or (isinstance(value, float) and _is_nan(value)):
-        return ""
-    text = str(value).replace("\x00", " ")
-    text = _HTML_TAG.sub(" ", text)
-    text = html.unescape(text)
-    return _TEXT_WS.sub(" ", text).strip()
-
-
-def _is_nan(v: float) -> bool:
-    try:
-        return v != v
-    except Exception:
-        return False
-
-
-def as_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if value is None:
-        return []
-    return [value]
-
-
-def normalize_attr_type(raw: str) -> str:
-    """Normalize LLM-generated attr_type to consistent snake_case."""
-    lower = raw.lower().strip()
-    snaked = _ATTR_WS.sub("_", lower)
-    cleaned = _ATTR_NON_ALPHA.sub("", snaked)
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    return cleaned or "other"
-
-
-def normalize_value(raw: str) -> str:
-    return clean_text(raw).lower()
+from utils.csv_io import load_done_ids, read_jsonl_gz
+from utils.llm_client import build_client, provider_from_config
+from utils.llm_json import batch_extract_with_fallback, split_usage
+from utils.text_utils import as_list, clean_text, normalize_attr_type, normalize_value
 
 
 # ── LLM schema / prompts ───────────────────────────────────────────────────────
@@ -123,19 +79,19 @@ If a new fact fits the same concept as one of the known attr_type names, reuse
 that exact name instead of inventing a new one.
 
 ADDITIONAL attr_types for free-text content (use when known_attributes don't apply):
-  ingredient   specific actives only: vitamin c, retinol, hyaluronic acid, niacinamide
-  target_area  e.g. face, hair, eyes, lips, body, nails
-  product_type e.g. moisturizer, shampoo, serum, toner, cleanser, mask, conditioner
-  (You may invent new snake_case names only if none of the above, and none of
-   known_attributes, truly fit)
+  product_type     the specific kind of product this is, e.g. "board_game", "wireless_mouse", "shampoo"
+  material         what it's physically made of, if stated
+  target_audience  who or what it's intended for, e.g. "kids", "professionals", "dry_skin", "pc"
+  (Invent additional snake_case names only if none of the above, and none of
+   known_attributes, truly fit — prefer reusing an existing name over inventing one.)
 
 FORBIDDEN attr_type — never use these:
   brand           (brand is a separate node in the graph; do not extract it)
   feature, other  (too generic)
 
 Rules for value:
-- Short, lowercase, normalized (e.g. "dry", "floral", "vitamin c")
-- Do not repeat the attr_type in the value (attr_type="skin_type", value="dry" not "dry skin")
+- Short, lowercase, normalized (e.g. "wireless", "co_op", "steel")
+- Do not repeat the attr_type in the value (attr_type="platform", value="pc" not "pc platform")
 
 General rules:
 - Return only attributes supported by the product record
@@ -237,107 +193,23 @@ def is_sparse(payload: dict[str, Any]) -> bool:
 
 # ── API helpers ────────────────────────────────────────────────────────────────
 
-def parse_json_text(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text).strip()
-        text = re.sub(r"```$", "", text).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(text[start:end + 1])
-        raise
-
-
-def normalize_usage(usage: Any) -> dict[str, int]:
-    if hasattr(usage, "model_dump"):
-        usage = usage.model_dump()
-    if not isinstance(usage, dict):
-        usage = {}
-    return {
-        "input_tokens": int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
-        "output_tokens": int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
-        "total_tokens": int(usage.get("total_tokens") or 0),
-    }
-
-
-def split_usage(usage: dict[str, int], parts: int) -> dict[str, int]:
-    if parts <= 1:
-        return dict(usage)
-    return {k: round(v / parts) for k, v in usage.items()}
-
-
-def extract_batch(
-    client: Any,
-    model: str,
-    payloads: list[dict[str, Any]],
-    system_prompt: str,
-    max_output_tokens: int,
-    retries: int,
-    use_responses_api: bool,
-) -> tuple[dict[str, list[dict]], dict[str, int]]:
-    user_content = json.dumps({"task": "Extract product attributes.", "products": payloads}, ensure_ascii=False)
-    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
-    last_err: Exception | None = None
-
-    for attempt in range(retries + 1):
-        try:
-            if use_responses_api:
-                resp = client.responses.create(
-                    model=model,
-                    input=messages,
-                    text={"format": {"type": "json_schema", "name": "attrs", "schema": ATTRIBUTE_SCHEMA, "strict": True}},
-                    temperature=0,
-                    max_output_tokens=max_output_tokens,
-                )
-                raw = getattr(resp, "output_text", None) or "".join(
-                    c.text for item in (getattr(resp, "output", []) or []) for c in (getattr(item, "content", []) or []) if getattr(c, "type", "") == "output_text"
-                )
-                usage = normalize_usage(getattr(resp, "usage", {}))
-            else:
-                resp = client.chat.completions.create(
-                    model=model, messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0, max_tokens=max_output_tokens,
-                )
-                raw = resp.choices[0].message.content or "{}"
-                usage = normalize_usage(getattr(resp, "usage", {}))
-
-            parsed = parse_json_text(raw)
-            return {p["product_id"]: p.get("attributes", []) for p in parsed.get("products", [])}, usage
-        except Exception as exc:
-            last_err = exc
-            if attempt >= retries:
-                break
-            time.sleep(min(2 ** attempt, 30))
-
-    raise RuntimeError(f"LLM extraction failed after {retries + 1} attempts: {last_err}") from last_err
-
-
 def extract_with_fallback(
     client: Any, model: str, payloads: list[dict], system_prompt: str,
     max_output_tokens: int, retries: int, use_responses_api: bool,
 ) -> tuple[dict[str, list[dict]], dict[str, int]]:
-    try:
-        return extract_batch(client, model, payloads, system_prompt, max_output_tokens, retries, use_responses_api)
-    except Exception as batch_err:
-        if len(payloads) <= 1:
-            raise
-        print(f"Batch failed; retrying one-by-one: {batch_err}", file=sys.stderr)
-        merged: dict[str, list[dict]] = {}
-        total: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-        for p in payloads:
-            try:
-                m, u = extract_batch(client, model, [p], system_prompt, max_output_tokens, retries, use_responses_api)
-                merged.update(m)
-                for k in total:
-                    total[k] += u.get(k, 0)
-            except Exception as exc:
-                print(f"Single fallback failed for {p.get('product_id')}: {exc}", file=sys.stderr)
-                merged[str(p.get("product_id", ""))] = []
-        return merged, total
+    def build_messages(batch: list[dict]) -> list[dict]:
+        user_content = json.dumps({"task": "Extract product attributes.", "products": batch}, ensure_ascii=False)
+        return [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+
+    def parse_result(parsed: dict) -> dict[str, list]:
+        return {p["product_id"]: p.get("attributes", []) for p in parsed.get("products", [])}
+
+    return batch_extract_with_fallback(
+        client, model, payloads, item_id=lambda p: p["product_id"],
+        build_messages=build_messages, parse_result=parse_result,
+        max_output_tokens=max_output_tokens, retries=retries, use_responses_api=use_responses_api,
+        response_schema=ATTRIBUTE_SCHEMA, schema_name="attrs", label="product",
+    )
 
 
 # ── normalization post-processing ──────────────────────────────────────────────
@@ -377,30 +249,6 @@ def merge_attrs(rule: list[dict], llm: list[dict], do_normalize: bool) -> list[d
         seen.add(key)
         result.append(a)
     return result
-
-
-# ── I/O helpers ────────────────────────────────────────────────────────────────
-
-def read_jsonl_gz(path: Path):
-    with gzip.open(path, "rt", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                yield json.loads(line)
-
-
-def load_done_ids(output_path: Path) -> set[str]:
-    if not output_path.exists():
-        return set()
-    done: set[str] = set()
-    with output_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                row = json.loads(line)
-                if pid := row.get("product_id"):
-                    done.add(str(pid))
-            except json.JSONDecodeError:
-                continue
-    return done
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -444,8 +292,8 @@ def main() -> None:
     llm_cfg = cfg.get("llm", {})
     config_dir = args.config.resolve().parent
 
-    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_All_Beauty.jsonl.gz"))
-    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/all_beauty")
+    meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_Video_Games.jsonl.gz"))
+    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3")
     output_path = args.output_path or (out_dir / "attributes" / "product_attributes.jsonl")
 
     cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
@@ -465,7 +313,7 @@ def main() -> None:
     print(f"Prompt built for genre={genre!r}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    done_ids = load_done_ids(output_path) if args.resume else set()
+    done_ids = load_done_ids(output_path, "product_id") if args.resume else set()
     limit = None if args.limit < 0 else args.limit
 
     allowed_ids: set[str] | None = None

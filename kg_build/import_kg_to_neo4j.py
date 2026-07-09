@@ -1,14 +1,14 @@
 """
 Import all KG CSV files into Neo4j (or Neo4j Aura).
 
-Run order:
-  1. python build_kg_csvs.py             → base graph CSVs
-  2. python extract_product_attributes.py + extract_review_mentions.py
-  3. python normalize_attributes.py      → (optional) attr_type/value canonicalization
-  4. python build_attribute_csvs.py      → Attribute node + edge CSVs
-  5. python import_kg_to_neo4j.py        → this script (imports everything)
-  6. python enrich_product_images.py     → (optional) Product.image_url
-  7. python translate_titles.py          → (optional) Product.title_ja
+Run order (all under Am/kg_build/):
+  1. python select_kcore.py              → decide the k-core user/product selection
+  2. python build_base_graph.py          → base graph CSVs
+  3. python extract_product_attributes.py + extract_review_mentions.py
+  4. python canonicalize_attributes.py   → (optional) attr_type/value canonicalization
+  5. python build_attribute_graph.py     → Attribute node + edge CSVs
+  6. python import_kg_to_neo4j.py        → this script (imports everything)
+  7. python enrich_products.py --images --titles-ja  → (optional) Product.image_url / title_ja
 
 Attribute jobs (nodes_attributes.csv, rel_has_attribute.csv, rel_mentions.csv)
 are optional — silently skipped if the files do not exist yet.
@@ -17,28 +17,13 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
-import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from utils.neo4j_io import connect, load_env_file, resolve_neo4j_conn
+
 
 # ── helpers ────────────────────────────────────────────────────────────────────
-
-def load_env_file(path: Path = Path(".env")) -> None:
-    if not path.exists():
-        return
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
-
 
 def _float(value: str | None) -> float | None:
     v = (value or "").strip()
@@ -414,31 +399,13 @@ def main() -> None:
         with args.config.open(encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
-    neo4j_cfg: dict = cfg.get("neo4j", {})
     data_cfg: dict = cfg.get("data", {})
 
-    uri      = args.uri      or neo4j_cfg.get("uri")                          or os.environ.get("NEO4J_URI", "")
-    user     = args.user     or os.environ.get("NEO4J_USERNAME")               or neo4j_cfg.get("username", "neo4j")
-    password = args.password or os.environ.get("NEO4J_PASSWORD")               or neo4j_cfg.get("password", "")
-    database = args.database or os.environ.get("NEO4J_DATABASE")
-    input_dir = args.input_dir or (config_dir / data_cfg.get("output_dir", "kg_output/all_beauty"))
+    conn = resolve_neo4j_conn(args, cfg)
+    uri, user, password, database = conn["uri"], conn["user"], conn["password"], conn["database"]
+    input_dir = args.input_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
 
-    if not uri or not password:
-        print(
-            "Neo4j URI or password not found.\n"
-            "  Set NEO4J_PASSWORD in Am/.env and neo4j.uri in config.yaml\n"
-            "  or pass --uri / --password.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    try:
-        from neo4j import GraphDatabase
-    except ImportError:
-        print("neo4j package not installed. Run: pip install -r requirements.txt", file=sys.stderr)
-        sys.exit(2)
-
-    driver = GraphDatabase.driver(uri, auth=(user, password))
+    driver = connect(uri, user, password)
     try:
         driver.verify_connectivity()
         print(f"Connected to {uri}")

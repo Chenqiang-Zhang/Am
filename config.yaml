@@ -2,18 +2,19 @@
 # ここを変えるだけで別の Amazon カテゴリに対応できる。
 # スキーマ・コード・Cypher クエリは変えない。
 
-genre: "All_Beauty"
+genre: "Video_Games"
 
 # ---- データパス ----
 data:
-  review_path: "data/All_Beauty.jsonl.gz"
-  meta_path:   "data/meta_All_Beauty.jsonl.gz"
-  output_dir:  "kg_output/all_beauty"
+  review_path: "data/Video_Games.jsonl.gz"
+  meta_path:   "data/meta_Video_Games.jsonl.gz"
+  output_dir:  "kg_output/video_games_kcore3"
 
-# ---- データ規模（-1 = 全件） ----
+# ---- データ規模 ----
+# 商品・ユーザーの選定は select_kcore.py が確定する k-core
+# （<output_dir>/kcore_selection、全ユーザー・全商品が最低k件の相互作用を持つ）に一本化。
+# k の値は select_kcore.py の --k で指定する（デフォルト3）。
 scale:
-  max_reviews: 20     # 1商品あたりの最大レビュー数（直近順）
-  max_meta:    1000   # レビュー数の多い順に上位 n 件の商品を使う
   min_feature_len: 8
 
 # ---- LLM 設定（属性抽出・Text2Cypher 共通） ----

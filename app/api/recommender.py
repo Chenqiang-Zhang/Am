@@ -9,20 +9,23 @@ Endpoints served:
   POST /behavior/view                    — log product view to Neo4j
   POST /chat                             — multi-turn conversational recommendation (CRS)
   GET  /products/{product_id}/reviews    — top reviews for a product
-  POST /recommendations/{product_id}/feedback — user feedback on a recommendation reason
 
 Flow (search):
   1. Build user context from Neo4j (rated/viewed products, inferred attributes)
   2. LLM chooses query strategy and generates Cypher
-  3. Execute Cypher; retry on error up to max_cypher_attempts
-  4. Return results
+  3. Execute Cypher; retry (feeding back the error, or "0 results — broaden the
+     filters" if it ran but matched nothing) up to max_cypher_attempts
+  4. If every attempt still yields 0 rows, fall back entirely to popular
+     products (fallback=True). Otherwise return whatever the query matched,
+     even if that's fewer than `limit` — no padding.
 
 Flow (home):
   1. Build user context
   2. If the user has no RATED/attribute history, skip the LLM entirely and return
      popular products directly (same fast path as /recommend/trending)
   3. Otherwise, LLM generates personalized Cypher (collaborative filtering or
-     attribute similarity); falls back to popular products if that fails or is empty
+     attribute similarity); falls back to popular products if that fails or is
+     empty after retries (same rule as search)
 
 Flow (chat):
   1. The attr_type vocabulary actually present in the graph (queried once from
@@ -222,7 +225,13 @@ def _build_search_prompt(
     return "\n\n".join(parts)
 
 
-def _build_home_prompt(genre: str, user_ctx: dict, attr_vocab_text: str = "", lang: str = "en") -> str:
+def _build_home_prompt(
+    genre: str,
+    user_ctx: dict,
+    attr_vocab_text: str = "",
+    lang: str = "en",
+    dynamic_few_shot: list[dict] | None = None,
+) -> str:
     """呼び出し元(recommend_home())は履歴が無いユーザーにはLLMを呼ばず直接人気商品を
     返すため、このプロンプトは常に実履歴のあるuser_ctxが渡される前提で組み立てる。"""
     parts = [
@@ -234,6 +243,8 @@ def _build_home_prompt(genre: str, user_ctx: dict, attr_vocab_text: str = "", la
     if attr_vocab_text:
         parts.append(attr_vocab_text)
     parts.append(_FEW_SHOT_EXAMPLES)
+    if dynamic_few_shot:
+        parts.append(_format_dynamic_few_shot(dynamic_few_shot))
     parts.append(_format_user_ctx(user_ctx))
     parts.append(
         "## Hint\n"
@@ -249,19 +260,19 @@ def _format_user_ctx(ctx: dict) -> str:
     lines = ["## User Context"]
     if ctx.get("rated"):
         lines.append("Rated products (high rating first):")
-        for p in ctx["rated"][:6]:
+        for p in ctx["rated"]:
             lines.append(f"  [{p['rating']:.1f}★] {p['title']}")
     if ctx.get("viewed"):
         lines.append("Recently viewed:")
-        for p in ctx["viewed"][:4]:
+        for p in ctx["viewed"]:
             lines.append(f"  {p['title']}")
     if ctx.get("preferred_attrs"):
         lines.append("Inferred preferred attributes (from 4+ star ratings):")
-        for a in ctx["preferred_attrs"][:8]:
+        for a in ctx["preferred_attrs"]:
             lines.append(f"  {a['attr_type']}: {a['value']}  (×{a['freq']})")
     if ctx.get("recent_queries"):
         lines.append("Recent searches (newest first):")
-        for q in ctx["recent_queries"][:5]:
+        for q in ctx["recent_queries"]:
             lines.append(f'  "{q}"')
     return "\n".join(lines)
 
@@ -569,7 +580,7 @@ def _strip_html(text: str | None) -> str | None:
 
 class Recommender:
     def __init__(self, config_path: Path | None = None) -> None:
-        cfg_path = config_path or (Path(__file__).parent.parent / "config.yaml")
+        cfg_path = config_path or (Path(__file__).parent.parent.parent / "config.yaml")
         cfg: dict = {}
         if cfg_path.exists():
             with cfg_path.open(encoding="utf-8") as f:
@@ -625,17 +636,18 @@ class Recommender:
             self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
         )
         try:
-            cypher, explanation = self._generate_cypher(system_prompt, query, limit, has_uid, normalized_lang)
             params: dict[str, Any] = {"limit": limit}
             if has_uid:
                 params["uid"] = user_id
-            results = self._execute_and_map(cypher, params, normalized_lang)
+            cypher, explanation, results = self._generate_cypher_and_execute(
+                system_prompt, query, limit, params, has_uid, normalized_lang
+            )
         except Exception as exc:
             print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
             cypher, explanation, results = "", "", []
-        # _execute_and_map()は実行時エラーを内部で握りつぶして[]を返す(例外を投げない)ため、
-        # except節だけでは「生成/実行はエラーにならなかったが0件だった」ケースを拾えない。
-        # recommend_home()と同じく、結果が空なら常にここでフォールバックする。
+        # _generate_cypher_and_execute()は構文エラー・0件ヒットのどちらも内部でリトライ
+        # した上で、それでも結果が得られない場合にだけ ("", "", []) を返す。
+        # ここではその「リトライを使い切っても駄目だった」場合にだけフォールバックする。
         if not results:
             cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
             results = self._run_popular(limit, normalized_lang)
@@ -674,13 +686,15 @@ class Recommender:
             return cached["cypher"], cached["explanation"], cached["results"]
 
         user_ctx = self._get_user_context(user_id)
+        dynamic_few_shot = self._get_dynamic_few_shot(user_id)
         try:
             system_prompt = _build_home_prompt(
-                self._genre, user_ctx, self._get_attr_vocab_text(), lang
+                self._genre, user_ctx, self._get_attr_vocab_text(), lang, dynamic_few_shot
             )
             user_msg = "Generate personalized home-page product recommendations based on user history."
-            cypher, explanation = self._generate_cypher(system_prompt, user_msg, limit, True, lang)
-            results = self._execute_and_map(cypher, {"limit": limit, "uid": user_id}, lang)
+            cypher, explanation, results = self._generate_cypher_and_execute(
+                system_prompt, user_msg, limit, {"limit": limit, "uid": user_id}, True, lang
+            )
         except Exception as exc:
             print(f"[recommender] home generation failed: {exc}", file=sys.stderr)
             return None
@@ -854,49 +868,8 @@ LIMIT $limit
                 rows.append(r)
             return rows
 
-    def save_feedback(
-        self,
-        user_id: str | None,
-        product_id: str,
-        helpful: bool,
-        search_id: str | None,
-        lang: str,
-    ) -> None:
-        """推薦理由へのフィードバックをGAVE_FEEDBACKエッジとしてNeo4jに記録する。
-
-        VIEWEDと同じ形（User→Productへのタイムスタンプ付きエッジ、search_idで
-        SearchLogと紐付け）にすることで、将来_get_dynamic_few_shot()等から
-        「役に立たなかった検索を避ける」ように参照できるようにしておく。
-        匿名ユーザー(user_id無し)はUserノードに紐付けられないため記録しない。
-        """
-        if not user_id:
-            return
-        ts = int(time.time() * 1000)
-        write_cypher = (
-            "MERGE (u:User {user_id: $uid}) "
-            "WITH u "
-            "MATCH (p:Product {product_id: $pid}) "
-            "CREATE (u)-[:GAVE_FEEDBACK {helpful: $helpful, search_id: $sid, lang: $lang, timestamp: $ts}]->(p)"
-        )
-        trim_cypher = (
-            "MATCH (u:User {user_id: $uid})-[f:GAVE_FEEDBACK]->() "
-            "WITH f ORDER BY f.timestamp DESC "
-            "WITH collect(f) AS fs "
-            "FOREACH (old IN fs[$keep..] | DELETE old)"
-        )
-        try:
-            with self._driver.session(database=self._neo4j_db) as session:
-                session.run(
-                    write_cypher,
-                    uid=user_id, pid=product_id, helpful=helpful, sid=search_id, lang=lang, ts=ts,
-                )
-                session.run(trim_cypher, uid=user_id, keep=self._MAX_FEEDBACK)
-        except Exception as exc:
-            print(f"[recommender] save_feedback failed: {exc}", file=sys.stderr)
-
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30
-    _MAX_FEEDBACK: int = 20
 
     def log_search(
         self,
@@ -975,7 +948,7 @@ LIMIT $limit
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product) "
                     "RETURN p.title AS title, r.rating AS rating "
-                    "ORDER BY r.rating DESC, r.timestamp DESC LIMIT 10",
+                    "ORDER BY r.rating DESC, r.timestamp DESC LIMIT 6",
                     uid=user_id,
                 )
                 rated = [{"title": r["title"], "rating": r["rating"]} for r in res]
@@ -983,7 +956,7 @@ LIMIT $limit
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[v:VIEWED]->(p:Product) "
                     "RETURN p.title AS title "
-                    "ORDER BY v.timestamp DESC LIMIT 5",
+                    "ORDER BY v.timestamp DESC LIMIT 4",
                     uid=user_id,
                 )
                 viewed = [{"title": r["title"]} for r in res]
@@ -994,7 +967,7 @@ LIMIT $limit
                     "WHERE r.rating >= 4 "
                     "RETURN a.attr_type AS attr_type, a.value AS value, "
                     "count(*) AS freq "
-                    "ORDER BY freq DESC LIMIT 10",
+                    "ORDER BY freq DESC LIMIT 8",
                     uid=user_id,
                 )
                 preferred_attrs = [
@@ -1058,40 +1031,62 @@ LIMIT $limit
         )
         return _parse_llm_json(resp.choices[0].message.content or "{}")
 
-    # ── Cypher generation with retry-on-error ───────────────────────────────────
+    # ── Cypher generation with retry-on-error / retry-on-empty ──────────────────
 
-    def _generate_cypher(
-        self, system_prompt: str, user_msg: str, limit: int, has_uid: bool = False, lang: str = "en"
-    ) -> tuple[str, str]:
+    def _generate_cypher_and_execute(
+        self,
+        system_prompt: str,
+        user_msg: str,
+        limit: int,
+        exec_params: dict[str, Any],
+        has_uid: bool = False,
+        lang: str = "en",
+    ) -> tuple[str, str, list[Recommendation]]:
+        """Cypherの生成・検証・実行を1つのリトライループの中で行う。
+
+        構文/検証エラーだけでなく、「構文的には正しいが実行結果が0件」だった場合も
+        リトライ対象にする（以前は0件を検証エラーと区別できず、即座に諦めて全面
+        フォールバックしていた）。全試行を使い切っても結果が得られなければ
+        ("", "", []) を返し、呼び出し元が全面フォールバックするための合図とする。
+        """
         data = self._call_llm(system_prompt, user_msg)
         cypher: str = data.get("cypher", "").strip()
         explanation: str = data.get("explanation", "")
         fix_prompt = _build_fix_prompt(lang)
 
-        # 最後の試行でのfixは再検証されないまま返すと、_execute_and_map()が実行時エラーを
-        # 内部で握りつぶして[]を返すだけになり、呼び出し元のフォールバックが働かない
-        # （壊れたcypherが「検証済み」であるかのように返ってしまうため）。
-        # 最後の試行は検証だけ行い、そこで失敗したら fix はせず ("", "") で明示的に諦める。
         for attempt in range(self._max_attempts):
+            is_last = attempt >= self._max_attempts - 1
             try:
                 self._validate_cypher(cypher, limit, has_uid)
-                return cypher, explanation
             except Exception as exc:
-                if attempt >= self._max_attempts - 1:
+                if is_last:
                     break
-                fix_user = (
-                    f"Original request: {user_msg}\n\n"
-                    f"Broken Cypher:\n{cypher}\n\n"
-                    f"Neo4j error:\n{exc}"
+                cypher, explanation = self._request_cypher_fix(
+                    fix_prompt, user_msg, cypher, f"Neo4j error:\n{exc}"
                 )
-                try:
-                    fix_data = self._call_llm(fix_prompt, fix_user)
-                    cypher = fix_data.get("cypher", cypher).strip()
-                    explanation = fix_data.get("explanation", explanation)
-                except Exception:
-                    break
+                continue
 
-        return "", ""
+            results = self._execute_and_map(cypher, exec_params, lang)
+            if results:
+                return cypher, explanation, results
+            if is_last:
+                break
+            cypher, explanation = self._request_cypher_fix(
+                fix_prompt, user_msg, cypher,
+                "This query ran without error but matched 0 products. Broaden the "
+                "filters (loosen attribute matches, remove overly specific conditions, "
+                "or widen thresholds) and try again — do not repeat the same query.",
+            )
+
+        return "", "", []
+
+    def _request_cypher_fix(self, fix_prompt: str, user_msg: str, cypher: str, feedback: str) -> tuple[str, str]:
+        fix_user = f"Original request: {user_msg}\n\nCurrent Cypher:\n{cypher}\n\n{feedback}"
+        try:
+            fix_data = self._call_llm(fix_prompt, fix_user)
+            return fix_data.get("cypher", cypher).strip(), fix_data.get("explanation", "")
+        except Exception:
+            return cypher, ""
 
     _UID_REF = re.compile(r"\$uid\b")
     _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
@@ -1133,3 +1128,4 @@ LIMIT $limit
         return self._execute_and_map(
             _FALLBACK_CYPHER, {"limit": limit, "explanation": _popular_explanation(lang)}, lang
         )
+

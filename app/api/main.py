@@ -10,8 +10,6 @@ from .models import (
     HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
-    RecommendationFeedbackRequest,
-    RecommendationFeedbackResponse,
     ReviewItem,
     ReviewsResponse,
     SampleUser,
@@ -117,30 +115,19 @@ async def get_reviews(product_id: str, limit: int = 5) -> ReviewsResponse:
     return ReviewsResponse(product_id=product_id, reviews=reviews)
 
 
-@app.post("/recommendations/{product_id}/feedback", response_model=RecommendationFeedbackResponse)
-async def recommendation_feedback(
-    product_id: str,
-    req: RecommendationFeedbackRequest,
-) -> RecommendationFeedbackResponse:
-    if _recommender is None:
-        raise HTTPException(status_code=503, detail="Recommender not initialized")
-    _recommender.save_feedback(req.user_id, product_id, req.helpful, req.search_id, req.lang)
-    return RecommendationFeedbackResponse(status="ok", product_id=product_id)
-
-
 if __name__ == "__main__":
     import yaml
     from pathlib import Path
 
     import uvicorn
 
-    cfg_path = Path(__file__).parent.parent / "config.yaml"
+    cfg_path = Path(__file__).parent.parent.parent / "config.yaml"
     api_cfg: dict = {}
     if cfg_path.exists():
         with cfg_path.open(encoding="utf-8") as f:
             api_cfg = (yaml.safe_load(f) or {}).get("api", {})
     uvicorn.run(
-        "api.main:app",
+        "app.api.main:app",
         host=api_cfg.get("host", "0.0.0.0"),
         port=api_cfg.get("port", 8000),
     )

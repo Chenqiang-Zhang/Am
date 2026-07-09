@@ -87,25 +87,12 @@ export interface ChatResponse {
   search_id: string | null;
 }
 
-// ===== レコメンド理由フィードバック =====
-export interface RecommendationFeedbackRequest {
-  helpful: boolean;
-  user_id?: string | null;
-  search_id?: string | null;
-  lang?: "ja" | "en";
-}
-
 // ===== 行動ログ =====
 /** POST /behavior/view のリクエスト body */
 export interface ViewLogRequest {
   user_id: string;
   product_id: string;
   search_id?: string | null;
-}
-
-export interface RecommendationFeedbackResponse {
-  status: string;
-  product_id: string;
 }
 
 // ===== デモ用テストユーザー選択 =====
