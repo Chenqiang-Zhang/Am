@@ -103,12 +103,32 @@ conda run -n py312 python scripts/analyze_coverage_gap.py
 | 优先修复候选 | 316 |
 | 真正需要优先补 LLM 属性的商品 | 6 |
 
-主要缺口不是大面积缺属性，而是 `missing_price`、`low_quality_score`、`missing_features` 和 `currently_unavailable`。因此下一步不应盲目对全量 112k 商品跑 LLM，而应优先处理：
+主要缺口不是大面积缺属性，而是 `missing_price`、`low_quality_score`、`missing_features` 和 `currently_unavailable`。当前质量审计已经把商品分成三个推荐研究池：
 
-1. 建立/验证 `discoverable_pool`，允许缺价格但信息较完整的商品作为“当前不可销售/发现型商品”参与研究评估。
+| 池 | 数量 | 用途 |
+|---|---:|---|
+| `available_pool` | 17,280 | 线上默认推荐，只包含可售且质量分不低于 0.6 的商品 |
+| `discoverable_pool` | 91,597 | 研究/离线评估使用，包含缺价格但标题、图片、评分或内容信息较完整的当前不可销售商品 |
+| `excluded_pool` | 3,713 | 重复、标题无效或质量不足商品 |
+
+因此下一步不应盲目对全量 112k 商品跑 LLM，而应优先处理：
+
+1. 继续验证 `discoverable_pool`，允许缺价格但信息较完整的商品作为“当前不可销售/发现型商品”参与研究评估，同时保持线上 API 默认只推荐 `available_pool`。
 2. 对 coverage gap 中的 316 个优先候选重新审计质量，尤其检查原始 metadata 中是否有 feature/detail 没有进入图谱。
 3. 仅对 `attribute_priority_candidates_meta.jsonl` 中的 6 个商品做小批量 LLM 属性补全。
 4. 对 duplicate_suspect 商品保留最优变体，避免重复商品影响推荐结果。
+
+已新增的 discoverable 离线评估位于 `reports/evaluation/offline_comparison_discoverable/`。该评估使用 200 个有历史行为的用户，`ground_truth_scope=discoverable`，并在指标中加入 `DiscoverableRate@10`。当前结果显示：
+
+| 指标 | 结果 |
+|---|---:|
+| 评估用户 | 200 |
+| 候选 catalog 大小 | 20,000 |
+| Holdout 命中候选 catalog | 31 / 400 |
+| 最好 HitRate@10 | `transition_history`: 0.0650 |
+| 最好 HitRate@50 | `transition_history` / `hybrid_rrf`: 0.1350 |
+
+discoverable 版 coverage gap 位于 `reports/evaluation/coverage_gap_discoverable/`。在 385 个唯一 holdout 商品中，289 个已经属于 `discoverable_pool`，真正需要优先补 LLM 属性的商品只有 5 个；接下来的重点更偏向价格/可售状态覆盖和候选池召回宽度，而不是全量属性抽取。
 
 ---
 

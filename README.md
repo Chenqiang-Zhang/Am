@@ -361,6 +361,23 @@ conda run -n py312 python scripts/audit_product_quality.py
 
 The script scans all `Product` nodes, writes `sellable_status`, `data_quality_score`, and `quality_flags` back to Neo4j, and generates JSON/Markdown reports under `reports/product_quality/`. Use `--dry-run` to generate reports without writing to Neo4j.
 
+The audit also writes `recommendation_pool`:
+
+| Pool | Meaning |
+|---|---|
+| `available_pool` | Online recommendation pool: sellable products with `data_quality_score >= 0.6`. |
+| `discoverable_pool` | Research/evaluation pool: currently unavailable products that lack price but have enough title/image/rating/content signals. |
+| `excluded_pool` | Duplicate, invalid-title, or insufficient-quality products excluded from online and discovery evaluation. |
+
+Latest audit snapshot:
+
+| Metric | Count |
+|---|---:|
+| Total products | 112,590 |
+| `available_pool` | 17,280 |
+| `discoverable_pool` | 91,597 |
+| `excluded_pool` | 3,713 |
+
 ### Offline evaluation
 
 Run an offline comparison using users with review history:
@@ -375,7 +392,20 @@ conda run -n py312 python scripts/evaluate_recommenders_offline.py \
   --ground-truth-scope recommendable
 ```
 
-The script first checks graph data readiness, then compares `popularity_baseline`, `kg_no_history_home`, `title_keyword_profile`, `bm25_history_profile`, `kg_attribute_history`, `kg_semantic_history`, `item_cf_history`, `transition_history`, and `hybrid_rrf`. By default it evaluates against recommendable held-out products only, so the ground truth matches the backend's availability and quality filters. It writes the summary, intermediate files, and English-language charts to `reports/evaluation/offline_comparison/`. Metrics include strict exact-ASIN `Recall`, `HitRate`, `NDCG`, `MRR`, plus semantic/title/attribute overlap as softer similar-product discovery proxies.
+The script first checks graph data readiness, then compares `popularity_baseline`, `kg_no_history_home`, `title_keyword_profile`, `bm25_history_profile`, `kg_attribute_history`, `kg_semantic_history`, `item_cf_history`, `transition_history`, and `hybrid_rrf`. By default it evaluates against recommendable held-out products only, so the ground truth matches the backend's availability and quality filters. It writes the summary, intermediate files, and English-language charts to `reports/evaluation/offline_comparison/`. Metrics include strict exact-ASIN `Recall`, `HitRate`, `NDCG`, `MRR`, semantic/title/attribute overlap as softer similar-product discovery proxies, and `DiscoverableRate@10` for research runs that include unavailable-but-informative products.
+
+To evaluate the discovery/research setting, include products from `discoverable_pool`:
+
+```bash
+conda run -n py312 python scripts/evaluate_recommenders_offline.py \
+  --sample-users 200 \
+  --min-reviews 4 \
+  --history-size 3 \
+  --holdout-size 2 \
+  --k 10 \
+  --ground-truth-scope discoverable \
+  --output-dir reports/evaluation/offline_comparison_discoverable
+```
 
 Current generated reports:
 
@@ -383,8 +413,9 @@ Current generated reports:
 |---|---|---:|---:|---|
 | `reports/evaluation/offline_comparison/` | `recommendable` | 45 | 90 / 90 holdouts | `hybrid_rrf`: HitRate@10 0.1778, HitRate@50 0.5111 |
 | `reports/evaluation/offline_comparison_200_users/` | `all` | 200 | 70 / 400 holdouts | `hybrid_rrf`: HitRate@10 0.0200, HitRate@50 0.0300 |
+| `reports/evaluation/offline_comparison_discoverable/` | `discoverable` | 200 | 31 / 400 holdouts | `transition_history`: HitRate@10 0.0650, HitRate@50 0.1350 |
 
-Interpretation: the strict `recommendable` report is the best proxy for current online product quality because it only evaluates products the API is allowed to recommend. The 200-user `all` report is a data-coverage stress test; its low exact-ASIN score is expected because most future reviewed products are outside the current sellable + quality-filtered candidate pool.
+Interpretation: the strict `recommendable` report is the best proxy for current online product quality because it only evaluates products the API is allowed to recommend. The 200-user `all` report is a data-coverage stress test; its low exact-ASIN score is expected because most future reviewed products are outside the current sellable + quality-filtered candidate pool. The `discoverable` report is the research setting: it keeps unavailable products out of the online API, but lets information-complete no-price products participate in offline discovery analysis.
 
 ### Coverage gap analysis
 
@@ -396,6 +427,14 @@ conda run -n py312 python scripts/analyze_coverage_gap.py
 
 Current output: `reports/evaluation/coverage_gap/`.
 
+For the discovery/research setting, run:
+
+```bash
+conda run -n py312 python scripts/analyze_coverage_gap.py \
+  --evaluation-dir reports/evaluation/offline_comparison_discoverable \
+  --output-dir reports/evaluation/coverage_gap_discoverable
+```
+
 Latest finding:
 
 - Unique holdout products: 386
@@ -406,6 +445,8 @@ Latest finding:
 - Attribute-extraction priority subset: 6 products
 
 This means the next data step should not be a blind full-catalog LLM expansion. The better path is to introduce or validate a discoverable-but-currently-unavailable pool, re-audit quality after metadata enrichment, and only run LLM extraction on the small set that truly lacks attributes.
+
+Latest discoverable finding: among 385 unique holdout products, 289 are already `discoverable_pool` items and only 5 need priority LLM attribute extraction. The main remaining issue is therefore availability/price coverage and candidate-pool breadth, not broad attribute extraction.
 
 ### Review mention extraction
 

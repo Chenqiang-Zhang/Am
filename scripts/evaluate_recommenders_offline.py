@@ -50,6 +50,7 @@ METRIC_KEYS = [
     "average_quality_score",
     "average_rating_score",
     "novelty",
+    "discoverable_rate",
     "sellable_rate",
     "price_coverage",
     "catalog_coverage",
@@ -75,9 +76,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-catalog-snapshot", action="store_true", help="Do not save the BM25 candidate catalog JSONL.")
     parser.add_argument(
         "--ground-truth-scope",
-        choices=["recommendable", "all"],
+        choices=["recommendable", "discoverable", "all"],
         default="recommendable",
-        help="Use only recommendable products for history/holdout by default so ground truth matches the recommendation pool.",
+        help=(
+            "recommendable: available online pool; discoverable: available + currently-unavailable research pool; "
+            "all: all historical products while keeping the candidate pool recommendable unless --candidate-pool is set."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-pool",
+        choices=["recommendable", "discoverable"],
+        default=None,
+        help="Candidate pool used by local baselines. Defaults to discoverable only when ground-truth-scope=discoverable.",
     )
     return parser.parse_args()
 
@@ -114,10 +124,24 @@ def relationship_exists(session: Any, relationship_type: str) -> bool:
     return bool(record and int(record["count"] or 0) > 0)
 
 
-def product_pool_filter(alias: str = "p") -> str:
+def product_pool_filter(alias: str = "p", pool_scope: str = "recommendable") -> str:
+    quality = f"coalesce(toFloat({alias}.data_quality_score), CASE WHEN {alias}.price IS NOT NULL THEN 0.6 ELSE 0.0 END)"
+    status = f"coalesce({alias}.sellable_status, CASE WHEN {alias}.price IS NOT NULL THEN \"available\" ELSE \"currently_unavailable\" END)"
+    recommendation_pool = (
+        f"coalesce({alias}.recommendation_pool, "
+        f"CASE WHEN {status} = \"available\" AND {quality} >= $min_quality_score THEN \"available_pool\" "
+        f"WHEN {status} = \"currently_unavailable\" AND {quality} >= ($min_quality_score * 0.75) THEN \"discoverable_pool\" "
+        f"ELSE \"excluded_pool\" END)"
+    )
+    if pool_scope == "discoverable":
+        return (
+            f"{recommendation_pool} IN [\"available_pool\", \"discoverable_pool\"] "
+            f"AND {quality} >= ($min_quality_score * 0.75)"
+        )
     return (
-        f"coalesce({alias}.sellable_status, CASE WHEN {alias}.price IS NOT NULL THEN \"available\" ELSE \"currently_unavailable\" END) = \"available\" "
-        f"AND coalesce(toFloat({alias}.data_quality_score), CASE WHEN {alias}.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score"
+        f"{status} = \"available\" "
+        f"AND {quality} >= $min_quality_score "
+        f"AND {recommendation_pool} = \"available_pool\""
     )
 
 
@@ -140,8 +164,16 @@ def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_sc
                 session,
                 """
                 MATCH (p:Product)
-                WHERE coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
-                  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+                WHERE """ + product_pool_filter("p", "recommendable") + """
+                RETURN count(p)
+                """,
+                min_quality_score=min_quality_score,
+            ),
+            "discoverable_pool_products": scalar(
+                session,
+                """
+                MATCH (p:Product)
+                WHERE """ + product_pool_filter("p", "discoverable") + """
                 RETURN count(p)
                 """,
                 min_quality_score=min_quality_score,
@@ -150,8 +182,7 @@ def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_sc
                 session,
                 """
                 MATCH (p:Product)-[:HAS_ATTRIBUTE]->(:Attribute)
-                WHERE coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
-                  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+                WHERE """ + product_pool_filter("p", "recommendable") + """
                 RETURN count(DISTINCT p)
                 """,
                 min_quality_score=min_quality_score,
@@ -169,12 +200,26 @@ def readiness_check(driver: Any, database: str, min_reviews: int, min_quality_sc
                 min_reviews=min_reviews,
                 min_quality_score=min_quality_score,
             ),
+            "eligible_discoverable_eval_users": scalar(
+                session,
+                f"""
+                MATCH (u:User)-[r:RATED]->(p:Product)
+                WHERE r.timestamp IS NOT NULL
+                  AND {product_pool_filter("p", "discoverable")}
+                WITH u, count(r) AS review_count
+                WHERE review_count >= $min_reviews
+                RETURN count(u)
+                """,
+                min_reviews=min_reviews,
+                min_quality_score=min_quality_score,
+            ),
         }
     ratios = {
         "price_coverage": safe_div(stats["products_with_price"], stats["products_total"]),
         "feature_coverage": safe_div(stats["products_with_features"], stats["products_total"]),
         "attribute_coverage": safe_div(stats["products_with_attributes"], stats["products_total"]),
         "recommendable_rate": safe_div(stats["recommendable_products"], stats["products_total"]),
+        "discoverable_pool_rate": safe_div(stats["discoverable_pool_products"], stats["products_total"]),
         "recommendable_attribute_coverage": safe_div(stats["recommendable_with_attributes"], stats["recommendable_products"]),
     }
     warnings: list[str] = []
@@ -244,7 +289,10 @@ def pick_users(
     min_quality_score: float,
     ground_truth_scope: str,
 ) -> list[str]:
-    pool_clause = f"AND {product_pool_filter('p')}" if ground_truth_scope == "recommendable" else ""
+    if ground_truth_scope in {"recommendable", "discoverable"}:
+        pool_clause = f"AND {product_pool_filter('p', ground_truth_scope)}"
+    else:
+        pool_clause = ""
     cypher = f"""
 MATCH (u:User)-[r:RATED]->(p:Product)
 WHERE r.timestamp IS NOT NULL
@@ -275,7 +323,10 @@ def user_review_sequence(
     min_quality_score: float,
     ground_truth_scope: str,
 ) -> list[dict[str, Any]]:
-    pool_clause = f"AND {product_pool_filter('p')}" if ground_truth_scope == "recommendable" else ""
+    if ground_truth_scope in {"recommendable", "discoverable"}:
+        pool_clause = f"AND {product_pool_filter('p', ground_truth_scope)}"
+    else:
+        pool_clause = ""
     cypher = f"""
 MATCH (:User {{user_id: $user_id}})-[r:RATED]->(p:Product)
 WHERE r.timestamp IS NOT NULL
@@ -351,22 +402,28 @@ def title_profile_intent(history: list[dict[str, Any]], max_terms: int = 8) -> S
     return SearchIntent(attribute_filters=[], keywords=keywords, price_max=None, min_rating=None)
 
 
-def fetch_catalog(driver: Any, database: str, limit: int, min_quality_score: float) -> list[dict[str, Any]]:
-    cypher = """
+def fetch_catalog(
+    driver: Any,
+    database: str,
+    limit: int,
+    min_quality_score: float,
+    candidate_pool: str,
+) -> list[dict[str, Any]]:
+    cypher = f"""
 MATCH (p:Product)
-WHERE coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) = "available"
-  AND coalesce(toFloat(p.data_quality_score), CASE WHEN p.price IS NOT NULL THEN 0.6 ELSE 0.0 END) >= $min_quality_score
+WHERE {product_pool_filter("p", candidate_pool)}
 OPTIONAL MATCH (p)-[:HAS_FEATURE]->(f:Feature)
 OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute)
 WITH p,
      collect(DISTINCT coalesce(f.normalized_text, f.text))[0..4] AS features,
-     collect(DISTINCT {attribute_type: a.attribute_type, value: a.value})[0..12] AS attributes
+     collect(DISTINCT {{attribute_type: a.attribute_type, value: a.value}})[0..12] AS attributes
 RETURN p.product_id AS product_id,
        p.title AS title,
        p.price AS price,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        p.sellable_status AS sellable_status,
+       p.recommendation_pool AS recommendation_pool,
        p.data_quality_score AS data_quality_score,
        features AS features,
        attributes AS attributes
@@ -394,6 +451,7 @@ RETURN p.product_id AS product_id,
        p.average_rating AS average_rating,
        p.rating_number AS rating_number,
        coalesce(p.sellable_status, CASE WHEN p.price IS NOT NULL THEN "available" ELSE "currently_unavailable" END) AS sellable_status,
+       p.recommendation_pool AS recommendation_pool,
        p.data_quality_score AS data_quality_score,
        features AS features,
        attributes AS attributes
@@ -412,6 +470,7 @@ def item_cf_recommend(
     history_ids: set[str],
     k: int,
     min_quality_score: float,
+    candidate_pool: str,
 ) -> list[str]:
     if not history_ids:
         return []
@@ -420,7 +479,7 @@ MATCH (h:Product)<-[hr:RATED]-(u:User)-[r:RATED]->(p:Product)
 WHERE h.product_id IN $history_ids
   AND u.user_id <> $user_id
   AND NOT p.product_id IN $history_ids
-  AND {product_pool_filter("p")}
+  AND {product_pool_filter("p", candidate_pool)}
 WITH p,
      count(DISTINCT u) AS co_users,
      count(DISTINCT h) AS matched_history,
@@ -453,6 +512,7 @@ def transition_recommend(
     history_ids: set[str],
     k: int,
     min_quality_score: float,
+    candidate_pool: str,
 ) -> list[str]:
     if not history_ids:
         return []
@@ -464,7 +524,7 @@ WHERE h.product_id IN $history_ids
   AND r.timestamp IS NOT NULL
   AND r.timestamp > hr.timestamp
   AND NOT p.product_id IN $history_ids
-  AND {product_pool_filter("p")}
+  AND {product_pool_filter("p", candidate_pool)}
 WITH p,
      count(*) AS transitions,
      count(DISTINCT u) AS transition_users,
@@ -648,6 +708,7 @@ def metrics(
     rank_20 = ranking_at(20)
     rank_50 = ranking_at(50)
     known_rows = [catalog_by_id.get(product_id, {}) for product_id in top_k]
+    discoverable = [row for row in known_rows if row.get("recommendation_pool") == "discoverable_pool"]
     sellable = [row for row in known_rows if row.get("sellable_status") == "available"]
     priced = [row for row in known_rows if row.get("price") is not None]
     quality_scores = [
@@ -707,6 +768,7 @@ def metrics(
         "average_quality_score": sum(quality_scores) / max(len(quality_scores), 1),
         "average_rating_score": sum(rating_scores) / max(len(rating_scores), 1),
         "novelty": sum(novelty_scores) / max(len(novelty_scores), 1),
+        "discoverable_rate": len(discoverable) / denom,
         "sellable_rate": len(sellable) / denom,
         "price_coverage": len(priced) / denom,
         "catalog_coverage": 0.0,
@@ -785,6 +847,7 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
         f"Created at: `{summary['created_at']}`",
         f"Evaluated users: `{summary['evaluated_users']}`",
         f"Ground-truth scope: `{summary['config']['ground_truth_scope']}`",
+        f"Effective candidate pool: `{summary['config'].get('effective_candidate_pool', 'recommendable')}`",
         "",
         "## Data Readiness",
         "",
@@ -828,8 +891,8 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "",
             "## Method Metrics",
             "",
-            "| Method | Recall@10 | Recall@20 | Recall@50 | HitRate@10 | HitRate@20 | HitRate@50 | NDCG@10 | NDCG@20 | NDCG@50 | MRR@10 | Precision@10 | SemanticNDCG@10 | SemanticRecall@10 | TitleOverlap@10 | AttributeOverlap@10 | Diversity@10 | Novelty@10 | Quality@10 | Rating@10 | CatalogCoverage@10 | SellableRate@10 | PriceCoverage@10 |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Method | Recall@10 | Recall@20 | Recall@50 | HitRate@10 | HitRate@20 | HitRate@50 | NDCG@10 | NDCG@20 | NDCG@50 | MRR@10 | Precision@10 | SemanticNDCG@10 | SemanticRecall@10 | TitleOverlap@10 | AttributeOverlap@10 | Diversity@10 | Novelty@10 | Quality@10 | Rating@10 | CatalogCoverage@10 | DiscoverableRate@10 | SellableRate@10 | PriceCoverage@10 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for method, metrics_row in summary["methods"].items():
@@ -858,6 +921,7 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
                     f"{metrics_row['average_quality_score']:.4f}",
                     f"{metrics_row['average_rating_score']:.4f}",
                     f"{metrics_row['catalog_coverage']:.4f}",
+                    f"{metrics_row['discoverable_rate']:.4f}",
                     f"{metrics_row['sellable_rate']:.4f}",
                     f"{metrics_row['price_coverage']:.4f}",
                 ]
@@ -873,7 +937,8 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
             "- If `Holdout products in candidate catalog` is below 100%, local candidate-based methods cannot possibly hit every exact target.",
             "- `SemanticNDCG@K`, `SemanticRecall@K`, `TitleOverlap@K`, and `AttributeOverlap@K` are softer discovery metrics for cases where the correct answer is a similar product rather than the exact future ASIN.",
             "- `Diversity@K`, `Novelty@K`, and `CatalogCoverage@K` check whether a method collapses to the same narrow set of popular products.",
-            "- `SellableRate@K` and `PriceCoverage@K` are constraint checks. They are expected to be near 1.0 because the candidate pool is filtered to recommendable products.",
+            "- `DiscoverableRate@K` measures how often a method recommends information-complete but currently unavailable products in research runs.",
+            "- `SellableRate@K` and `PriceCoverage@K` are constraint checks. They should be near 1.0 for the online recommendable pool and can be lower when `effective_candidate_pool` is `discoverable`.",
             "- Low `recommendable_attribute_coverage` means KG attribute-history methods are limited by current LLM attribute coverage, not only by ranking quality.",
             "",
             "## Output Files",
@@ -883,7 +948,7 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
     if has_exact_hits:
         lines.insert(
             lines.index("## Output Files") - 1,
-            "- Non-zero exact-hit scores show that the evaluation target is now aligned with the recommendable product pool.",
+            "- Non-zero exact-hit scores show that the evaluation target is aligned with the selected candidate pool.",
         )
     for label, file_path in summary["intermediate_files"].items():
         if file_path:
@@ -895,10 +960,17 @@ def write_summary_markdown(summary: dict[str, Any], path: Path) -> None:
 
 
 def plot_readiness(readiness: dict[str, Any], path: Path) -> None:
-    keys = ["price_coverage", "feature_coverage", "attribute_coverage", "recommendable_rate", "recommendable_attribute_coverage"]
+    keys = [
+        "price_coverage",
+        "feature_coverage",
+        "attribute_coverage",
+        "recommendable_rate",
+        "discoverable_pool_rate",
+        "recommendable_attribute_coverage",
+    ]
     values = [readiness["ratios"].get(key, 0.0) for key in keys]
     fig, ax = plt.subplots(figsize=(9, 4.8))
-    ax.bar(keys, values, color=["#4d7c8a", "#b08d57", "#7b5ea7", "#5f8f5f", "#a75858"])
+    ax.bar(keys, values, color=["#4d7c8a", "#b08d57", "#7b5ea7", "#5f8f5f", "#d08b45", "#a75858"])
     ax.set_ylabel("Ratio")
     ax.set_title("Graph data readiness ratios")
     ax.set_ylim(0, 1.0)
@@ -916,6 +988,7 @@ def main() -> None:
     database = os.environ.get("NEO4J_DATABASE", "neo4j")
     effective_min_reviews = max(args.min_reviews, args.history_size + args.holdout_size)
     eval_k = max(args.k, 50)
+    candidate_pool = args.candidate_pool or ("discoverable" if args.ground_truth_scope == "discoverable" else "recommendable")
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     intermediates_dir = output_dir / "intermediates"
@@ -945,7 +1018,7 @@ def main() -> None:
     )
     append_jsonl(intermediates_dir / "sampled_users.jsonl", ({"user_id": user_id} for user_id in users))
 
-    catalog = fetch_catalog(driver, database, args.candidate_catalog_limit, args.min_quality_score)
+    catalog = fetch_catalog(driver, database, args.candidate_catalog_limit, args.min_quality_score, candidate_pool)
     catalog_by_id = {row["product_id"]: row for row in catalog}
     candidate_catalog_ids = set(catalog_by_id)
     if not args.skip_catalog_snapshot:
@@ -1000,8 +1073,24 @@ def main() -> None:
         pop_recs = popularity_baseline(catalog, eval_k, exclude=history_ids)
         kg_no_history_recs = exclude_seen(no_history_home_ids, history_ids, eval_k)
         title_recs = bm25_recommend(bm25_index, title_intent.keywords, eval_k, exclude=history_ids)
-        item_cf_raw_recs = item_cf_recommend(driver, database, user_id, history_ids, eval_k, args.min_quality_score)
-        transition_raw_recs = transition_recommend(driver, database, user_id, history_ids, eval_k, args.min_quality_score)
+        item_cf_raw_recs = item_cf_recommend(
+            driver,
+            database,
+            user_id,
+            history_ids,
+            eval_k,
+            args.min_quality_score,
+            candidate_pool,
+        )
+        transition_raw_recs = transition_recommend(
+            driver,
+            database,
+            user_id,
+            history_ids,
+            eval_k,
+            args.min_quality_score,
+            candidate_pool,
+        )
         item_cf_recs = fill_recommendations(
             item_cf_raw_recs,
             pop_recs,
@@ -1121,6 +1210,7 @@ def main() -> None:
         "config": {
             **{key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
             "max_eval_k": eval_k,
+            "effective_candidate_pool": candidate_pool,
         },
         "effective_min_reviews": effective_min_reviews,
         "data_readiness": readiness,
@@ -1160,7 +1250,15 @@ def main() -> None:
     plot_metric_group(
         summary,
         charts_dir / "operational_metrics.png",
-        ["list_fill_rate", "average_quality_score", "average_rating_score", "novelty", "diversity", "catalog_coverage"],
+        [
+            "list_fill_rate",
+            "average_quality_score",
+            "average_rating_score",
+            "discoverable_rate",
+            "novelty",
+            "diversity",
+            "catalog_coverage",
+        ],
         "Operational Quality Metrics",
         fixed_ylim=True,
     )

@@ -1,0 +1,30 @@
+{
+  "ratios": {
+    "attribute_coverage": 0.971756,
+    "discoverable_pool_rate": 0.967022,
+    "feature_coverage": 0.210045,
+    "price_coverage": 0.157243,
+    "recommendable_attribute_coverage": 0.989525,
+    "recommendable_rate": 0.153477
+  },
+  "ready_for_experiment": true,
+  "stats": {
+    "attributes_total": 49253,
+    "discoverable_pool_products": 108877,
+    "eligible_discoverable_eval_users": 849,
+    "eligible_eval_users": 45,
+    "mentions_total": 0,
+    "products_total": 112590,
+    "products_with_attributes": 109410,
+    "products_with_features": 23649,
+    "products_with_image": 112590,
+    "products_with_price": 17704,
+    "products_with_title": 112578,
+    "rated_edges": 199059,
+    "recommendable_products": 17280,
+    "recommendable_with_attributes": 17099,
+    "reviews_total": 200000,
+    "users_total": 168664
+  },
+  "warnings": []
+}

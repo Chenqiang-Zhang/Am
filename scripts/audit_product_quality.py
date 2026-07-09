@@ -44,6 +44,7 @@ UPDATE_QUERY = """
 UNWIND $rows AS row
 MATCH (p:Product {product_id: row.product_id})
 SET p.sellable_status = row.sellable_status,
+    p.recommendation_pool = row.recommendation_pool,
     p.data_quality_score = row.data_quality_score,
     p.quality_flags = row.quality_flags,
     p.quality_audited_at = $audited_at,
@@ -57,6 +58,7 @@ SET p.sellable_status = row.sellable_status,
 
 INDEX_STATEMENTS = [
     "CREATE INDEX product_sellable_status IF NOT EXISTS FOR (p:Product) ON (p.sellable_status)",
+    "CREATE INDEX product_recommendation_pool IF NOT EXISTS FOR (p:Product) ON (p.recommendation_pool)",
     "CREATE INDEX product_quality_score IF NOT EXISTS FOR (p:Product) ON (p.data_quality_score)",
 ]
 
@@ -64,6 +66,7 @@ INDEX_STATEMENTS = [
 @dataclass
 class AuditConfig:
     min_quality_score: float
+    discoverable_min_quality_score: float
     min_title_len: int
     min_content_count: int
     duplicate_sample_limit: int
@@ -149,6 +152,13 @@ def product_score_and_status(
     has_rating = average_rating is not None and rating_number > 0
     has_category = bool(category)
     duplicate_suspect = bool(title and duplicate_count > 1)
+    discoverable_candidate = (
+        not has_valid_price
+        and has_title
+        and not duplicate_suspect
+        and (has_image or has_rating)
+        and (has_useful_content or has_rating or review_count > 0)
+    )
 
     content_score = min(content_count / max(config.min_content_count * 3, 1), 1.0)
     rating_count_score = min(math.log1p(rating_number) / math.log1p(1000), 1.0) if rating_number else 0.0
@@ -183,10 +193,14 @@ def product_score_and_status(
     if score < config.min_quality_score:
         flags.append("low_quality")
 
-    if not has_title or score < config.min_quality_score:
+    if not has_title:
         status = "low_quality"
     elif duplicate_suspect:
         status = "duplicate_suspect"
+    elif discoverable_candidate and score >= config.discoverable_min_quality_score:
+        status = "currently_unavailable"
+    elif score < config.min_quality_score:
+        status = "low_quality"
     elif not has_valid_price:
         status = "currently_unavailable"
     elif not has_image:
@@ -194,11 +208,21 @@ def product_score_and_status(
     else:
         status = "available"
 
+    if status == "available" and score >= config.min_quality_score:
+        recommendation_pool = "available_pool"
+    elif status == "currently_unavailable" and discoverable_candidate and score >= config.discoverable_min_quality_score:
+        recommendation_pool = "discoverable_pool"
+    elif has_title and not duplicate_suspect and score >= config.discoverable_min_quality_score:
+        recommendation_pool = "research_pool"
+    else:
+        recommendation_pool = "excluded_pool"
+
     return {
         "product_id": row["product_id"],
         "title": title,
         "data_quality_score": score,
         "sellable_status": status,
+        "recommendation_pool": recommendation_pool,
         "quality_flags": flags,
         "title_duplicate_key": title_duplicate_key(title),
         "title_duplicate_count": duplicate_count,
@@ -243,6 +267,7 @@ def build_report(
     duplicate_samples: list[dict[str, Any]],
 ) -> dict[str, Any]:
     status_counts = Counter(row["sellable_status"] for row in rows)
+    pool_counts = Counter(row["recommendation_pool"] for row in rows)
     flag_counts: Counter[str] = Counter()
     for row in rows:
         flag_counts.update(row["quality_flags"])
@@ -260,11 +285,13 @@ def build_report(
         for row in rows
         if row["sellable_status"] == "available" and row["data_quality_score"] >= config.min_quality_score
     )
+    discoverable = sum(1 for row in rows if row["recommendation_pool"] == "discoverable_pool")
 
     return {
         "audited_at": audited_at,
         "thresholds": {
             "min_quality_score": config.min_quality_score,
+            "discoverable_min_quality_score": config.discoverable_min_quality_score,
             "min_title_len": config.min_title_len,
             "min_content_count": config.min_content_count,
         },
@@ -272,8 +299,11 @@ def build_report(
             "total_products": len(rows),
             "available_high_quality": available_high_quality,
             "available_high_quality_rate": round(available_high_quality / len(rows), 4) if rows else 0,
+            "discoverable_products": discoverable,
+            "discoverable_rate": round(discoverable / len(rows), 4) if rows else 0,
         },
         "sellable_status_counts": dict(status_counts.most_common()),
+        "recommendation_pool_counts": dict(pool_counts.most_common()),
         "quality_flag_counts": dict(flag_counts.most_common()),
         "score_buckets": dict(sorted(buckets.items())),
         "duplicate_samples": duplicate_samples,
@@ -294,6 +324,8 @@ def write_reports(report: dict[str, Any], output_dir: Path, prefix: str) -> tupl
         f"- total_products: `{report['summary']['total_products']:,}`",
         f"- available_high_quality: `{report['summary']['available_high_quality']:,}`",
         f"- available_high_quality_rate: `{report['summary']['available_high_quality_rate']:.2%}`",
+        f"- discoverable_products: `{report['summary']['discoverable_products']:,}`",
+        f"- discoverable_rate: `{report['summary']['discoverable_rate']:.2%}`",
         "",
         "## Sellable Status Counts",
         "",
@@ -301,6 +333,10 @@ def write_reports(report: dict[str, Any], output_dir: Path, prefix: str) -> tupl
         "| --- | ---: |",
     ]
     for key, value in report["sellable_status_counts"].items():
+        lines.append(f"| {key} | {value:,} |")
+
+    lines.extend(["", "## Recommendation Pool Counts", "", "| pool | count |", "| --- | ---: |"])
+    for key, value in report["recommendation_pool_counts"].items():
         lines.append(f"| {key} | {value:,} |")
 
     lines.extend(["", "## Quality Flag Counts", "", "| flag | count |", "| --- | ---: |"])
@@ -353,6 +389,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database", default=os.environ.get("NEO4J_DATABASE"))
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument("--min-quality-score", type=float, default=0.6)
+    parser.add_argument("--discoverable-min-quality-score", type=float, default=0.45)
     parser.add_argument("--min-title-len", type=int, default=8)
     parser.add_argument("--min-content-count", type=int, default=1)
     parser.add_argument("--duplicate-sample-limit", type=int, default=20)
@@ -376,6 +413,7 @@ def main() -> int:
 
     config = AuditConfig(
         min_quality_score=args.min_quality_score,
+        discoverable_min_quality_score=args.discoverable_min_quality_score,
         min_title_len=args.min_title_len,
         min_content_count=args.min_content_count,
         duplicate_sample_limit=args.duplicate_sample_limit,
