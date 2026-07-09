@@ -4,29 +4,28 @@ import type { SampleUser } from "../types/recommend";
 import styles from "./TestUserSelect.module.css";
 
 // デモ用: テスト用ユーザーID を選択する。個人化(過去の評価・閲覧履歴)の効果を確認するため。
-// - ORIGINAL: 履歴を持たない固定のテストユーザー（コールドスタートの動作確認用）
+// - ORIGINAL: 履歴を持たない固定のテストユーザー（コールドスタートの動作確認用。既定値）
 // - 実ユーザー: /users/sample から取得した、評価履歴を持つ実データのユーザー
-const ORIGINAL_TEST_USER_ID = "demo-original-test-user";
+export const ORIGINAL_TEST_USER_ID = "demo-original-test-user";
 const STORAGE_KEY = "kg_demo_user_id";
 
 interface Props {
-  userId: string | null;
-  onChange: (userId: string | null) => void;
+  userId: string;
+  onChange: (userId: string) => void;
 }
 
-export function useStoredTestUserId(): [string | null, (id: string | null) => void] {
-  const [userId, setUserId] = useState<string | null>(() => {
+export function useStoredTestUserId(): [string, (id: string) => void] {
+  const [userId, setUserId] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY);
+      return localStorage.getItem(STORAGE_KEY) || ORIGINAL_TEST_USER_ID;
     } catch {
-      return null;
+      return ORIGINAL_TEST_USER_ID;
     }
   });
-  const update = (id: string | null) => {
+  const update = (id: string) => {
     setUserId(id);
     try {
-      if (id) localStorage.setItem(STORAGE_KEY, id);
-      else localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, id);
     } catch {
       /* localStorage 不可の環境では保存をスキップ */
     }
@@ -44,11 +43,10 @@ export default function TestUserSelect({ userId, onChange }: Props) {
   return (
     <select
       className={styles.select}
-      value={userId ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
+      value={userId}
+      onChange={(e) => onChange(e.target.value)}
       aria-label="テストユーザー"
     >
-      <option value="">匿名（個人化なし）</option>
       <option value={ORIGINAL_TEST_USER_ID}>オリジナルテストユーザー（履歴なし）</option>
       {realUsers.map((u) => (
         <option key={u.user_id} value={u.user_id}>

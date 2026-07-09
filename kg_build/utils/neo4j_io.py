@@ -1,6 +1,6 @@
 """
 Shared Neo4j connection helpers used by every script that talks to Neo4j
-directly over Bolt (import_kg_to_neo4j.py, wipe_neo4j.py, enrich_products.py).
+directly over Bolt (import_kg_to_neo4j.py, wipe_neo4j.py, backfill_display_fields.py).
 
 .env loading itself lives in llm_client.py (re-exported here) so there is a
 single canonical implementation shared by both the LLM- and Neo4j-facing

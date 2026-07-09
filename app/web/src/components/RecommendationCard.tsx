@@ -22,7 +22,7 @@ interface Props {
   rec: Recommendation;
   rank: number;
   devMode: boolean;
-  userId: string | null;
+  userId: string;
   searchId: string | null;
 }
 
@@ -73,7 +73,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => {
-            if (userId) logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
+            logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
           }}
         >
           {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}

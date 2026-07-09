@@ -17,8 +17,8 @@
 | avg_rating | average_rating | float | |
 | rating_count | rating_number | int | |
 | description | features + description を連結 | string | 生テキスト。LLM属性抽出とFull-Text検索に使う |
-| image_url | images | string | 欠損あり。`enrich_products.py --images` で後付け |
-| title_ja | title（LLM翻訳） | string | 欠損あり。`enrich_products.py --titles-ja` で後付け。表示言語が日本語のときのみAPIが使う |
+| image_url | images | string | 欠損あり。`backfill_display_fields.py --images` で後付け |
+| title_ja | title（LLM翻訳） | string | 欠損あり。`backfill_display_fields.py --titles-ja` で後付け。表示言語が日本語のときのみAPIが使う |
 
 ### ユーザ（User）
 | プロパティ | データ元 | 型 | 備考 |

@@ -8,7 +8,7 @@ Run order (all under Am/kg_build/):
   4. python canonicalize_attributes.py   → (optional) attr_type/value canonicalization
   5. python build_attribute_graph.py     → Attribute node + edge CSVs
   6. python import_kg_to_neo4j.py        → this script (imports everything)
-  7. python enrich_products.py --images --titles-ja  → (optional) Product.image_url / title_ja
+  7. python backfill_display_fields.py --images --titles-ja  → (optional) Product.image_url / title_ja
 
 Attribute jobs (nodes_attributes.csv, rel_has_attribute.csv, rel_mentions.csv)
 are optional — silently skipped if the files do not exist yet.

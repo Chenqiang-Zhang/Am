@@ -2,7 +2,7 @@
 Shared helpers for calling an OpenAI-compatible chat/responses endpoint and
 parsing its JSON output, used by the attribute-extraction, canonicalization, and
 translation scripts (extract_product_attributes.py, extract_review_mentions.py,
-canonicalize_attributes.py, enrich_products.py).
+canonicalize_attributes.py, backfill_display_fields.py).
 """
 from __future__ import annotations
 

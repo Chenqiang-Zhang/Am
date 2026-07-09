@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { chat, recommendHome, recommendTrending, warmHomeCache, ApiError } from "../api/client";
+import { chat, recommendHome, warmHomeCache, ApiError } from "../api/client";
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
@@ -39,8 +39,8 @@ export default function ChatPage() {
   // 変化だけに頼らず明示的に発火させるためのカウンタ。
   const [reloadKey, setReloadKey] = useState(0);
 
-  // 会話を始める前は、ひとまず何かしらのおすすめを表示しておく
-  // （テストユーザーが選ばれていれば履歴ベース、なければ一般的な人気商品）。
+  // 会話を始める前は、ひとまず何かしらのおすすめを表示しておく（履歴ベース、
+  // 履歴が無ければrecommendHome()内部で人気商品にフォールバックする）。
   // これはユーザーの発話に対する応答ではないので、チャットの「入力中...」表示
   // (status/loading)とは別のローディング状態にする — 会話が勝手に動いたように
   // 見えないようにするため。
@@ -51,11 +51,7 @@ export default function ChatPage() {
       setInitialLoading(true);
       setError(null);
       try {
-        // 匿名(テストユーザー未選択)のときはLLMを呼ばない/recommend/trendingを使う
-        // ことで、開いた瞬間の表示にラグが出ないようにする。
-        const r = userId
-          ? await recommendHome({ user_id: userId, limit: LIMIT, lang })
-          : await recommendTrending(LIMIT, lang);
+        const r = await recommendHome({ user_id: userId, limit: LIMIT, lang });
         if (cancelled) return;
         setResult({
           recommendations: r.recommendations,
@@ -76,10 +72,9 @@ export default function ChatPage() {
   }, [conversation.length, userId, lang, reloadKey]);
 
   // タブを閉じる/バックグラウンドに回した時に、次回開いた時のためのホーム推薦を
-  // バックエンド側で先読みキャッシュしておく（履歴のあるテストユーザーが対象。
-  // 履歴が無い場合はrecommendTrending()相当の高速パスで十分なのでバックエンド側で無視される）。
+  // バックエンド側で先読みキャッシュしておく（履歴が無い場合は高速パスで十分なので
+  // バックエンド側で無視される）。
   useEffect(() => {
-    if (!userId) return;
     const uid = userId;
     function warm() {
       warmHomeCache({ user_id: uid, limit: LIMIT, lang });

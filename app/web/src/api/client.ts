@@ -118,21 +118,6 @@ export function warmHomeCache(req: HomeRecommendRequest): void {
   );
 }
 
-/** 個人化不要な人気商品（GET /recommend/trending）。LLMを呼ばないためラグがほぼ無い。 */
-export async function recommendTrending(
-  limit = 10,
-  lang: "ja" | "en" = "en",
-): Promise<RecommendResponse> {
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/recommend/trending?limit=${limit}&lang=${lang}`);
-  } catch {
-    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
-  }
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as RecommendResponse;
-}
-
 /** 対話型推薦の1ターン（POST /chat） */
 export async function chat(
   messages: ChatMessage[],

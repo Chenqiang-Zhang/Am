@@ -9,9 +9,9 @@ both in a single call (a shared Neo4j connection is reused for both):
                so it's safe to re-run after scaling up the catalog.
 
 Usage:
-    python3 kg_build/enrich_products.py --images
-    python3 kg_build/enrich_products.py --titles-ja
-    python3 kg_build/enrich_products.py --images --titles-ja
+    python3 kg_build/backfill_display_fields.py --images
+    python3 kg_build/backfill_display_fields.py --titles-ja
+    python3 kg_build/backfill_display_fields.py --images --titles-ja
 """
 from __future__ import annotations
 

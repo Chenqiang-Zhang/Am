@@ -3,7 +3,6 @@ LLM-driven autonomous Text2Cypher recommender.
 
 Endpoints served:
   POST /recommend                        — keyword search with optional personalization
-  GET  /recommend/trending               — popular products, no LLM call (fast path, no personalization)
   POST /recommend/home                   — behavior-based recommendations (no query text)
   POST /recommend/home/warm              — fire-and-forget cache warm-up (call on tab close/hide)
   POST /behavior/view                    — log product view to Neo4j
@@ -22,7 +21,7 @@ Flow (search):
 Flow (home):
   1. Build user context
   2. If the user has no RATED/attribute history, skip the LLM entirely and return
-     popular products directly (same fast path as /recommend/trending)
+     popular products directly (fast path, no personalization)
   3. Otherwise, LLM generates personalized Cypher (collaborative filtering or
      attribute similarity); falls back to popular products if that fails or is
      empty after retries (same rule as search)
@@ -84,16 +83,25 @@ Relationships:
 """
 
 _FEW_SHOT_EXAMPLES = """\
-## Examples (for reference — invent your own approach as needed)
+## Examples (structural patterns only — invent your own approach as needed)
 
-User: "sunscreen for sensitive skin"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE (a.attr_type='skin_type' AND toLower(a.value) CONTAINS 'sensitive') OR (a.attr_type IN ['benefit','product_type'] AND (toLower(a.value) CONTAINS 'sun' OR toLower(a.value) CONTAINS 'spf')) WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS cs RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, cs*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Sunscreen for sensitive skin' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Finds sunscreens matched to sensitive skin type"}
+The attr_type/value names below (e.g. "feature", "durable") are placeholders that illustrate
+QUERY STRUCTURE only, not a real catalog. They are intentionally generic and not tied to any
+specific product category — never use them literally. Always substitute the actual attr_type
+names from "Attribute Types Currently in the Graph" above, matched to what the catalog and the
+user's query are actually about.
 
-User: "recommend something I would like" (user_id provided as $uid)
+User: "something durable and easy to carry"
+{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE toLower(a.value) CONTAINS 'durable' OR toLower(a.value) CONTAINS 'lightweight' OR toLower(a.value) CONTAINS 'portable' WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS cs RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, cs*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Durable, easy-to-carry match' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Keyword match across attribute values regardless of attr_type"}
+
+User: "recommend something popular among people whose taste overlaps with mine" (user_id provided as $uid)
+{"cypher": "MATCH (u:User {user_id:$uid})-[:RATED]->(seen:Product)<-[:RATED]-(peer:User)-[:RATED]->(rec:Product) WHERE peer<>u AND NOT (u)-[:RATED]->(rec) WITH rec AS p, count(DISTINCT peer) AS support RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(support)*1.2+coalesce(p.avg_rating,3.5)*0.4 AS score, 'Liked by other users with overlapping taste' AS explanation, [] AS matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Peer collaborative filtering — no attributes involved, purely shared-rating overlap"}
+
+User: "recommend something similar to what I've rated highly" (user_id provided as $uid)
 {"cypher": "MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(rec:Product) WHERE r.rating>=4 AND NOT (u)-[:RATED]->(rec) WITH rec AS p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, count(DISTINCT a) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared)*1.5+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Similar to products you rated highly' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Attribute similarity from user's high-rated products"}
 
-User: "vitamin c serum well reviewed by users"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE a.attr_type='ingredient' AND toLower(a.value) CONTAINS 'vitamin c' WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS attr_score MATCH (p)<-[:ABOUT]-(rev:Review) WHERE rev.rating>=4 WITH p, matched_attrs, attr_score, count(DISTINCT rev) AS pos_reviews RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, attr_score+toFloat(pos_reviews)*0.3+coalesce(p.avg_rating,3.5)*0.5+log(toFloat(coalesce(p.rating_count,1))+1)*0.2 AS score, 'Vitamin C serum with strong positive reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Vitamin C serums scored by attribute confidence and high-rated reviews"}
+User: "a well-reviewed option with a specific feature the user names"
+{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute)<-[:MENTIONS {sentiment:'positive'}]-(rev:Review)-[:ABOUT]->(p) WHERE a.attr_type='feature' AND toLower(a.value) CONTAINS 'compact' WITH p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS attr_score, count(DISTINCT rev) AS confirmations RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, attr_score+toFloat(confirmations)*0.8+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Feature independently confirmed by other users reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Cross-verifies a product-description attribute against positive MENTIONS from separate reviews — not just a description claim"}
 """
 
 _RULES = """\
@@ -657,19 +665,6 @@ class Recommender:
             self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
 
-    def recommend_trending(self, limit: int = 10, lang: str = "en") -> tuple[str, SearchIntent, list[Recommendation]]:
-        """パーソナライズ不要な人気・高評価商品を返す（LLMを呼ばない高速パス）。
-
-        匿名ユーザーの初期表示など、個人化する材料が無いことが最初から分かっている
-        場合に使う。LLM呼び出しが無いのでラグがほぼ無い。
-        """
-        search_id = str(uuid.uuid4())
-        normalized_lang = _normalize_lang(lang)
-        results = self._run_popular(limit, normalized_lang)
-        explanation = _popular_explanation(normalized_lang)
-        intent = SearchIntent(cypher=_FALLBACK_CYPHER, cypher_explanation=explanation)
-        return search_id, intent, results
-
     _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
 
     def _get_or_generate_home(
@@ -716,7 +711,7 @@ class Recommender:
         user_ctx = self._get_user_context(user_id)
         has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
         if not has_history:
-            return  # 履歴が無いユーザーはrecommend_trending()相当の高速パスで十分、キャッシュ不要
+            return  # 履歴が無いユーザーは人気商品フォールバックの高速パスで十分、キャッシュ不要
         self._get_or_generate_home(user_id, limit, normalized_lang)
 
     def recommend_home(

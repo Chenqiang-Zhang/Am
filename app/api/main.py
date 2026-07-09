@@ -49,19 +49,6 @@ async def recommend(req: RecommendRequest) -> RecommendResponse:
     )
 
 
-@app.get("/recommend/trending", response_model=RecommendResponse)
-async def recommend_trending(limit: int = 10, lang: str = "en") -> RecommendResponse:
-    """LLMを呼ばない高速パス。個人化する材料が無いと分かっている初期表示（匿名ユーザーが
-    画面を開いた瞬間など）向け。人気・高評価商品を直接クエリするのでラグがほぼ無い。"""
-    if _recommender is None:
-        raise HTTPException(status_code=503, detail="Recommender not initialized")
-    search_id, intent, results = _recommender.recommend_trending(limit, lang)
-    return RecommendResponse(
-        query="[trending]", mode="home", intent=intent, recommendations=results,
-        search_id=search_id, fallback=False,
-    )
-
-
 @app.post("/recommend/home", response_model=RecommendResponse)
 async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
     if _recommender is None:

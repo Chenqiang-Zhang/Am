@@ -16,7 +16,7 @@ Base graph CSVs (Product/User/Review/Category/Brand)
 Attribute node/edge CSVs (genre-agnostic attr_type)
     ↓ import_kg_to_neo4j.py  (imports everything above in one pass)
 Neo4j Knowledge Graph
-    ↓ enrich_products.py --images --titles-ja (optional — Product.image_url / Product.title_ja)
+    ↓ backfill_display_fields.py --images --titles-ja (optional — Product.image_url / Product.title_ja)
     ↓
 REST API (FastAPI)
     ├── Text2Cypher search      (LLM writes and runs a Cypher query per request; graph schema and the
@@ -27,11 +27,10 @@ REST API (FastAPI)
     ├── Personalization         (user rating/attribute history + past successful queries as few-shot;
     │                            $uid is only ever bound when a user_id has real RATED/attribute history)
     ├── Home recommendations    (behavior-based, no query text; skips the LLM entirely for users with
-    │                            no history, and caches each personalized user's generated query in
-    │                            memory so a background "warm" call — fired when the tab is hidden/
+    │                            no history — falling straight back to the popularity query with no
+    │                            latency penalty — and caches each personalized user's generated query
+    │                            in memory so a background "warm" call — fired when the tab is hidden/
     │                            closed — can make the next page open instant)
-    ├── Trending (no-LLM path)  (GET /recommend/trending — popularity query only, used for anonymous
-    │                            visitors so the first paint has no LLM latency)
     ├── Conversational chat     (LLM decides what to ask and when to search, based on the same live
     │                            attr_type vocabulary — genre-agnostic; Python only enforces a hard cap
     │                            on the number of questions and a fallback if the LLM call itself fails)
@@ -90,7 +89,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 │   ├── canonicalize_attributes.py     # 4. (optional) LLM-driven attr_type/value synonym canonicalization
 │   ├── build_attribute_graph.py       # 5. Merge extraction output above → Attribute node/edge CSVs
 │   ├── import_kg_to_neo4j.py          # 6. Import everything via Bolt (local Neo4j or Aura)
-│   ├── enrich_products.py             # 7. (optional) Add Product.image_url / Product.title_ja to existing nodes
+│   ├── backfill_display_fields.py     # 7. (optional) Add Product.image_url / Product.title_ja to existing nodes
 │   ├── wipe_neo4j.py                  # (utility) Delete all data from the configured Neo4j instance
 │   └── utils/                         # Shared helper modules used only within kg_build/ — not run directly
 │       ├── llm_client.py              #   LLM client builder (gemini/groq/deepseek/openai/ollama)
@@ -200,7 +199,7 @@ python3 kg_build/import_kg_to_neo4j.py
 # 7. (optional) Add Product.image_url from metadata (enables product thumbnails in the UI)
 #    and/or translate Product.title to Japanese (Product.title_ja, used when a request's
 #    lang="ja"). Safe to re-run after scaling up — only untranslated products are picked up.
-python3 kg_build/enrich_products.py --images --titles-ja
+python3 kg_build/backfill_display_fields.py --images --titles-ja
 ```
 
 k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。
@@ -246,11 +245,11 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
 
 1. On open, the chat page immediately shows a first batch of recommendations before you type
    anything — this is not a chat turn (no "assistant is typing" bubble), just a lightweight background
-   fetch. Anonymous visitors get `GET /recommend/trending` (no LLM call, near-instant). If a test user
-   with rating history is selected, `POST /recommend/home` is used instead, and gets faster on repeat
-   visits — see the caching note below.
+   `POST /recommend/home` fetch. There's always a selected test user (see below); one with no rating
+   history gets an instant popularity fallback with no LLM call, and one with history gets personalized
+   results that get faster on repeat visits — see the caching note below.
 2. In the top of the chat UI, pick a **test user** from the dropdown (`TestUserSelect`) — either
-   "匿名" (anonymous, no personalization), the built-in "オリジナルテストユーザー" demo ID, or one of
+   the built-in "オリジナルテストユーザー" demo ID (no personalization; this is the default), or one of
    the real `user_id`s fetched live from `GET /users/sample` (these are real users with ≥3 ratings
    in the current graph, so their picks will actually show personalized results/home recommendations).
 3. Type a query in natural language (Japanese or English), e.g. "小学生の子供と一緒に遊べる協力プレイのSwitchゲームが欲しい"
@@ -321,17 +320,13 @@ Accepts a natural-language query. The LLM generates one Cypher query against the
 }
 ```
 
-`lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `enrich_products.py --titles-ja` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
+`lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `backfill_display_fields.py --titles-ja` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
 
 If Cypher generation/execution fails after retries, **or the generated query runs successfully but returns zero rows**, the response falls back to a popularity-based query (`fallback: true`) instead of showing an empty result.
 
-### `GET /recommend/trending`
-
-No request body — query params `limit` (default 10) and `lang` (default "en"). Returns popular, highly-rated products directly from Neo4j with no LLM call at all, so it has effectively no latency beyond the database round-trip. Used for the initial recommendations shown to anonymous visitors before they've typed anything, and reused internally as the fallback query everywhere else.
-
 ### `POST /recommend/home`
 
-Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). For a user with no `RATED`/attribute history, this skips the LLM entirely and is equivalent to `/recommend/trending`. For a user with history, the LLM generates a personalized Cypher query on first call and the result is cached server-side (per `user_id`+`lang`+`limit`, 1-hour TTL) — later calls return instantly from that cache. See `/recommend/home/warm` below for how the cache gets pre-populated before the user even asks.
+Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). For a user with no `RATED`/attribute history, this skips the LLM entirely and returns popular, highly-rated products directly from Neo4j (no LLM call, effectively no latency beyond the database round-trip) — this is the path used for the initial recommendations shown before the user has typed anything, since the built-in test user starts with no history. For a user with history, the LLM generates a personalized Cypher query on first call and the result is cached server-side (per `user_id`+`lang`+`limit`, 1-hour TTL) — later calls return instantly from that cache. See `/recommend/home/warm` below for how the cache gets pre-populated before the user even asks.
 
 ### `POST /recommend/home/warm`
 
