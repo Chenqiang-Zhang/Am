@@ -47,10 +47,10 @@ REST API（FastAPI）
 |---|---|
 | `User` | `user_id` |
 | `Product` | `product_id`、`title`、`title_ja`、`price`、`avg_rating`、`rating_count`、`description`、`image_url` |
-| `Review` | `review_id`、`title`、`text`、`rating`、`timestamp`、`helpful_vote`、`verified` |
+| `Review` | `review_id`、`title`、`title_ja`、`text`、`text_ja`、`rating`、`timestamp`、`helpful_vote`、`verified` |
 | `Category` | `category_id`、`name`、`level` |
 | `Brand` | `brand_id`、`name` |
-| `Attribute` | `attribute_id`、`attr_type`、`value`（LLM 提取，与类型无关） |
+| `Attribute` | `attribute_id`、`attr_type`、`value`、`value_ja`（LLM 提取，与类型无关） |
 | `SearchLog` | `log_id`、`query`、`cypher`、`explanation`、`result_product_ids`、`result_count`、`timestamp`（个性化 few-shot 用） |
 
 **关系（Relationships）**
@@ -65,7 +65,7 @@ REST API（FastAPI）
 | `BELONGS_TO` | Product → Category | — |
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
-| `HAS_ATTRIBUTE` | Product → Attribute | `confidence`、`evidence`、`source`、`model` |
+| `HAS_ATTRIBUTE` | Product → Attribute | — |
 | `MENTIONS` | Review → Attribute | `sentiment`、`confidence` |
 
 早期版本中的 `Store`/`Feature` 节点以及 `HAS_FEATURE`/`REVIEWS` 关系已被弃用——特性文本已并入 `Product.description`，`Store` 已合并进 `Brand`。
@@ -89,7 +89,7 @@ REST API（FastAPI）
 │   ├── canonicalize_attributes.py     # 4.（可选）LLM 驱动的 attr_type/value 同义词归一化
 │   ├── build_attribute_graph.py       # 5. 合并上述提取结果 → 属性节点/边 CSV
 │   ├── import_kg_to_neo4j.py          # 6. 通过 Bolt 导入所有内容（本地 Neo4j 或 Aura）
-│   ├── backfill_display_fields.py     # 7.（可选）为现有节点补充 Product.image_url / Product.title_ja / Review.title_ja+text_ja
+│   ├── backfill_display_fields.py     # 7.（可选）为现有节点补充 Product.image_url / Product.title_ja / Review.title_ja+text_ja / Attribute.value_ja
 │   ├── wipe_neo4j.py                  # （工具）清空当前配置的 Neo4j 实例中的所有数据
 │   └── utils/                         # 仅在 kg_build/ 内部使用的共享辅助模块——不直接运行
 │       ├── llm_client.py              #   LLM 客户端构建器（gemini/groq/deepseek/openai/ollama）
@@ -205,12 +205,14 @@ python3 kg_build/build_attribute_graph.py
 python3 kg_build/import_kg_to_neo4j.py
 
 # 7.（可选）从元数据补充 Product.image_url（使 UI 中能显示商品缩略图）、
-#    将 Product.title 翻译为日语（Product.title_ja），以及/或者将 Review.title/text
-#    翻译为日语（Review.title_ja/text_ja，供 lang=ja 时的 GET /products/{id}/reviews 使用）。
+#    将 Product.title 翻译为日语（Product.title_ja）、将 Review.title/text
+#    翻译为日语（Review.title_ja/text_ja，供 lang=ja 时的 GET /products/{id}/reviews 使用），
+#    以及/或者将 Attribute.value 翻译为日语（Attribute.value_ja——Text2Cypher 的 few-shot
+#    示例总是会连同 value 一起采集它，因此一旦该翻译存在，matched_attrs 就会显示出来）。
 #    --reviews-ja 会按 helpful_vote 降序优先处理（即最有可能实际展示出来的评论）——
-#    如果 LLM 预算有限，可搭配 --reviews-limit 使用。扩大规模后重新运行是安全的——
-#    只会处理尚未翻译的商品/评论。
-python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
+#    如果 LLM 预算有限，可搭配 --reviews-limit/--values-limit 使用。扩大规模后重新运行
+#    是安全的——只会处理尚未翻译的商品/评论/属性值。
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000 --values-ja
 ```
 
 k 越大，图越稠密（每个用户的平均交互数越多），但用户/商品数量越少。如需重新选择，需从第 1 步重新执行（因为选择结果会变化，第 2 步及之后也必须重新运行）。

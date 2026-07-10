@@ -67,7 +67,8 @@ Nodes:
                helpful_vote (int), verified (bool), title, text }
   Category  { category_id, name, level (int, 0=root) }
   Brand     { brand_id, name }
-  Attribute { attribute_id, attr_type, value }
+  Attribute { attribute_id, attr_type, value,
+               value_ja (string|null, Japanese translation of value) }
     attr_type is genre-dependent and open-ended (see "Attribute Types Currently
     in the Graph" below for what's actually available in this catalog).
 
@@ -79,7 +80,7 @@ Relationships:
   (Product)-[:MADE_BY]->(Brand)
   (Product)-[:BELONGS_TO]->(Category)
   (Category)-[:SUBCATEGORY_OF]->(Category)
-  (Product)-[:HAS_ATTRIBUTE {confidence (float), evidence}]->(Attribute)
+  (Product)-[:HAS_ATTRIBUTE]->(Attribute)
 """
 
 _FEW_SHOT_EXAMPLES = """\
@@ -92,16 +93,16 @@ names from "Attribute Types Currently in the Graph" above, matched to what the c
 user's query are actually about.
 
 User: "something durable and easy to carry"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute) WHERE toLower(a.value) CONTAINS 'durable' OR toLower(a.value) CONTAINS 'lightweight' OR toLower(a.value) CONTAINS 'portable' WITH p, collect({attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS cs RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, cs*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Durable, easy-to-carry match' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Keyword match across attribute values regardless of attr_type"}
+{"cypher": "MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute) WHERE toLower(a.value) CONTAINS 'durable' OR toLower(a.value) CONTAINS 'lightweight' OR toLower(a.value) CONTAINS 'portable' WITH p, collect({attr_type:a.attr_type,value:a.value,value_ja:a.value_ja}) AS matched_attrs, count(a) AS matches RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(matches)*2+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Durable, easy-to-carry match' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Keyword match across attribute values regardless of attr_type"}
 
 User: "recommend something popular among people whose taste overlaps with mine" (user_id provided as $uid)
 {"cypher": "MATCH (u:User {user_id:$uid})-[:RATED]->(seen:Product)<-[:RATED]-(peer:User)-[:RATED]->(rec:Product) WHERE peer<>u AND NOT (u)-[:RATED]->(rec) WITH rec AS p, count(DISTINCT peer) AS support RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(support)*1.2+coalesce(p.avg_rating,3.5)*0.4 AS score, 'Liked by other users with overlapping taste' AS explanation, [] AS matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Peer collaborative filtering — no attributes involved, purely shared-rating overlap"}
 
 User: "recommend something similar to what I've rated highly" (user_id provided as $uid)
-{"cypher": "MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(rec:Product) WHERE r.rating>=4 AND NOT (u)-[:RATED]->(rec) WITH rec AS p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, count(DISTINCT a) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared)*1.5+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Similar to products you rated highly' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Attribute similarity from user's high-rated products"}
+{"cypher": "MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(rec:Product) WHERE r.rating>=4 AND NOT (u)-[:RATED]->(rec) WITH rec AS p, collect(DISTINCT {attr_type:a.attr_type,value:a.value,value_ja:a.value_ja}) AS matched_attrs, count(DISTINCT a) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared)*1.5+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Similar to products you rated highly' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Attribute similarity from user's high-rated products"}
 
 User: "a well-reviewed option with a specific feature the user names"
-{"cypher": "MATCH (p:Product)-[r:HAS_ATTRIBUTE]->(a:Attribute)<-[:MENTIONS {sentiment:'positive'}]-(rev:Review)-[:ABOUT]->(p) WHERE a.attr_type='feature' AND toLower(a.value) CONTAINS 'compact' WITH p, collect(DISTINCT {attr_type:a.attr_type,value:a.value}) AS matched_attrs, sum(toFloat(r.confidence)) AS attr_score, count(DISTINCT rev) AS confirmations RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, attr_score+toFloat(confirmations)*0.8+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Feature independently confirmed by other users reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Cross-verifies a product-description attribute against positive MENTIONS from separate reviews — not just a description claim"}
+{"cypher": "MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:MENTIONS {sentiment:'positive'}]-(rev:Review)-[:ABOUT]->(p) WHERE a.attr_type='feature' AND toLower(a.value) CONTAINS 'compact' WITH p, collect(DISTINCT {attr_type:a.attr_type,value:a.value,value_ja:a.value_ja}) AS matched_attrs, count(DISTINCT a) AS attr_matches, count(DISTINCT rev) AS confirmations RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(attr_matches)*1.5+toFloat(confirmations)*0.8+coalesce(p.avg_rating,3.5)*0.5 AS score, 'Feature independently confirmed by other users reviews' AS explanation, matched_attrs ORDER BY score DESC LIMIT $limit", "explanation": "Cross-verifies a product-description attribute against positive MENTIONS from separate reviews — not just a description claim"}
 """
 
 _RULES = """\
@@ -113,7 +114,8 @@ _RULES = """\
 - NEVER use CREATE, MERGE, DELETE, SET, or any write clause
 - Required RETURN aliases (exact names):
     product_id, title, title_ja, price, avg_rating, rating_count, score, explanation, matched_attrs, image_url
-- matched_attrs: collect({attr_type: a.attr_type, value: a.value})  — use [] when no attrs
+- matched_attrs: collect({attr_type: a.attr_type, value: a.value, value_ja: a.value_ja})  — use [] when no attrs
+  (always include value_ja alongside value — Python picks whichever fits the requested language)
 
 ## Excluding already-rated/viewed products (CRITICAL)
 Bind the user node in MATCH first, then filter in WHERE:
@@ -494,8 +496,10 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
     matched_attrs: list[MatchedAttr] = []
     for m in (record.get("matched_attrs") or []):
         if isinstance(m, dict) and m.get("attr_type") and m.get("value"):
+            value_ja = m.get("value_ja")
+            display_value = value_ja if (lang == "ja" and value_ja) else str(m["value"])
             matched_attrs.append(
-                MatchedAttr(attr_type=str(m["attr_type"]), value=str(m["value"]))
+                MatchedAttr(attr_type=str(m["attr_type"]), value=display_value)
             )
     title_ja = record.get("title_ja") or None
     return Recommendation(

@@ -75,10 +75,13 @@ def build_attribute_csvs(
     skipped_out_of_scope = 0
 
     # ── product attributes → HAS_ATTRIBUTE ────────────────────────────────────
+    # confidenceはここでのフィルタにのみ使う（閾値未満はエッジを作らない）。生き残った
+    # エッジ同士では抽出確信度の差は商品の関連性を意味しないため、エッジのプロパティとして
+    # 保持したり検索スコアに使ったりはしない。evidence/source/modelも同様に、抽出結果の
+    # デバッグにしか使わないため保持しない（必要ならproduct_attributes.jsonlを直接見る）。
     if product_attrs_path.exists():
         for record in read_jsonl(product_attrs_path):
             product_id = str(record.get("product_id", ""))
-            model = str(record.get("model", ""))
             if not product_id:
                 continue
             if valid_product_ids is not None and product_id not in valid_product_ids:
@@ -96,10 +99,6 @@ def build_attribute_csvs(
                 has_attribute_edges.append({
                     "product_id": product_id,
                     "attribute_id": aid,
-                    "confidence": confidence,
-                    "evidence": str(attr.get("evidence", ""))[:200],
-                    "source": "product_desc",
-                    "model": model,
                 })
         print(f"Loaded {len(has_attribute_edges):,} HAS_ATTRIBUTE edges from {product_attrs_path.name}")
         if skipped_out_of_scope:
@@ -145,7 +144,7 @@ def build_attribute_csvs(
         "rel_has_attribute": write_csv(
             output_dir / "rel_has_attribute.csv",
             has_attribute_edges,
-            ["product_id", "attribute_id", "confidence", "evidence", "source", "model"],
+            ["product_id", "attribute_id"],
         ),
         "rel_mentions": write_csv(
             output_dir / "rel_mentions.csv",

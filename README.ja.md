@@ -49,10 +49,10 @@ REST API（FastAPI）
 |---|---|
 | `User` | `user_id` |
 | `Product` | `product_id`, `title`, `title_ja`, `price`, `avg_rating`, `rating_count`, `description`, `image_url` |
-| `Review` | `review_id`, `title`, `text`, `rating`, `timestamp`, `helpful_vote`, `verified` |
+| `Review` | `review_id`, `title`, `title_ja`, `text`, `text_ja`, `rating`, `timestamp`, `helpful_vote`, `verified` |
 | `Category` | `category_id`, `name`, `level` |
 | `Brand` | `brand_id`, `name` |
-| `Attribute` | `attribute_id`, `attr_type`, `value`（LLM 抽出、ジャンル非依存） |
+| `Attribute` | `attribute_id`, `attr_type`, `value`, `value_ja`（LLM 抽出、ジャンル非依存） |
 | `SearchLog` | `log_id`, `query`, `cypher`, `explanation`, `result_product_ids`, `result_count`, `timestamp`（パーソナライゼーション用 few-shot） |
 
 **リレーションシップ**
@@ -67,7 +67,7 @@ REST API（FastAPI）
 | `BELONGS_TO` | Product → Category | — |
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
-| `HAS_ATTRIBUTE` | Product → Attribute | `confidence`, `evidence`, `source`, `model` |
+| `HAS_ATTRIBUTE` | Product → Attribute | — |
 | `MENTIONS` | Review → Attribute | `sentiment`, `confidence` |
 
 以前のバージョンにあった `Store`/`Feature` ノードおよび `HAS_FEATURE`/`REVIEWS` リレーションシップは廃止された — feature テキストは `Product.description` に統合され、`Store` は `Brand` に統合された。
@@ -91,7 +91,7 @@ REST API（FastAPI）
 │   ├── canonicalize_attributes.py     # 4.（任意）LLM による attr_type/value の同義語正規化
 │   ├── build_attribute_graph.py       # 5. 上記の抽出結果を統合 → 属性ノード/エッジ CSV
 │   ├── import_kg_to_neo4j.py          # 6. Bolt 経由ですべてをインポート（ローカル Neo4j または Aura）
-│   ├── backfill_display_fields.py     # 7.（任意）既存ノードに Product.image_url / Product.title_ja / Review.title_ja+text_ja を追加
+│   ├── backfill_display_fields.py     # 7.（任意）既存ノードに Product.image_url / Product.title_ja / Review.title_ja+text_ja / Attribute.value_ja を追加
 │   ├── wipe_neo4j.py                  #（ユーティリティ）設定された Neo4j インスタンスの全データを削除
 │   └── utils/                         # kg_build/ 内でのみ使う共有ヘルパーモジュール — 直接実行はしない
 │       ├── llm_client.py              #   LLM クライアントビルダー（gemini/groq/deepseek/openai/ollama）
@@ -210,12 +210,14 @@ python3 kg_build/build_attribute_graph.py
 python3 kg_build/import_kg_to_neo4j.py
 
 # 7.（任意）メタデータから Product.image_url を追加（UI での商品サムネイル表示を有効化）
-#    し、Product.title を日本語に翻訳し（Product.title_ja）、および／または Review.title/text を
-#    日本語に翻訳する（Review.title_ja/text_ja。lang=ja の場合の GET /products/{id}/reviews で
-#    使用）。--reviews-ja は helpful_vote の降順で優先順位付けする（実際に表示される可能性が
-#    最も高いレビューから処理する）— LLM の予算に応じて --reviews-limit と組み合わせること。
-#    規模を拡大した後に再実行しても安全 — 未翻訳の商品／レビューのみが対象になる。
-python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
+#    し、Product.title を日本語に翻訳し（Product.title_ja）、Review.title/text を日本語に翻訳し
+#    （Review.title_ja/text_ja。lang=ja の場合の GET /products/{id}/reviews で使用）、および／または
+#    Attribute.value を日本語に翻訳する（Attribute.value_ja — Text2Cypher の few-shot 例は常に
+#    value と一緒にこれを収集するため、存在すれば matched_attrs にその翻訳が表示される）。
+#    --reviews-ja は helpful_vote の降順で優先順位付けする（実際に表示される可能性が最も高い
+#    レビューから処理する）— LLM の予算に応じて --reviews-limit/--values-limit と組み合わせること。
+#    規模を拡大した後に再実行しても安全 — 未翻訳の商品／レビュー／value のみが対象になる。
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000 --values-ja
 ```
 
 k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。

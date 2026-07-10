@@ -305,18 +305,10 @@ def import_graph(
             MATCH (p:Product  {product_id:  row.product_id})
             MATCH (a:Attribute {attribute_id: row.attribute_id})
             MERGE (p)-[rel:HAS_ATTRIBUTE]->(a)
-            SET rel.confidence = row.confidence,
-                rel.evidence   = row.evidence,
-                rel.source     = row.source,
-                rel.model      = row.model
             """,
             lambda r: {
                 "product_id":   r["product_id"],
                 "attribute_id": r["attribute_id"],
-                "confidence":   _float(r.get("confidence")),
-                "evidence":     r.get("evidence", ""),
-                "source":       r.get("source", ""),
-                "model":        r.get("model", ""),
             },
         ),
         (

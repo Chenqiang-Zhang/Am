@@ -59,6 +59,7 @@
 | attribute_id | string | SHA1(attr_type\|value)，PK |
 | attr_type | string | ジャンル非依存。LLM抽出または `details` のルールベース抽出で自動生成 |
 | value | string | 属性値（小文字・正規化済み） |
+| value_ja | string | 欠損あり。`backfill_display_fields.py --values-ja` で後付け。表示言語が日本語のとき、Text2Cypherが生成するCypherがmatched_attrsに含めていれば`value`の代わりに使われる |
 
 > **ジャンル非依存の仕組み**: `attr_type` は LLM が自由に命名するか、`extract_product_attributes.py` が metadata の `details` キーを自動で snake_case 化して生成する（手動の対応表は持たない）。config.yaml にジャンル別の属性リストは持たない。プロンプトで「snake_case・既存の型を再利用」と指示することに加え、抽出完了後に `canonicalize_attributes.py` が全体の attr_type／value を見て同義語の統合マップを LLM に作らせ、`build_attribute_graph.py` が適用することで表記ゆれを解消する（例: `item_form` と `texture` の統合）。スキーマ・エッジ・Cypher クエリはジャンルによらず共通。
 
@@ -105,14 +106,13 @@
 商品がブランドに紐づく関係。属性なし。
 
 ### HAS_ATTRIBUTE：Product → Attribute
-商品説明テキストから LLM が抽出した属性。
+商品説明テキストから LLM が抽出した属性。属性なし。
 
-| エッジ属性 | 型 | 備考 |
-|-----------|-----|------|
-| confidence | float | LLM の確信度（0–1） |
-| evidence | string | 抽出の根拠テキスト（Product.description の部分文字列） |
-| source | string | 抽出元の種別。"product_desc" 固定 |
-| model | string | 使用した LLM モデル名 |
+> confidence は抽出時（`build_attribute_graph.py`）のフィルタ（`min_confidence`未満は
+> エッジを作らない）にのみ使い、エッジのプロパティとしては保持しない。閾値を超えた
+> エッジ同士での確信度の差は商品の関連性を意味しないため、検索スコアには使わない
+> （代わりに一致した属性の件数を使う）。evidence/source/modelも同様の理由で保持しない
+> （抽出結果のデバッグは`product_attributes.jsonl`を直接参照する）。
 
 ### MENTIONS：Review → Attribute
 レビューテキストから LLM が抽出した属性言及。商品説明にない「ユーザ検証済み」属性を表現する。

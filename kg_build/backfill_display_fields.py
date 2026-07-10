@@ -12,12 +12,19 @@ in a single call (a shared Neo4j connection is reused for all):
                Prioritizes by helpful_vote DESC so the reviews most likely to
                actually be shown (get_reviews() picks top-N by helpful_vote)
                get translated first — pair with --reviews-limit on a budget.
+  --values-ja  Translate Attribute.value -> Attribute.value_ja via LLM (attr_type
+               is sent along as context). Only untranslated attributes
+               (value_ja IS NULL) are picked up. Text2Cypher's few-shot
+               examples always collect value_ja alongside value in matched_attrs,
+               so once this has run, recommendation responses show the
+               translated value when lang="ja" and a translation exists.
 
 Usage:
     python3 kg_build/backfill_display_fields.py --images
     python3 kg_build/backfill_display_fields.py --titles-ja
     python3 kg_build/backfill_display_fields.py --reviews-ja --reviews-limit 2000
-    python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja
+    python3 kg_build/backfill_display_fields.py --values-ja
+    python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --values-ja
 """
 from __future__ import annotations
 
@@ -234,22 +241,99 @@ def run_reviews_ja(
     print(f"Done. {total:,} reviews translated to title_ja/text_ja.")
 
 
+# ── --values-ja ────────────────────────────────────────────────────────────────
+
+TRANSLATE_VALUES_SYSTEM_PROMPT = """\
+Translate the following product attribute values into short, natural Japanese.
+Each value comes with its attr_type for context (e.g. attr_type="color", value="black"
+-> value_ja="黒"). Keep translations short — a word or short phrase, not a sentence.
+Preserve brand/model names as-is. Return valid JSON only:
+{"translations": [{"attribute_id": "...", "value_ja": "..."}]}
+"""
+
+
+def translate_values_batch(
+    client: Any, model: str, items: list[dict[str, str]], retries: int,
+) -> dict[str, str]:
+    user_content = json.dumps({"attributes": items}, ensure_ascii=False)
+    messages = [
+        {"role": "system", "content": TRANSLATE_VALUES_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    data, _usage = chat_json_call(client, model, messages, max_output_tokens=2000, retries=retries)
+    return {
+        str(t.get("attribute_id", "")): str(t.get("value_ja", "")).strip()
+        for t in data.get("translations", [])
+        if t.get("attribute_id") and t.get("value_ja")
+    }
+
+
+def fetch_untranslated_values(driver: Any, database: str | None, limit: int | None) -> list[dict[str, str]]:
+    query = (
+        "MATCH (a:Attribute) "
+        "WHERE a.value_ja IS NULL AND a.value IS NOT NULL AND a.value <> '' "
+        "RETURN a.attribute_id AS attribute_id, a.attr_type AS attr_type, a.value AS value"
+    )
+    if limit is not None:
+        query += " LIMIT $limit"
+    with driver.session(database=database) as session:
+        res = session.run(query, limit=limit) if limit is not None else session.run(query)
+        return [{"attribute_id": r["attribute_id"], "attr_type": r["attr_type"], "value": r["value"]} for r in res]
+
+
+def write_value_translations(driver: Any, database: str | None, rows: list[dict[str, str]]) -> None:
+    query = (
+        "UNWIND $rows AS row "
+        "MATCH (a:Attribute {attribute_id: row.attribute_id}) "
+        "SET a.value_ja = row.value_ja"
+    )
+    with driver.session(database=database) as session:
+        session.execute_write(lambda tx, rs: tx.run(query, rows=rs).consume(), rows)
+
+
+def run_values_ja(
+    driver: Any, database: str | None, client: Any, model: str,
+    batch_size: int, limit: int | None, retries: int,
+) -> None:
+    print("Fetching untranslated attribute values...")
+    rows = fetch_untranslated_values(driver, database, limit)
+    print(f"  {len(rows):,} attribute values need translation")
+
+    total = 0
+    for batch in chunked(rows, batch_size):
+        items = [{"attribute_id": r["attribute_id"], "attr_type": r["attr_type"], "value": r["value"]} for r in batch]
+        try:
+            translated = translate_values_batch(client, model, items, retries)
+        except Exception as exc:
+            print(f"  batch failed, skipping: {exc}", file=sys.stderr)
+            continue
+        write_rows = [{"attribute_id": aid, "value_ja": v} for aid, v in translated.items()]
+        if write_rows:
+            write_value_translations(driver, database, write_rows)
+            total += len(write_rows)
+        print(f"  translated: {total:,}/{len(rows):,}")
+    print(f"Done. {total:,} attribute values translated to value_ja.")
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Post-import Product/Review enrichment (image_url / title_ja / review title_ja+text_ja).")
+    parser = argparse.ArgumentParser(description="Post-import Product/Review/Attribute enrichment (image_url / title_ja / review title_ja+text_ja / attribute value_ja).")
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
     parser.add_argument("--images", action="store_true", help="Set Product.image_url from metadata.")
     parser.add_argument("--titles-ja", action="store_true", help="Translate Product.title to Product.title_ja.")
     parser.add_argument("--reviews-ja", action="store_true", help="Translate Review.title/text to Review.title_ja/text_ja.")
+    parser.add_argument("--values-ja", action="store_true", help="Translate Attribute.value to Attribute.value_ja.")
     parser.add_argument("--meta-path", type=Path, help="[--images] Path to meta_*.jsonl.gz (default: config.yaml data.meta_path)")
     parser.add_argument("--images-batch-size", type=int, default=5000)
-    parser.add_argument("--provider", choices=["gemini", "groq", "deepseek", "openai", "ollama"], default=None, help="[--titles-ja/--reviews-ja]")
-    parser.add_argument("--model", default=None, help="[--titles-ja/--reviews-ja]")
+    parser.add_argument("--provider", choices=["gemini", "groq", "deepseek", "openai", "ollama"], default=None, help="[--titles-ja/--reviews-ja/--values-ja]")
+    parser.add_argument("--model", default=None, help="[--titles-ja/--reviews-ja/--values-ja]")
     parser.add_argument("--titles-batch-size", type=int, default=20)
     parser.add_argument("--titles-limit", type=int, default=-1, help="[--titles-ja] -1 = translate all untranslated products")
     parser.add_argument("--reviews-batch-size", type=int, default=10, help="[--reviews-ja] smaller default than titles since review text is longer")
     parser.add_argument("--reviews-limit", type=int, default=-1, help="[--reviews-ja] -1 = translate all untranslated reviews; set a budget cap otherwise")
+    parser.add_argument("--values-batch-size", type=int, default=30, help="[--values-ja] larger default since attribute values are short")
+    parser.add_argument("--values-limit", type=int, default=-1, help="[--values-ja] -1 = translate all untranslated attribute values")
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--uri", default=None)
     parser.add_argument("--user", default=None)
@@ -260,8 +344,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not args.images and not args.titles_ja and not args.reviews_ja:
-        print("Nothing to do: pass --images and/or --titles-ja and/or --reviews-ja.", file=sys.stderr)
+    if not args.images and not args.titles_ja and not args.reviews_ja and not args.values_ja:
+        print("Nothing to do: pass --images and/or --titles-ja and/or --reviews-ja and/or --values-ja.", file=sys.stderr)
         sys.exit(2)
 
     config_dir = args.config.resolve().parent
@@ -288,7 +372,7 @@ def main() -> None:
             run_images(driver, database, meta_path, args.images_batch_size)
 
         client, model = None, None
-        if args.titles_ja or args.reviews_ja:
+        if args.titles_ja or args.reviews_ja or args.values_ja:
             llm_cfg = cfg.get("llm", {})
             cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
             provider = args.provider or cfg_provider
@@ -304,6 +388,11 @@ def main() -> None:
             reviews_limit = None if args.reviews_limit < 0 else args.reviews_limit
             print("\n[reviews-ja]")
             run_reviews_ja(driver, database, client, model, args.reviews_batch_size, reviews_limit, args.retries)
+
+        if args.values_ja:
+            values_limit = None if args.values_limit < 0 else args.values_limit
+            print("\n[values-ja]")
+            run_values_ja(driver, database, client, model, args.values_batch_size, values_limit, args.retries)
     finally:
         driver.close()
 

@@ -18,8 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from build_base_graph import _iter_category_paths, build_description
-from utils.text_utils import clean_text
+from utils.product_fields import complete_product_ids
 
 
 def load_edges(review_path: Path) -> set[tuple[str, str]]:
@@ -32,33 +31,6 @@ def load_edges(review_path: Path) -> set[tuple[str, str]]:
             if u and p:
                 edges.add((u, p))
     return edges
-
-
-def complete_product_ids(meta_path: Path, min_feature_len: int) -> set[str]:
-    """price/avg_rating/rating_count/description/brand/categoryが全て揃っている
-    product_id の集合を返す（build_base_graph.py と同じフィールド判定を再利用し、
-    判定ロジックの二重管理を避ける）。1項目でも欠損している商品はk-core選定の
-    対象から事前に除外するために使う。"""
-    complete: set[str] = set()
-    with gzip.open(meta_path, "rt", encoding="utf-8") as f:
-        for line in f:
-            row = json.loads(line)
-            pid = row.get("parent_asin")
-            if not pid:
-                continue
-            price = row.get("price")
-            if price is None or price == "":
-                continue
-            if row.get("average_rating") is None or row.get("rating_number") is None:
-                continue
-            if not build_description(row, min_feature_len):
-                continue
-            if not clean_text(row.get("store")):
-                continue
-            if not _iter_category_paths(row):
-                continue
-            complete.add(pid)
-    return complete
 
 
 def bipartite_kcore(
@@ -96,9 +68,10 @@ def main() -> None:
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument(
         "--k", type=int, default=14,
-        help="k-core threshold. 14 is calibrated for the default Video_Games scale "
-             "(users=2,484 / items=1,524 / edges=56,203); re-sweep with a few --k values "
-             "before trusting this default on a different genre/config.",
+        help="k-core threshold. 14 is calibrated for the default Video_Games scale, with "
+             "the metadata-completeness filter applied (users=861 / items=610 / edges=18,771); "
+             "re-sweep with a few --k values before trusting this default on a different "
+             "genre/config or with --allow-incomplete-metadata.",
     )
     ap.add_argument("--out-dir", default=None, help="省略時は kg_output/<genre_lower>/kcore_selection")
     ap.add_argument(

@@ -49,10 +49,10 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 |---|---|
 | `User` | `user_id` |
 | `Product` | `product_id`, `title`, `title_ja`, `price`, `avg_rating`, `rating_count`, `description`, `image_url` |
-| `Review` | `review_id`, `title`, `text`, `rating`, `timestamp`, `helpful_vote`, `verified` |
+| `Review` | `review_id`, `title`, `title_ja`, `text`, `text_ja`, `rating`, `timestamp`, `helpful_vote`, `verified` |
 | `Category` | `category_id`, `name`, `level` |
 | `Brand` | `brand_id`, `name` |
-| `Attribute` | `attribute_id`, `attr_type`, `value` (LLM-extracted, genre-agnostic) |
+| `Attribute` | `attribute_id`, `attr_type`, `value`, `value_ja` (LLM-extracted, genre-agnostic) |
 | `SearchLog` | `log_id`, `query`, `cypher`, `explanation`, `result_product_ids`, `result_count`, `timestamp` (personalization few-shot) |
 
 **Relationships**
@@ -67,7 +67,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 | `BELONGS_TO` | Product → Category | — |
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
-| `HAS_ATTRIBUTE` | Product → Attribute | `confidence`, `evidence`, `source`, `model` |
+| `HAS_ATTRIBUTE` | Product → Attribute | — |
 | `MENTIONS` | Review → Attribute | `sentiment`, `confidence` |
 
 `Store`/`Feature` nodes and the `HAS_FEATURE`/`REVIEWS` relationships from earlier iterations have been retired — feature text is folded into `Product.description`, and `Store` was merged into `Brand`.
@@ -91,7 +91,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 │   ├── canonicalize_attributes.py     # 4. (optional) LLM-driven attr_type/value synonym canonicalization
 │   ├── build_attribute_graph.py       # 5. Merge extraction output above → Attribute node/edge CSVs
 │   ├── import_kg_to_neo4j.py          # 6. Import everything via Bolt (local Neo4j or Aura)
-│   ├── backfill_display_fields.py     # 7. (optional) Add Product.image_url / Product.title_ja / Review.title_ja+text_ja to existing nodes
+│   ├── backfill_display_fields.py     # 7. (optional) Add Product.image_url / Product.title_ja / Review.title_ja+text_ja / Attribute.value_ja to existing nodes
 │   ├── wipe_neo4j.py                  # (utility) Delete all data from the configured Neo4j instance
 │   └── utils/                         # Shared helper modules used only within kg_build/ — not run directly
 │       ├── llm_client.py              #   LLM client builder (gemini/groq/deepseek/openai/ollama)
@@ -210,12 +210,14 @@ python3 kg_build/build_attribute_graph.py
 python3 kg_build/import_kg_to_neo4j.py
 
 # 7. (optional) Add Product.image_url from metadata (enables product thumbnails in the UI),
-#    translate Product.title to Japanese (Product.title_ja), and/or translate Review.title/text
-#    to Japanese (Review.title_ja/text_ja, used by GET /products/{id}/reviews when lang=ja).
-#    --reviews-ja prioritizes by helpful_vote DESC (the reviews most likely to actually be
-#    shown) — pair with --reviews-limit on an LLM budget. Safe to re-run after scaling up —
-#    only untranslated products/reviews are picked up.
-python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
+#    translate Product.title to Japanese (Product.title_ja), translate Review.title/text to
+#    Japanese (Review.title_ja/text_ja, used by GET /products/{id}/reviews when lang=ja),
+#    and/or translate Attribute.value to Japanese (Attribute.value_ja — Text2Cypher's few-shot
+#    examples always collect it alongside value, so matched_attrs shows the translation once
+#    it exists). --reviews-ja prioritizes by helpful_vote DESC (the reviews most likely to
+#    actually be shown) — pair with --reviews-limit/--values-limit on an LLM budget. Safe to
+#    re-run after scaling up — only untranslated products/reviews/values are picked up.
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000 --values-ja
 ```
 
 k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。

@@ -25,7 +25,8 @@ import pandas as pd
 import yaml
 
 from utils.csv_io import write_csv
-from utils.text_utils import as_list, clean_text, sha1_id
+from utils.product_fields import build_description, iter_category_paths
+from utils.text_utils import clean_text, sha1_id
 
 clean_id = clean_text
 
@@ -39,47 +40,6 @@ def _dataframe_from_jsonl_gz(path: Path) -> pd.DataFrame:
 
 
 # ── category hierarchy ─────────────────────────────────────────────────────────
-
-def _iter_category_paths(row: pd.Series) -> list[list[str]]:
-    """
-    Extract category paths from a meta row.
-    Each path is a list of names from root (level 0) to leaf.
-
-    Amazon Reviews'23 `categories` field is typically:
-      [["Root", "Sub", "Leaf"]]   – list of one or more paths
-    or just a flat list treated as a single path.
-    """
-    main = clean_text(row.get("main_category"))
-    raw = as_list(row.get("categories"))
-
-    paths: list[list[str]] = []
-    if not raw:
-        if main:
-            paths.append([main])
-        return paths
-
-    first = raw[0]
-    if isinstance(first, list):
-        for item in raw:
-            if isinstance(item, list):
-                cleaned = [clean_text(x) for x in item if clean_text(x)]
-                if cleaned:
-                    paths.append(cleaned)
-    else:
-        cleaned = [clean_text(x) for x in raw if clean_text(x)]
-        if cleaned:
-            paths.append(cleaned)
-
-    # Ensure main_category is always the root of each path
-    result: list[list[str]] = []
-    for path in paths:
-        if main and (not path or path[0].lower() != main.lower()):
-            result.append([main] + path)
-        else:
-            result.append(path)
-
-    return result if result else ([main] if main else [])
-
 
 def build_category_nodes_and_edges(
     all_paths: list[list[str]],
@@ -112,23 +72,6 @@ def build_category_nodes_and_edges(
                     )
 
     return category_rows, subcategory_edges
-
-
-# ── product description ────────────────────────────────────────────────────────
-
-def build_description(row: pd.Series, min_len: int = 8) -> str:
-    """
-    Concatenate `features` and `description` fields into one raw text block.
-    Each part is newline-separated. Used for LLM attribute extraction and
-    Neo4j FULLTEXT indexing.
-    """
-    parts: list[str] = []
-    for col in ("features", "description"):
-        for item in as_list(row.get(col)):
-            text = clean_text(item)
-            if len(text) >= min_len:
-                parts.append(text)
-    return "\n".join(parts)
 
 
 # ── main build ─────────────────────────────────────────────────────────────────
@@ -215,7 +158,7 @@ def build_kg(
             product_brand_edges.add((product_id, brand_id))
 
         # BELONGS_TO edges (leaf of each path) + collect paths for hierarchy
-        paths = _iter_category_paths(row)
+        paths = iter_category_paths(row)
         all_category_paths.extend(paths)
         seen_leaf: set[str] = set()
         for path in paths:
