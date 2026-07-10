@@ -131,8 +131,9 @@ export async function sendBehaviorEvent(
 export async function fetchReviews(
   productId: string,
   limit = 5,
+  lang: "ja" | "en" = "ja",
 ): Promise<ReviewsResponse> {
-  const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}`);
+  const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}&lang=${lang}`);
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as ReviewsResponse;
 }

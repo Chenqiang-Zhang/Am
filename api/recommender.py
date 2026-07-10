@@ -868,6 +868,60 @@ class Recommender:
             min_rating=data.get("min_rating"),
         )
 
+    def _fetch_title_ja(self, product_ids: list[str]) -> dict[str, str]:
+        """GPU翻訳バッチで付与されたtitle_jaを持つ商品だけを一括取得する。"""
+        if not product_ids:
+            return {}
+        with self.driver.session(database=self.neo4j_database) as session:
+            result = session.run(
+                "MATCH (p:Product) WHERE p.product_id IN $ids AND p.title_ja IS NOT NULL "
+                "RETURN p.product_id AS product_id, p.title_ja AS title_ja",
+                ids=product_ids,
+            )
+            return {r["product_id"]: r["title_ja"] for r in result}
+
+    def _apply_feature_evidence_ja(self, candidates: dict[str, dict[str, Any]]) -> None:
+        """feature_evidence（商品説明の引用文）を Feature.text_ja で日本語に差し替える（lang=ja時のみ呼ぶ）。
+        evidence は _strip_html 済みのため、text_ja 側も同じ正規化キーで照合する。"""
+        product_ids = [pid for pid, c in candidates.items() if c.get("feature_evidence")]
+        if not product_ids:
+            return
+        with self.driver.session(database=self.neo4j_database) as session:
+            result = session.run(
+                "MATCH (p:Product)-[:HAS_FEATURE]->(f:Feature) "
+                "WHERE p.product_id IN $ids AND f.text_ja IS NOT NULL "
+                "RETURN DISTINCT f.text AS text, f.text_ja AS text_ja",
+                ids=product_ids,
+            )
+            ja_map = {_strip_html(r["text"]): r["text_ja"] for r in result}
+        if not ja_map:
+            return
+        for c in candidates.values():
+            c["feature_evidence"] = [ja_map.get(ev, ev) for ev in c.get("feature_evidence", [])]
+
+    def _apply_value_ja(self, candidates: dict[str, dict[str, Any]]) -> None:
+        """matched_attributes の value を Attribute.value_ja で日本語に差し替える（lang=ja時のみ呼ぶ）。"""
+        values = {
+            attr.value
+            for c in candidates.values()
+            for attr in c.get("matched_attributes", [])
+            if attr.value
+        }
+        if not values:
+            return
+        with self.driver.session(database=self.neo4j_database) as session:
+            result = session.run(
+                "MATCH (a:Attribute) WHERE a.value IN $values AND a.value_ja IS NOT NULL "
+                "RETURN a.value AS value, a.value_ja AS value_ja",
+                values=list(values),
+            )
+            ja_map = {r["value"]: r["value_ja"] for r in result}
+        for c in candidates.values():
+            for attr in c.get("matched_attributes", []):
+                ja = ja_map.get(attr.value)
+                if ja:
+                    attr.value = ja
+
     def search_products(
         self,
         intent: SearchIntent,
@@ -958,7 +1012,12 @@ class Recommender:
                 if "apply_review_mention_ranking" in actions:
                     self._apply_review_mention_context(session, candidates, intent, terms)
 
-        return _rank_candidates(candidates, intent, terms, max(limit, SECOND_STAGE_RECALL_LIMIT), lang)[:limit]
+        title_ja_map = {}
+        if _normalize_lang(lang) == "ja":
+            title_ja_map = self._fetch_title_ja(list(candidates.keys()))
+            self._apply_value_ja(candidates)
+            self._apply_feature_evidence_ja(candidates)
+        return _rank_candidates(candidates, intent, terms, max(limit, SECOND_STAGE_RECALL_LIMIT), lang, title_ja_map)[:limit]
 
     def make_query_plan(self, query: str, intent: SearchIntent, user_id: str | None = None) -> QueryPlan:
         return build_controlled_query_plan(
@@ -1007,7 +1066,12 @@ class Recommender:
                     self._apply_behavior_context(session, candidates, user_id)
                 if "apply_review_mention_ranking" in fallback_actions:
                     self._apply_review_mention_context(session, candidates, fallback_intent, ["popular"])
-        reranked = _rank_candidates(candidates, fallback_intent, ["popular"], max(limit, SECOND_STAGE_RECALL_LIMIT), lang)
+        title_ja_map = {}
+        if _normalize_lang(lang) == "ja":
+            title_ja_map = self._fetch_title_ja(list(candidates.keys()))
+            self._apply_value_ja(candidates)
+            self._apply_feature_evidence_ja(candidates)
+        reranked = _rank_candidates(candidates, fallback_intent, ["popular"], max(limit, SECOND_STAGE_RECALL_LIMIT), lang, title_ja_map)
         return fallback_intent, fallback_plan, reranked[:limit]
 
     def chat(
@@ -1122,26 +1186,38 @@ class Recommender:
         text = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
         return self.extract_intent(text)
 
-    def get_reviews(self, product_id: str, limit: int = 5) -> list[dict[str, Any]]:
-        """商品IDに紐づくレビューをhelpful_vote降順で返す。REVIEWS/WROTEエッジを使用。"""
+    def get_reviews(self, product_id: str, limit: int = 5, lang: str = "en") -> list[dict[str, Any]]:
+        """商品IDに紐づくレビューをhelpful_vote降順で返す。REVIEWS/WROTEエッジを使用。
+        lang=ja の場合、GPU翻訳バッチで付与された text_ja があればそちらを本文として返す。"""
         cypher = """
 MATCH (p:Product {product_id: $product_id})<-[:REVIEWS]-(r:Review)
 WHERE r.text IS NOT NULL AND size(coalesce(r.text, '')) > 10
 RETURN r.title AS title,
+       r.title_ja AS title_ja,
        r.text AS text,
+       r.text_ja AS text_ja,
        toFloat(r.rating) AS rating,
        toInteger(r.helpful_vote) AS helpful_vote,
        r.verified_purchase AS verified_purchase
 ORDER BY r.helpful_vote DESC, r.rating DESC
 LIMIT $limit
 """
+        use_ja = _normalize_lang(lang) == "ja"
         with self.driver.session(database=self.neo4j_database) as session:
             result = session.run(cypher, product_id=product_id, limit=limit)
             rows = []
             for record in result:
                 r = dict(record)
-                r["text"] = _strip_html(r.get("text"))
-                r["title"] = _strip_html(r.get("title"))
+                text_ja = r.pop("text_ja", None)
+                title_ja = r.pop("title_ja", None)
+                if use_ja and text_ja:
+                    r["text"] = text_ja
+                else:
+                    r["text"] = _strip_html(r.get("text"))
+                if use_ja and title_ja:
+                    r["title"] = title_ja
+                else:
+                    r["title"] = _strip_html(r.get("title"))
                 rows.append(r)
             return rows
 
@@ -1552,7 +1628,9 @@ def _rank_candidates(
     terms: list[str],
     limit: int,
     lang: str,
+    title_ja_map: dict[str, str] | None = None,
 ) -> list[Recommendation]:
+    title_ja_map = title_ja_map or {}
     total_attribute_weight = sum(max(f.weight, 0.0) for f in intent.attribute_filters) or 1.0
     total_terms = len(terms) or 1
     total_signals = len(intent.attribute_filters) + len(terms) or 1
@@ -1625,7 +1703,7 @@ def _rank_candidates(
             Recommendation(
                 product_id=candidate["product_id"],
                 title=candidate["title"],
-                display_title=_localized_title(candidate["title"], lang),
+                display_title=title_ja_map.get(candidate["product_id"]) or _localized_title(candidate["title"], lang),
                 display_language=_normalize_lang(lang),
                 image_url=candidate.get("image_url"),
                 price=candidate["price"],

@@ -24,7 +24,7 @@ export default function ReviewList({ productId, ratingNumber, onOpen }: Props) {
     onOpen?.();
     setStatus("loading");
     try {
-      const data = await fetchReviews(productId, 5);
+      const data = await fetchReviews(productId, 5, lang);
       setReviews(data.reviews);
       setStatus("done");
     } catch {

@@ -64,10 +64,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 
 @app.get("/products/{product_id}/reviews", response_model=ReviewsResponse)
-async def get_reviews(product_id: str, limit: int = 5) -> ReviewsResponse:
+async def get_reviews(product_id: str, limit: int = 5, lang: str = "en") -> ReviewsResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    rows = _recommender.get_reviews(product_id, limit)
+    rows = _recommender.get_reviews(product_id, limit, lang)
     reviews = [ReviewItem(**r) for r in rows]
     return ReviewsResponse(product_id=product_id, reviews=reviews)
 
