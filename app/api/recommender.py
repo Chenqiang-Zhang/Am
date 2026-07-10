@@ -844,26 +844,33 @@ class Recommender:
             )
             return [{"user_id": r["user_id"], "rated_count": r["rated_count"]} for r in res]
 
-    def get_reviews(self, product_id: str, limit: int = 5) -> list[dict[str, Any]]:
-        """商品IDに紐づくレビューをhelpful_vote降順で返す。(Review)-[:ABOUT]->(Product) エッジを使用。"""
+    def get_reviews(self, product_id: str, limit: int = 5, lang: str = "en") -> list[dict[str, Any]]:
+        """商品IDに紐づくレビューをhelpful_vote降順で返す。(Review)-[:ABOUT]->(Product) エッジを使用。
+        lang="ja"の場合、backfill_display_fields.py --reviews-jaで付与済みのtitle_ja/text_jaが
+        あればそちらを本文として返す（無ければ通常のtext/titleにフォールバック）。"""
         cypher = """
 MATCH (p:Product {product_id: $product_id})<-[:ABOUT]-(r:Review)
 WHERE r.text IS NOT NULL AND size(coalesce(r.text, '')) > 10
 RETURN r.title AS title,
+       r.title_ja AS title_ja,
        r.text AS text,
+       r.text_ja AS text_ja,
        toFloat(r.rating) AS rating,
        toInteger(r.helpful_vote) AS helpful_vote,
        r.verified AS verified_purchase
 ORDER BY r.helpful_vote DESC, r.rating DESC
 LIMIT $limit
 """
+        use_ja = _normalize_lang(lang) == "ja"
         with self._driver.session(database=self._neo4j_db) as session:
             result = session.run(cypher, product_id=product_id, limit=limit)
             rows = []
             for record in result:
                 r = dict(record)
-                r["text"] = _strip_html(r.get("text"))
-                r["title"] = _strip_html(r.get("title"))
+                text_ja = r.pop("text_ja", None)
+                title_ja = r.pop("title_ja", None)
+                r["text"] = text_ja if (use_ja and text_ja) else _strip_html(r.get("text"))
+                r["title"] = title_ja if (use_ja and title_ja) else _strip_html(r.get("title"))
                 rows.append(r)
             return rows
 
@@ -931,6 +938,33 @@ LIMIT $limit
                 session.run(trim_cypher, uid=user_id, keep=self._MAX_VIEWED)
         except Exception as exc:
             print(f"[recommender] log_view failed: {exc}", file=sys.stderr)
+
+    def clear_behavior_history(self, user_id: str) -> dict[str, int]:
+        """RATED（データセット由来の評価履歴）はそのままに、このユーザーの永続的な行動データ
+        ——VIEWED行動ログとSearchLog検索履歴——だけを削除する。デモで行動ログをまっさらな
+        状態に戻したい時に使う（推薦の根拠であるRATED自体は変更しない）。"""
+        with self._driver.session(database=self._neo4j_db) as session:
+            viewed_result = session.run(
+                "MATCH (:User {user_id: $uid})-[r:VIEWED]->() "
+                "WITH collect(r) AS rs "
+                "FOREACH (x IN rs | DELETE x) "
+                "RETURN size(rs) AS n",
+                uid=user_id,
+            ).single()
+            search_result = session.run(
+                "MATCH (:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
+                "WITH collect(sl) AS sls "
+                "FOREACH (x IN sls | DETACH DELETE x) "
+                "RETURN size(sls) AS n",
+                uid=user_id,
+            ).single()
+        # 古い履歴を前提に生成されたホーム推薦キャッシュも破棄する
+        for key in [k for k in self._home_cache if k.startswith(f"{user_id}:")]:
+            del self._home_cache[key]
+        return {
+            "viewed_deleted": viewed_result["n"] if viewed_result else 0,
+            "searches_deleted": search_result["n"] if search_result else 0,
+        }
 
     def close(self) -> None:
         self._driver.close()

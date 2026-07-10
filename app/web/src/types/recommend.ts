@@ -104,3 +104,10 @@ export interface SampleUser {
 export interface SampleUsersResponse {
   users: SampleUser[];
 }
+
+// ===== 履歴クリア =====
+/** POST /users/{user_id}/clear_history のレスポンス */
+export interface ClearHistoryResponse {
+  viewed_deleted: number;
+  searches_deleted: number;
+}

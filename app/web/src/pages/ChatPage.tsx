@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { chat, recommendHome, warmHomeCache, ApiError } from "../api/client";
+import { chat, clearHistory, recommendHome, warmHomeCache, ApiError } from "../api/client";
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
@@ -42,6 +42,7 @@ export default function ChatPage() {
   // reset()を「会話が既に空(0件)のとき」に押しても再取得が走るよう、conversation.lengthの
   // 変化だけに頼らず明示的に発火させるためのカウンタ。
   const [reloadKey, setReloadKey] = useState(0);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   // 会話を始める前は、ひとまず何かしらのおすすめを表示しておく（履歴ベース、
   // 履歴が無ければrecommendHome()内部で人気商品にフォールバックする）。
@@ -136,6 +137,22 @@ export default function ChatPage() {
     setReloadKey((k) => k + 1);
   }
 
+  // RATED（データセット由来の評価履歴）以外——VIEWED行動ログとSearchLog検索履歴——を
+  // 選択中のユーザーについて削除する。個人化の根拠であるRATEDは削除されない。
+  async function handleClearHistory() {
+    if (clearingHistory || !window.confirm(t.clearHistoryConfirm)) return;
+    setClearingHistory(true);
+    try {
+      await clearHistory(userId);
+      reset();
+      window.alert(t.clearHistoryDone);
+    } catch {
+      window.alert(t.clearHistoryFailed);
+    } finally {
+      setClearingHistory(false);
+    }
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     send(input);
@@ -189,6 +206,14 @@ export default function ChatPage() {
             {t.generalMode}
           </label>
           <TestUserSelect userId={userId} onChange={setUserId} />
+          <button
+            type="button"
+            className={styles.devToggle}
+            onClick={handleClearHistory}
+            disabled={clearingHistory}
+          >
+            {t.clearHistory}
+          </button>
         </div>
         <div className={styles.headerText}>
           <h1 className={styles.title}>{t.appTitle}</h1>

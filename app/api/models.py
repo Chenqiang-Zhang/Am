@@ -111,3 +111,9 @@ class SampleUser(BaseModel):
 
 class SampleUsersResponse(BaseModel):
     users: list[SampleUser]
+
+
+# ===== 履歴クリア =====
+class ClearHistoryResponse(BaseModel):
+    viewed_deleted: int
+    searches_deleted: int

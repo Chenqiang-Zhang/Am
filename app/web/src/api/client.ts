@@ -6,6 +6,7 @@
 import type {
   ChatMessage,
   ChatResponse,
+  ClearHistoryResponse,
   HomeRecommendRequest,
   RecommendRequest,
   RecommendResponse,
@@ -152,8 +153,9 @@ export async function sampleUsers(limit = 10): Promise<SampleUsersResponse> {
 export async function fetchReviews(
   productId: string,
   limit = 5,
+  lang: "ja" | "en" = "en",
 ): Promise<ReviewsResponse> {
-  const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}`);
+  const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}&lang=${lang}`);
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as ReviewsResponse;
 }
@@ -169,4 +171,16 @@ export async function logView(req: ViewLogRequest): Promise<void> {
   } catch {
     /* 行動ログの送信失敗はユーザー操作をブロックしない */
   }
+}
+
+/**
+ * このユーザーのRATED以外の永続データ（VIEWED行動ログ・SearchLog検索履歴）を削除する
+ * （POST /users/{user_id}/clear_history）。RATED（データセット由来の評価履歴）は対象外。
+ */
+export async function clearHistory(userId: string): Promise<ClearHistoryResponse> {
+  const res = await fetch(`${BASE}/users/${encodeURIComponent(userId)}/clear_history`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as ClearHistoryResponse;
 }

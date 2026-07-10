@@ -89,7 +89,7 @@ REST API（FastAPI）
 │   ├── canonicalize_attributes.py     # 4.（可选）LLM 驱动的 attr_type/value 同义词归一化
 │   ├── build_attribute_graph.py       # 5. 合并上述提取结果 → 属性节点/边 CSV
 │   ├── import_kg_to_neo4j.py          # 6. 通过 Bolt 导入所有内容（本地 Neo4j 或 Aura）
-│   ├── backfill_display_fields.py     # 7.（可选）为现有节点补充 Product.image_url / Product.title_ja
+│   ├── backfill_display_fields.py     # 7.（可选）为现有节点补充 Product.image_url / Product.title_ja / Review.title_ja+text_ja
 │   ├── wipe_neo4j.py                  # （工具）清空当前配置的 Neo4j 实例中的所有数据
 │   └── utils/                         # 仅在 kg_build/ 内部使用的共享辅助模块——不直接运行
 │       ├── llm_client.py              #   LLM 客户端构建器（gemini/groq/deepseek/openai/ollama）
@@ -204,10 +204,13 @@ python3 kg_build/build_attribute_graph.py
 # 6. 通过 Bolt 导入所有内容（基础图 + 属性，如果 CSV 存在的话）
 python3 kg_build/import_kg_to_neo4j.py
 
-# 7.（可选）从元数据补充 Product.image_url（使 UI 中能显示商品缩略图），
-#    以及/或者将 Product.title 翻译为日语（Product.title_ja，用于请求
-#    lang="ja" 时）。扩大规模后重新运行是安全的——只会处理尚未翻译的商品。
-python3 kg_build/backfill_display_fields.py --images --titles-ja
+# 7.（可选）从元数据补充 Product.image_url（使 UI 中能显示商品缩略图）、
+#    将 Product.title 翻译为日语（Product.title_ja），以及/或者将 Review.title/text
+#    翻译为日语（Review.title_ja/text_ja，供 lang=ja 时的 GET /products/{id}/reviews 使用）。
+#    --reviews-ja 会按 helpful_vote 降序优先处理（即最有可能实际展示出来的评论）——
+#    如果 LLM 预算有限，可搭配 --reviews-limit 使用。扩大规模后重新运行是安全的——
+#    只会处理尚未翻译的商品/评论。
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
 ```
 
 k 越大，图越稠密（每个用户的平均交互数越多），但用户/商品数量越少。如需重新选择，需从第 1 步重新执行（因为选择结果会变化，第 2 步及之后也必须重新运行）。
@@ -240,13 +243,16 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 
 运行前会先打印数据健全性预检（商品/用户/评论数量、价格/图片/评分覆盖率），然后将基于
 RATED 的个性化（`recommend_home`，通过 Text2Cypher）与两个基线比较——Item-KNN（用户-物品
-评分矩阵上的余弦相似度）和 Popularity（按 rating_count/avg_rating 的静态排名）。会对
-`--cutoffs`（默认 10/20/50）中的每个截断值同时计算留一法 HR@K/NDCG@K：每个符合条件的
-用户，其最近一条 ≥4 星的评分被作为目标留出，该边（以及之后评分的任何内容）被临时移除，
-三种方法都会尝试将被留出的商品重新排进 top K 中。汇总结果中还包含各方法的运营类指标
-（在最小截断值下的 `catalog_coverage`/`avg_rating`/`price_coverage`），这样不仅能看命中率，
-还能看出某个方法是否只是反复推荐同一批热门商品。结果会写入 `eval_results.jsonl` /
-`eval_results.summary.json`（路径可通过 `--out` 配置）。
+评分矩阵上的余弦相似度）和 Popularity（按 rating_count/avg_rating 的静态排名）。**cutoff**
+即 HR@K/NDCG@K 中的 K——衡量"我们有没有找到它"时看多少条 top 推荐结果：cutoff 为 10
+问的是被留出的商品是否落在 top 10 内，cutoff 为 50 则给了这些方法宽裕得多的空间。
+`--cutoffs`（默认 10/20/50）会同时计算这里列出的每个截断值下的留一法 HR@K/NDCG@K
+（只按最大的截断值取一次结果，再逐级截断，而非重复请求）。每个符合条件的用户，其最近
+一条 ≥4 星的评分被作为目标留出，该边（以及之后评分的任何内容）被临时移除，三种方法
+都会尝试将被留出的商品重新排进 top K 中。除了 HR@K/NDCG@K 之外，汇总结果中还会报告
+各方法的 `catalog_coverage@k`/`avg_rating@k`（取最小截断值下的数值）——这些本身就是
+独立的指标，用于揭示某个方法是否只是反复推荐同一批热门商品，而不只是看它的命中率。
+结果会写入 `eval_results.jsonl` / `eval_results.summary.json`（路径可通过 `--out` 配置）。
 
 ### 6. 启动推荐 API
 
@@ -299,6 +305,12 @@ npm run dev
    beacon 请求到 `POST /recommend/home/warm`，在后台重新生成并缓存该用户的个性化查询。
    下次打开页面时（在 1 小时缓存有效期内），`/recommend/home` 会直接从该缓存中即时返回结果，
    而不必等待 LLM。
+8. 切换 **General mode（通用模式）**会以不带 `user_id` 的方式发送当前请求（等同于一个
+   全新的匿名用户所走的代码路径，即热门商品兜底），且不会改变当前选中的测试用户——
+   这样就能在同一个用户身份下，随时切换查看"为我个性化的结果"和"陌生人会看到的结果"。
+   **Clear history（清除历史）**会通过 `POST /users/{user_id}/clear_history` 删除当前选中
+   用户的 `VIEWED`/`SearchLog` 历史——`RATED`（数据集自带的评分历史，是个性化的依据）
+   永远不会被触碰。
 
 如果 pipeline 中的第 4 步（Neo4j 导入）尚未运行，或者 Neo4j 不可达，`/health` 仍会
 返回 `ok`，但 `/recommend`/`/chat` 调用会失败——请先查看 API 进程的 stderr 输出。
@@ -418,7 +430,15 @@ Web UI 会调用此接口。
 
 ### `GET /products/{product_id}/reviews`
 
-返回某商品的热门评论，按有用票数排序。
+返回某商品的热门评论，按有用票数排序。`lang`（"ja" | "en"，默认为 "en"）在存在
+`Review.title_ja`/`text_ja`（来自 `backfill_display_fields.py --reviews-ja`）时优先
+使用它们，否则回退到原始文本。
+
+### `POST /users/{user_id}/clear_history`
+
+删除该用户的 `VIEWED` 和 `SearchLog`/`SEARCHED` 历史（以及由此生成的任何缓存的首页
+推荐结果）。`RATED`——数据集自带的评分历史，也是个性化真正的依据——永远不会被触碰；
+此接口只是重置演示过程中累积的行为/搜索日志。
 
 ## 数据规模
 

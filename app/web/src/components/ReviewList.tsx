@@ -26,7 +26,7 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
     // レビュー詳細を見る = VIEWED（商品への強い関心のシグナル）として記録する
     logView({ user_id: userId, product_id: productId, search_id: searchId });
     try {
-      const data = await fetchReviews(productId, 5);
+      const data = await fetchReviews(productId, 5, lang);
       setReviews(data.reviews);
       setStatus("done");
     } catch {

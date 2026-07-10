@@ -14,6 +14,10 @@ interface Dict {
   greeting: string;
   devView: string;
   generalMode: string;
+  clearHistory: string;
+  clearHistoryConfirm: string;
+  clearHistoryDone: string;
+  clearHistoryFailed: string;
   inputPlaceholder: string;
   send: string;
   omakase: string;
@@ -43,6 +47,10 @@ const ja: Dict = {
   greeting: "こんにちは！どんな商品をお探しですか？",
   devView: "開発者ビュー",
   generalMode: "一般モード（非個人化）",
+  clearHistory: "履歴をクリア",
+  clearHistoryConfirm: "このユーザーの閲覧履歴・検索履歴を削除します（評価履歴は削除されません）。よろしいですか？",
+  clearHistoryDone: "履歴をクリアしました",
+  clearHistoryFailed: "履歴のクリアに失敗しました",
   inputPlaceholder: "メッセージを入力（例：乾燥肌向けの保湿クリーム）",
   send: "送信",
   omakase: "おまかせで探す",
@@ -72,6 +80,10 @@ const en: Dict = {
   greeting: "Hi! What kind of product are you looking for?",
   devView: "Developer view",
   generalMode: "General mode (no personalization)",
+  clearHistory: "Clear history",
+  clearHistoryConfirm: "This deletes this user's viewed/search history (rating history is not deleted). Continue?",
+  clearHistoryDone: "History cleared",
+  clearHistoryFailed: "Failed to clear history",
   inputPlaceholder: "Type a message (e.g. moisturizer for dry skin)",
   send: "Send",
   omakase: "Surprise me",

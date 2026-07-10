@@ -28,9 +28,9 @@ Item-based Collaborative Filtering（Sarwar et al. 2001）・人気度ベース�
     ものを勧めているだけ」ではないかを切り分けるために使う。
 どちらもnumpyのみで実装し、scipy/scikit-learn等の追加依存は増やさない。
 
-集計結果には、HR@K/NDCG@Kに加えて手法ごとの運用メトリクス（catalog_coverage: 全対象
-ユーザーへの推薦で実際にカバーできたカタログの割合、avg_rating/price_coverage: 推薦
-商品の平均評価・価格情報を持つ商品の割合）も含む。データ規模の健全性チェック
+集計結果には、手法ごとにHR@K/NDCG@Kと同列の指標として catalog_coverage@k（全対象
+ユーザーへの推薦で実際にカバーできたカタログの割合）と avg_rating@k（推薦商品の平均
+評価点）も含む（kは最小カットオフ＝実際にUIへ出す件数相当）。データ規模の健全性チェック
 （商品・ユーザー数、価格/画像/評価のカバレッジ）を評価開始前に出力する。
 
 使い方:
@@ -123,21 +123,19 @@ def print_data_readiness(recommender: Recommender) -> None:
 
 
 def fetch_product_catalog(recommender: Recommender) -> dict[str, dict[str, Any]]:
-    """{product_id: {avg_rating, rating_count, price}} を全商品分返す。
-    運用メトリクス（catalog_coverage/avg_rating/price_coverage）と人気度ベースラインの
-    構築に使う。"""
+    """{product_id: {avg_rating, rating_count}} を全商品分返す。
+    catalog_coverage/avg_rating指標と人気度ベースラインの構築に使う。"""
     catalog: dict[str, dict[str, Any]] = {}
     with recommender._driver.session(database=recommender._neo4j_db) as session:
         res = session.run(
             "MATCH (p:Product) "
             "RETURN p.product_id AS pid, p.avg_rating AS avg_rating, "
-            "       p.rating_count AS rating_count, p.price AS price"
+            "       p.rating_count AS rating_count"
         )
         for row in res:
             catalog[row["pid"]] = {
                 "avg_rating": row["avg_rating"],
                 "rating_count": row["rating_count"] or 0,
-                "price": row["price"],
             }
     return catalog
 
@@ -333,32 +331,23 @@ def run_eval(
     # グラフに削除しっぱなしのエッジは残らない。
 
 
-def _operational_metrics(
-    records: list[dict], method: str, catalog: dict[str, dict[str, Any]], report_k: int,
-) -> dict[str, float]:
-    """カバレッジ・平均評価・価格情報カバレッジを、上位report_k件の推薦について集計する。"""
-    all_pids: list[str] = []
-    ratings: list[float] = []
-    has_price = 0
-    total = 0
-    for r in records:
-        pids = r[f"{method}_pids"][:report_k]
-        for pid in pids:
-            total += 1
-            all_pids.append(pid)
-            meta = catalog.get(pid)
-            if not meta:
-                continue
-            if meta["avg_rating"] is not None:
-                ratings.append(float(meta["avg_rating"]))
-            if meta["price"] is not None:
-                has_price += 1
+def _catalog_coverage(records: list[dict], method: str, catalog: dict[str, dict[str, Any]], report_k: int) -> float:
+    """上位report_k件の推薦で、カタログ全体のうち実際にカバーできた商品の割合。"""
+    if not catalog:
+        return 0.0
+    all_pids = {pid for r in records for pid in r[f"{method}_pids"][:report_k]}
+    return round(len(all_pids) / len(catalog), 4)
 
-    return {
-        "catalog_coverage": round(len(set(all_pids)) / len(catalog), 4) if catalog else 0.0,
-        "avg_rating": round(sum(ratings) / len(ratings), 3) if ratings else 0.0,
-        "price_coverage": round(has_price / total, 4) if total else 0.0,
-    }
+
+def _avg_rating(records: list[dict], method: str, catalog: dict[str, dict[str, Any]], report_k: int) -> float:
+    """上位report_k件の推薦商品の平均評価点（avg_rating欠損の商品は除く）。"""
+    ratings = [
+        float(catalog[pid]["avg_rating"])
+        for r in records
+        for pid in r[f"{method}_pids"][:report_k]
+        if catalog.get(pid) and catalog[pid]["avg_rating"] is not None
+    ]
+    return round(sum(ratings) / len(ratings), 3) if ratings else 0.0
 
 
 def summarize(
@@ -370,7 +359,7 @@ def summarize(
             records.append(json.loads(line))
 
     n = len(records)
-    report_k = min(cutoffs)  # 運用メトリクスは実際にUIへ出す件数相当（最小カットオフ）で見る
+    report_k = min(cutoffs)  # catalog_coverage/avg_ratingは実際にUIへ出す件数相当（最小カットオフ）で見る
     summary: dict[str, Any] = {"n_users": n, "cutoffs": cutoffs}
 
     for method in METHODS:
@@ -381,7 +370,8 @@ def summarize(
             ndcg = sum(ndcg_from_rank(rk) if (rk is not None and rk <= c) else 0.0 for rk in ranks) / n
             summary[f"HR@{c}_{label}"] = round(hr, 4)
             summary[f"NDCG@{c}_{label}"] = round(ndcg, 4)
-        summary[f"operational_{label}"] = _operational_metrics(records, method, catalog, report_k)
+        summary[f"catalog_coverage@{report_k}_{label}"] = _catalog_coverage(records, method, catalog, report_k)
+        summary[f"avg_rating@{report_k}_{label}"] = _avg_rating(records, method, catalog, report_k)
 
     summary["llm_fallback_rate"] = round(sum(r["llm_fallback"] for r in records) / n, 4)
     return summary

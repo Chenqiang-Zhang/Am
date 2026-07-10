@@ -91,7 +91,7 @@ REST API（FastAPI）
 │   ├── canonicalize_attributes.py     # 4.（任意）LLM による attr_type/value の同義語正規化
 │   ├── build_attribute_graph.py       # 5. 上記の抽出結果を統合 → 属性ノード/エッジ CSV
 │   ├── import_kg_to_neo4j.py          # 6. Bolt 経由ですべてをインポート（ローカル Neo4j または Aura）
-│   ├── backfill_display_fields.py     # 7.（任意）既存ノードに Product.image_url / Product.title_ja を追加
+│   ├── backfill_display_fields.py     # 7.（任意）既存ノードに Product.image_url / Product.title_ja / Review.title_ja+text_ja を追加
 │   ├── wipe_neo4j.py                  #（ユーティリティ）設定された Neo4j インスタンスの全データを削除
 │   └── utils/                         # kg_build/ 内でのみ使う共有ヘルパーモジュール — 直接実行はしない
 │       ├── llm_client.py              #   LLM クライアントビルダー（gemini/groq/deepseek/openai/ollama）
@@ -210,10 +210,12 @@ python3 kg_build/build_attribute_graph.py
 python3 kg_build/import_kg_to_neo4j.py
 
 # 7.（任意）メタデータから Product.image_url を追加（UI での商品サムネイル表示を有効化）
-#    し、および／または Product.title を日本語に翻訳する（Product.title_ja。リクエストの
-#    lang="ja" の場合に使用）。規模を拡大した後に再実行しても安全 — 未翻訳の商品のみが
-#    対象になる。
-python3 kg_build/backfill_display_fields.py --images --titles-ja
+#    し、Product.title を日本語に翻訳し（Product.title_ja）、および／または Review.title/text を
+#    日本語に翻訳する（Review.title_ja/text_ja。lang=ja の場合の GET /products/{id}/reviews で
+#    使用）。--reviews-ja は helpful_vote の降順で優先順位付けする（実際に表示される可能性が
+#    最も高いレビューから処理する）— LLM の予算に応じて --reviews-limit と組み合わせること。
+#    規模を拡大した後に再実行しても安全 — 未翻訳の商品／レビューのみが対象になる。
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
 ```
 
 k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。
@@ -248,14 +250,18 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 実行前にデータ健全性チェック（商品・ユーザー・レビュー数、価格/画像/評価のカバレッジ）を
 出力したうえで、RATED ベースのパーソナライゼーション（Text2Cypher 経由の `recommend_home`）
 を2つのベースライン — Item-KNN（ユーザー×アイテムの評価行列に対するコサイン類似度）と
-Popularity（rating_count・avg_ratingによる静的ランキング）— と比較する。`--cutoffs`
-（デフォルト10/20/50）で指定した全カットオフについて leave-one-out の HR@K/NDCG@K を
-同時に集計する: 各対象ユーザの直近の★4以上の評価をターゲットとして保持しておき、その
-エッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、3手法すべてがその
-保持しておいた商品を top K 内に再びランクインさせられるかを試す。サマリには手法ごとの
-運用メトリクス（最小カットオフでの`catalog_coverage`・`avg_rating`・`price_coverage`）も
-含まれ、単にヒット率だけでなく「同じ人気商品ばかり勧めていないか」も見える。結果は
-`eval_results.jsonl` / `eval_results.summary.json` に書き出される（パスは `--out` で設定可能）。
+Popularity（rating_count・avg_ratingによる静的ランキング）— と比較する。**カットオフ**とは
+HR@K/NDCG@K の K のこと — 上位いくつの推薦を「見つけられたか」の判定に使うかを表す:
+カットオフ10なら保持しておいた商品が上位10件に入ったかを問い、カットオフ50ならその手法に
+より多くの余地を与えることになる。`--cutoffs`（デフォルト10/20/50）は、これらすべての
+カットオフについて leave-one-out の HR@K/NDCG@K を同時に算出する（最大のカットオフ件数分の
+結果を一度だけ取得し、そこから切り詰める）。各対象ユーザの直近の★4以上の評価をターゲットとして
+保持しておき、そのエッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、3手法
+すべてがその保持しておいた商品を top K 内に再びランクインさせられるかを試す。HR@K/NDCG@K に
+加えて、サマリには手法ごとの `catalog_coverage@k`/`avg_rating@k`（最小カットオフでの値）も
+それ自体独立したメトリクスとして報告される — 単にヒット率だけでなく「同じ人気商品ばかり
+勧めていないか」も見える。結果は `eval_results.jsonl` / `eval_results.summary.json` に
+書き出される（パスは `--out` で設定可能）。
 
 ### 6. 推薦 API を起動する
 
@@ -311,6 +317,12 @@ npm run dev
    パーソナライズされたクエリを再生成してキャッシュする。次回ページを開いたとき
    （1時間のキャッシュ TTL 以内であれば）、`/recommend/home` は LLM を待たずにそのキャッシュから
    即座に結果を返す。
+8. **General mode** をトグルすると、`user_id` を付けずに現在のリクエストを送信できる
+   （まったく新しい匿名ユーザと同じコードパス、すなわち人気度フォールバック） — 選択中の
+   テストユーザを変えずに、「自分向けにパーソナライズされた結果」と「見知らぬ人が見る結果」を
+   切り替えられる。**Clear history** は `POST /users/{user_id}/clear_history` 経由で選択中の
+   ユーザの `VIEWED`/`SearchLog` 履歴を削除する — `RATED`（データセット由来の評価履歴で、
+   パーソナライゼーションの基盤）には一切手を加えない。
 
 パイプラインのステップ4（Neo4j インポート）が実行されていない場合、または Neo4j に到達できない
 場合、`/health` は `ok` を返し続けるが `/recommend`/`/chat` の呼び出しは失敗する —
@@ -438,7 +450,16 @@ Fire-and-forget 方式: `/recommend/home` と同じボディを受け取り、�
 
 ### `GET /products/{product_id}/reviews`
 
-商品の上位レビューを、helpful vote（役に立った票数）の多い順に返す。
+商品の上位レビューを、helpful vote（役に立った票数）の多い順に返す。`lang`（"ja" | "en"、
+デフォルトは "en"）は、存在する場合は `Review.title_ja`/`text_ja`（`backfill_display_fields.py
+--reviews-ja` によるもの）を優先し、存在しない場合は元のテキストにフォールバックする。
+
+### `POST /users/{user_id}/clear_history`
+
+このユーザの `VIEWED` と `SearchLog`/`SEARCHED` の履歴（およびそれらから生成された
+キャッシュ済みホーム推薦があれば、それも含む）を削除する。`RATED` — データセット由来の評価
+履歴であり、パーソナライゼーションの実際の基盤 — には一切手を加えない。これはデモセッション中に
+蓄積された行動／検索ログをリセットするだけのものである。
 
 ## データ規模
 

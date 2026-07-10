@@ -91,7 +91,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 │   ├── canonicalize_attributes.py     # 4. (optional) LLM-driven attr_type/value synonym canonicalization
 │   ├── build_attribute_graph.py       # 5. Merge extraction output above → Attribute node/edge CSVs
 │   ├── import_kg_to_neo4j.py          # 6. Import everything via Bolt (local Neo4j or Aura)
-│   ├── backfill_display_fields.py     # 7. (optional) Add Product.image_url / Product.title_ja to existing nodes
+│   ├── backfill_display_fields.py     # 7. (optional) Add Product.image_url / Product.title_ja / Review.title_ja+text_ja to existing nodes
 │   ├── wipe_neo4j.py                  # (utility) Delete all data from the configured Neo4j instance
 │   └── utils/                         # Shared helper modules used only within kg_build/ — not run directly
 │       ├── llm_client.py              #   LLM client builder (gemini/groq/deepseek/openai/ollama)
@@ -209,10 +209,13 @@ python3 kg_build/build_attribute_graph.py
 # 6. Import everything (base graph + attributes, if CSVs exist) via Bolt
 python3 kg_build/import_kg_to_neo4j.py
 
-# 7. (optional) Add Product.image_url from metadata (enables product thumbnails in the UI)
-#    and/or translate Product.title to Japanese (Product.title_ja, used when a request's
-#    lang="ja"). Safe to re-run after scaling up — only untranslated products are picked up.
-python3 kg_build/backfill_display_fields.py --images --titles-ja
+# 7. (optional) Add Product.image_url from metadata (enables product thumbnails in the UI),
+#    translate Product.title to Japanese (Product.title_ja), and/or translate Review.title/text
+#    to Japanese (Review.title_ja/text_ja, used by GET /products/{id}/reviews when lang=ja).
+#    --reviews-ja prioritizes by helpful_vote DESC (the reviews most likely to actually be
+#    shown) — pair with --reviews-limit on an LLM budget. Safe to re-run after scaling up —
+#    only untranslated products/reviews are picked up.
+python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --reviews-limit 2000
 ```
 
 k を大きくするほど密（1ユーザーあたりの相互作用数が多い）だがユーザー・商品数は少ないグラフになる。再選定する場合は再度ステップ1から実行する（選定が変わるため、ステップ2以降も再実行が必要）。
@@ -248,15 +251,18 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 Prints a data-readiness preflight (product/user/review counts, price/image/rating
 coverage) before running, then measures RATED-based personalization (`recommend_home`,
 via Text2Cypher) against two baselines — Item-KNN (cosine similarity over the user–item
-rating matrix) and Popularity (static rating_count/avg_rating ranking) — using
-leave-one-out HR@K/NDCG@K at every cutoff in `--cutoffs` simultaneously (default 10/20/50).
-Each eligible user's most recent ≥4-star rating is held out as the target, that edge (and
-anything rated afterward) is temporarily removed, and all three methods try to rank the
-held-out product back into the top K. The summary also reports per-method operational
-metrics (`catalog_coverage`, `avg_rating`, `price_coverage` at the smallest cutoff) so a
-method that just repeats the same popular items is visible, not only its hit rate. Results
-are written to `eval_results.jsonl` / `eval_results.summary.json` (paths configurable via
-`--out`).
+rating matrix) and Popularity (static rating_count/avg_rating ranking). A **cutoff** is the
+K in HR@K/NDCG@K — how many top recommendations count as "did we find it": cutoff 10 asks
+whether the held-out product landed in the top 10, cutoff 50 gives the method much more
+room. `--cutoffs` (default 10/20/50) computes leave-one-out HR@K/NDCG@K at every one of
+these simultaneously (fetching only the largest cutoff's worth of results once, then
+truncating). Each eligible user's most recent ≥4-star rating is held out as the target,
+that edge (and anything rated afterward) is temporarily removed, and all three methods try
+to rank the held-out product back into the top K. Alongside HR@K/NDCG@K, the summary
+reports `catalog_coverage@k`/`avg_rating@k` per method (at the smallest cutoff) as metrics
+in their own right — so a method that just repeats the same popular items is visible, not
+only its hit rate. Results are written to `eval_results.jsonl` / `eval_results.summary.json`
+(paths configurable via `--out`).
 
 ### 6. Start the Recommendation API
 
@@ -308,6 +314,12 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
    tab fires a beacon to `POST /recommend/home/warm`, which regenerates and caches that user's
    personalized query server-side in the background. The next time the page is opened (within the
    1-hour cache TTL), `/recommend/home` returns instantly from that cache instead of waiting on the LLM.
+8. Toggle **General mode** to send the current request with no `user_id` (same code path as a
+   brand-new anonymous user, i.e. the popularity fallback) without changing which test user is
+   selected — lets you flip between "personalized for me" and "what a stranger would see" for the
+   same user. **Clear history** deletes the selected user's `VIEWED`/`SearchLog` history via
+   `POST /users/{user_id}/clear_history` — `RATED` (the dataset's rating history, the basis for
+   personalization) is never touched.
 
 If step 4 in the pipeline (Neo4j import) hasn't been run, or Neo4j is unreachable, `/health` will
 still return `ok` but `/recommend`/`/chat` calls will fail — check the API process's stderr output
@@ -402,7 +414,16 @@ Returns a handful of real `user_id`s with rating history, for demoing personaliz
 
 ### `GET /products/{product_id}/reviews`
 
-Returns top reviews for a product, ordered by helpful votes.
+Returns top reviews for a product, ordered by helpful votes. `lang` ("ja" | "en", default "en")
+prefers `Review.title_ja`/`text_ja` when present (from `backfill_display_fields.py --reviews-ja`),
+falling back to the original text otherwise.
+
+### `POST /users/{user_id}/clear_history`
+
+Deletes this user's `VIEWED` and `SearchLog`/`SEARCHED` history (and any cached home
+recommendations generated from it). `RATED` — the dataset's rating history, and the actual basis
+for personalization — is never touched; this only resets behavior/search logs accumulated during
+a demo session.
 
 ## Data Scale
 

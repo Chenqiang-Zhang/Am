@@ -35,6 +35,8 @@
 | verified | verified_purchase | bool | |
 | title | title | string | レビュータイトル |
 | text | text | string | レビュー本文（生テキスト。LLM属性抽出に使う） |
+| title_ja | title（LLM翻訳） | string | 欠損あり。`backfill_display_fields.py --reviews-ja` で後付け |
+| text_ja | text（LLM翻訳） | string | 欠損あり。`backfill_display_fields.py --reviews-ja` で後付け。表示言語が日本語のときのみ`get_reviews()`が使う |
 
 ### カテゴリ（Category）
 | プロパティ | データ元 | 型 | 備考 |

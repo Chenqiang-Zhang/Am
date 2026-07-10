@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from .models import (
     ChatRequest,
     ChatResponse,
+    ClearHistoryResponse,
     HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
@@ -76,6 +77,16 @@ async def log_view(req: ViewLogRequest) -> None:
     _recommender.log_view(req.user_id, req.product_id, req.search_id)
 
 
+@app.post("/users/{user_id}/clear_history", response_model=ClearHistoryResponse)
+async def clear_history(user_id: str) -> ClearHistoryResponse:
+    """RATED（データセット由来の評価履歴）以外の永続データ——VIEWED行動ログと
+    SearchLog検索履歴——をこのユーザーについて削除する。"""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    counts = _recommender.clear_behavior_history(user_id)
+    return ClearHistoryResponse(**counts)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     if _recommender is None:
@@ -94,10 +105,10 @@ async def sample_users(limit: int = 10) -> SampleUsersResponse:
 
 
 @app.get("/products/{product_id}/reviews", response_model=ReviewsResponse)
-async def get_reviews(product_id: str, limit: int = 5) -> ReviewsResponse:
+async def get_reviews(product_id: str, limit: int = 5, lang: str = "en") -> ReviewsResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    rows = _recommender.get_reviews(product_id, limit)
+    rows = _recommender.get_reviews(product_id, limit, lang)
     reviews = [ReviewItem(**r) for r in rows]
     return ReviewsResponse(product_id=product_id, reviews=reviews)
 
