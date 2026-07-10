@@ -68,7 +68,7 @@ REST API（FastAPI）
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
 | `HAS_ATTRIBUTE` | Product → Attribute | — |
-| `MENTIONS` | Review → Attribute | `sentiment`, `confidence` |
+| `MENTIONS` | Review → Attribute | `sentiment` |
 
 以前のバージョンにあった `Store`/`Feature` ノードおよび `HAS_FEATURE`/`REVIEWS` リレーションシップは廃止された — feature テキストは `Product.description` に統合され、`Store` は `Brand` に統合された。
 

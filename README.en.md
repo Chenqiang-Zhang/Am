@@ -68,7 +68,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
 | `HAS_ATTRIBUTE` | Product → Attribute | — |
-| `MENTIONS` | Review → Attribute | `sentiment`, `confidence` |
+| `MENTIONS` | Review → Attribute | `sentiment` |
 
 `Store`/`Feature` nodes and the `HAS_FEATURE`/`REVIEWS` relationships from earlier iterations have been retired — feature text is folded into `Product.description`, and `Store` was merged into `Brand`.
 

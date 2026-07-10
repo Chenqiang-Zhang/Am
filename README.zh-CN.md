@@ -66,7 +66,7 @@ REST API（FastAPI）
 | `SUBCATEGORY_OF` | Category → Category | — |
 | `MADE_BY` | Product → Brand | — |
 | `HAS_ATTRIBUTE` | Product → Attribute | — |
-| `MENTIONS` | Review → Attribute | `sentiment`、`confidence` |
+| `MENTIONS` | Review → Attribute | `sentiment` |
 
 早期版本中的 `Store`/`Feature` 节点以及 `HAS_FEATURE`/`REVIEWS` 关系已被弃用——特性文本已并入 `Product.description`，`Store` 已合并进 `Brand`。
 

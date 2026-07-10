@@ -128,7 +128,6 @@ def build_attribute_csvs(
                     "review_id": review_id,
                     "attribute_id": aid,
                     "sentiment": sentiment,
-                    "confidence": confidence,
                 })
         print(f"Loaded {len(mentions_edges):,} MENTIONS edges from {review_mentions_path.name}")
     else:
@@ -149,7 +148,7 @@ def build_attribute_csvs(
         "rel_mentions": write_csv(
             output_dir / "rel_mentions.csv",
             mentions_edges,
-            ["review_id", "attribute_id", "sentiment", "confidence"],
+            ["review_id", "attribute_id", "sentiment"],
         ),
     }
     return counts

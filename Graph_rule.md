@@ -120,7 +120,9 @@
 | エッジ属性 | 型 | 備考 |
 |-----------|-----|------|
 | sentiment | string | "positive" / "negative" / "neutral" |
-| confidence | float | LLM の確信度（0–1） |
+
+> confidence は HAS_ATTRIBUTE と同じ理由でエッジのプロパティとしては保持しない
+> （`build_attribute_graph.py`の抽出時フィルタ（`min_confidence`未満は作らない）にのみ使う）。
 
 ### VIEWED：User → Product
 ユーザが商品を閲覧した関係。パーソナライゼーションの行動ログ。

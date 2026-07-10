@@ -319,14 +319,12 @@ def import_graph(
             MATCH (rv:Review  {review_id:   row.review_id})
             MATCH (a:Attribute {attribute_id: row.attribute_id})
             MERGE (rv)-[rel:MENTIONS]->(a)
-            SET rel.sentiment  = row.sentiment,
-                rel.confidence = row.confidence
+            SET rel.sentiment  = row.sentiment
             """,
             lambda r: {
                 "review_id":    r["review_id"],
                 "attribute_id": r["attribute_id"],
                 "sentiment":    r.get("sentiment", "neutral"),
-                "confidence":   _float(r.get("confidence")),
             },
         ),
     ]
