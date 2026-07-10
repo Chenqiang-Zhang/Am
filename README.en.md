@@ -166,6 +166,14 @@ wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/re
 wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
 ```
 
+macOS doesn't ship `wget` by default. Install it via Homebrew (`brew install wget`), or use the
+built-in `curl` instead:
+```bash
+mkdir -p data
+curl -o data/Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Video_Games.jsonl.gz
+curl -o data/meta_Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
+```
+
 Run the pipeline in order (all under `kg_build/`; matches the docstring in `import_kg_to_neo4j.py`):
 
 ```bash

@@ -164,6 +164,13 @@ wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/re
 wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
 ```
 
+macOS 默认没有自带 `wget`。可以用 Homebrew 安装（`brew install wget`），或者直接用系统自带的 `curl`：
+```bash
+mkdir -p data
+curl -o data/Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Video_Games.jsonl.gz
+curl -o data/meta_Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
+```
+
 按顺序运行 pipeline（均位于 `kg_build/` 下；与 `import_kg_to_neo4j.py` 中的 docstring 一致）：
 
 ```bash

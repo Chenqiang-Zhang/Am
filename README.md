@@ -166,6 +166,13 @@ wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/re
 wget -P data https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
 ```
 
+macOSには`wget`が標準で入っていない。Homebrewで`brew install wget`を入れるか、標準の`curl`で代用する:
+```bash
+mkdir -p data
+curl -o data/Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Video_Games.jsonl.gz
+curl -o data/meta_Video_Games.jsonl.gz https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Video_Games.jsonl.gz
+```
+
 パイプラインを順番に実行する（すべて `kg_build/` 配下。`import_kg_to_neo4j.py` の docstring と対応）:
 
 ```bash
