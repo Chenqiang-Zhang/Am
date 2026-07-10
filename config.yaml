@@ -14,7 +14,9 @@ data:
 # 商品・ユーザーの選定は select_kcore.py が確定する k-core
 # （<output_dir>/kcore_selection、全ユーザー・全商品が最低k件の相互作用を持つ）に一本化。
 # k の値は select_kcore.py の --k で指定する（デフォルト14。Video_Games規模で検証済みの値
-# — users=2,484 / items=1,524 / edges=56,203。ジャンルを変えたら k は要再検証、
+# — users=861 / items=610 / edges=18,771。select_kcore.pyはデフォルトでprice/avg_rating/
+# rating_count/description/brand/categoryのいずれかが欠損している商品を先に除外してから
+# k-coreを計算する（--allow-incomplete-metadataで無効化可）。ジャンルを変えたら k は要再検証、
 # select_kcore.py --k <値> を何度か振って規模を確認してから決める）。
 scale:
   min_feature_len: 8

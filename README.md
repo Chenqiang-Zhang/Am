@@ -172,9 +172,11 @@ Run the pipeline in order (all under `kg_build/`; matches the docstring in `impo
 # 1. Decide which users/products to include: a bipartite k-core where every
 #    user and every product has at least k interactions (k=14 by default —
 #    calibrated for Video_Games; see "Data Scale" below for what other k
-#    values produce, and re-sweep if you switch genre).
-#    Writes selected_user_ids.txt / selected_product_ids.txt to
-#    <output_dir>/kcore_selection.
+#    values produce, and re-sweep if you switch genre). By default, products
+#    missing price/avg_rating/rating_count/description/brand/category are
+#    excluded BEFORE the k-core is computed (pass --allow-incomplete-metadata
+#    to keep them instead). Writes selected_user_ids.txt / selected_product_ids.txt
+#    to <output_dir>/kcore_selection.
 python3 kg_build/select_kcore.py --k 14
 
 # 2. Base graph (Product/User/Review/Category/Brand), scoped to the k-core
@@ -404,22 +406,37 @@ Returns top reviews for a product, ordered by helpful votes.
 
 ## Data Scale
 
-Data scale is controlled by the k-core size (`--k` on `select_kcore.py`, default 14): the largest bipartite subgraph where every user and every product has at least k interactions. This guarantees every user/product in the graph has enough history for personalization and offline evaluation to be meaningful (unlike naive top-N-products sampling, which leaves most users with only a single rating). `<output_dir>/kcore_selection/kcore_summary.json` records the resulting user/item/edge counts for a given k; after running `build_base_graph.py`, the actual imported counts are written to `kg_output/<output_dir>/build_summary.json`.
+Data scale is controlled by two things in `select_kcore.py`: a metadata-completeness filter
+(on by default — drops products missing `price`/`avg_rating`/`rating_count`/`description`/
+`brand`/`category` before anything else runs; for `Video_Games` this removes ~31% of raw
+review edges, almost entirely due to missing `price`; pass `--allow-incomplete-metadata` to
+keep them) and the k-core size (`--k`, default 14) — the largest bipartite subgraph where
+every remaining user and product has at least k interactions. Together these guarantee every
+user/product in the graph has both complete metadata and enough history for personalization
+and offline evaluation to be meaningful (unlike naive top-N-products sampling, which leaves
+most users with only a single rating). `<output_dir>/kcore_selection/kcore_summary.json`
+records the resulting user/item/edge counts for a given k; after running `build_base_graph.py`,
+the actual imported counts are written to `kg_output/<output_dir>/build_summary.json`.
 
-Raising k shrinks the graph fast (it's an iterative bipartite peel, not a linear cut) but makes it denser — more interactions per surviving user/product, which matters for both personalization and offline evaluation quality. Measured for `Video_Games`:
+Raising k shrinks the graph fast (it's an iterative bipartite peel, not a linear cut) but makes
+it denser — more interactions per surviving user/product, which matters for both personalization
+and offline evaluation quality. Measured for `Video_Games`, with the metadata-completeness
+filter applied (the default):
 
 | k | users | items | edges | avg edges/user | avg edges/item |
 |---|---|---|---|---|---|
-| 3 | 312,572 | 51,756 | 1,606,704 | 5.14 | 31.04 |
-| 10 | 11,658 | 5,335 | 196,508 | 16.86 | 36.83 |
-| 12 | 5,438 | 2,907 | 108,604 | 19.97 | 37.36 |
-| **14 (default)** | **2,484** | **1,524** | **56,203** | **22.63** | **36.88** |
-| 15 | 1,389 | 932 | 33,225 | 23.92 | 35.65 |
-| 20+ | — | — | — | — | core is empty (collapses above ~k=17-19) |
+| 8 | 14,428 | 5,815 | 195,254 | 13.53 | 33.58 |
+| 10 | 6,724 | 3,369 | 112,380 | 16.71 | 33.36 |
+| 12 | 2,917 | 1,728 | 57,354 | 19.66 | 33.19 |
+| **14 (default)** | **861** | **610** | **18,771** | **21.80** | **30.77** |
+| 15+ | — | — | — | — | core is empty (collapses at k=15) |
 
 14 is the practical sweet spot for a class-project scale: dense enough for meaningful graph
 paths and offline evaluation, small enough that the base-graph build, LLM attribute
-extraction, and Neo4j import all finish in a reasonable time on a laptop.
+extraction, and Neo4j import all finish in a reasonable time on a laptop. Note this table is
+smaller than what `select_kcore.py` produced before the metadata-completeness filter was
+added — the same k now yields fewer users/items because incomplete-metadata products (and
+whatever interactions depended only on them) are excluded before the k-core is computed at all.
 
 ## Next Steps
 

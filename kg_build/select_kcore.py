@@ -18,6 +18,9 @@ from pathlib import Path
 
 import yaml
 
+from build_base_graph import _iter_category_paths, build_description
+from utils.text_utils import clean_text
+
 
 def load_edges(review_path: Path) -> set[tuple[str, str]]:
     edges: set[tuple[str, str]] = set()
@@ -29,6 +32,33 @@ def load_edges(review_path: Path) -> set[tuple[str, str]]:
             if u and p:
                 edges.add((u, p))
     return edges
+
+
+def complete_product_ids(meta_path: Path, min_feature_len: int) -> set[str]:
+    """price/avg_rating/rating_count/description/brand/categoryが全て揃っている
+    product_id の集合を返す（build_base_graph.py と同じフィールド判定を再利用し、
+    判定ロジックの二重管理を避ける）。1項目でも欠損している商品はk-core選定の
+    対象から事前に除外するために使う。"""
+    complete: set[str] = set()
+    with gzip.open(meta_path, "rt", encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            pid = row.get("parent_asin")
+            if not pid:
+                continue
+            price = row.get("price")
+            if price is None or price == "":
+                continue
+            if row.get("average_rating") is None or row.get("rating_number") is None:
+                continue
+            if not build_description(row, min_feature_len):
+                continue
+            if not clean_text(row.get("store")):
+                continue
+            if not _iter_category_paths(row):
+                continue
+            complete.add(pid)
+    return complete
 
 
 def bipartite_kcore(
@@ -71,17 +101,35 @@ def main() -> None:
              "before trusting this default on a different genre/config.",
     )
     ap.add_argument("--out-dir", default=None, help="省略時は kg_output/<genre_lower>/kcore_selection")
+    ap.add_argument(
+        "--allow-incomplete-metadata", action="store_true",
+        help="price/avg_rating/rating_count/description/brand/categoryのいずれかが欠損して"
+             "いる商品を、k-core選定の対象から除外せずに許容する（デフォルトでは除外する）。",
+    )
     args = ap.parse_args()
 
     cfg_path = Path(args.config)
     cfg = yaml.safe_load(cfg_path.open(encoding="utf-8")) or {}
     review_path = Path(cfg["data"]["review_path"])
+    meta_path = Path(cfg["data"]["meta_path"])
+    min_feature_len = cfg.get("scale", {}).get("min_feature_len", 8)
     out_dir = Path(args.out_dir) if args.out_dir else Path(cfg["data"]["output_dir"]) / "kcore_selection"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"loading review edges from {review_path} ...")
     edges = load_edges(review_path)
     print(f"raw unique (user,item) edges: {len(edges)}")
+
+    if not args.allow_incomplete_metadata:
+        print(f"loading product metadata from {meta_path} to filter incomplete listings...")
+        complete_ids = complete_product_ids(meta_path, min_feature_len)
+        before = len(edges)
+        edges = {(u, p) for (u, p) in edges if p in complete_ids}
+        print(
+            f"metadata completeness filter: kept {len(edges):,}/{before:,} edges "
+            f"(products missing price/avg_rating/rating_count/description/brand/category "
+            f"excluded before k-core; pass --allow-incomplete-metadata to skip this)"
+        )
 
     user_items, item_users = bipartite_kcore(edges, args.k)
     n_users, n_items = len(user_items), len(item_users)
