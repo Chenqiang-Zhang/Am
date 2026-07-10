@@ -293,7 +293,7 @@ def main() -> None:
     config_dir = args.config.resolve().parent
 
     meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_Video_Games.jsonl.gz"))
-    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3")
+    out_dir = config_dir / data_cfg.get("output_dir", "kg_output/video_games")
     output_path = args.output_path or (out_dir / "attributes" / "product_attributes.jsonl")
 
     cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)

@@ -6,7 +6,7 @@
 対象リストとして使う。
 
 使い方:
-    python kg_build/select_kcore.py --config config.yaml --k 3
+    python kg_build/select_kcore.py --config config.yaml --k 14
 """
 from __future__ import annotations
 
@@ -64,7 +64,12 @@ def bipartite_kcore(
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--k", type=int, default=3)
+    ap.add_argument(
+        "--k", type=int, default=14,
+        help="k-core threshold. 14 is calibrated for the default Video_Games scale "
+             "(users=2,484 / items=1,524 / edges=56,203); re-sweep with a few --k values "
+             "before trusting this default on a different genre/config.",
+    )
     ap.add_argument("--out-dir", default=None, help="省略時は kg_output/<genre_lower>/kcore_selection")
     args = ap.parse_args()
 

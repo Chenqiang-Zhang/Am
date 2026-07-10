@@ -189,7 +189,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = args.output_dir or (args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
+    out_dir = args.output_dir or (args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games"))
     attrs_dir = out_dir / "attributes"
 
     product_attrs_path = args.product_attrs or (attrs_dir / "product_attributes.jsonl")

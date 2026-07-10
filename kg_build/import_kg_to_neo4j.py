@@ -403,7 +403,7 @@ def main() -> None:
 
     conn = resolve_neo4j_conn(args, cfg)
     uri, user, password, database = conn["uri"], conn["user"], conn["password"], conn["database"]
-    input_dir = args.input_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
+    input_dir = args.input_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games"))
 
     driver = connect(uri, user, password)
     try:

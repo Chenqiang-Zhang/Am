@@ -1,6 +1,8 @@
 # Amazon Reviews'23 Knowledge Graph Recommender
 
-An experimental product recommendation system built on the Amazon Reviews'23 dataset. The genre/category is configurable via `config.yaml` (currently `Video_Games`) — the schema, pipeline scripts, and Cypher queries are all genre-agnostic. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM writes and runs Cypher queries directly against the graph — so every recommendation reason is a real, inspectable graph path, not a black box.
+**English** | [日本語](README.ja.md) | [中文](README.zh-CN.md)
+
+An experimental product recommendation system built on the Amazon Reviews'23 dataset. The genre/category is configurable via `config.yaml` (currently `Video_Games`, and all defaults/examples below assume this genre) — the schema, pipeline scripts, and Cypher queries are all genre-agnostic. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM writes and runs Cypher queries directly against the graph — so every recommendation reason is a real, inspectable graph path, not a black box.
 
 ## Architecture
 
@@ -105,7 +107,6 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 │   │   ├── recommender.py         # Text2Cypher generation, chat, personalization, reviews
 │   │   └── models.py              # Pydantic request/response models
 │   └── web/                       # React + TypeScript conversational UI
-└── data.ipynb             # Data exploration notebook
 ```
 
 ## Quick Start
@@ -169,20 +170,30 @@ Run the pipeline in order (all under `kg_build/`; matches the docstring in `impo
 
 ```bash
 # 1. Decide which users/products to include: a bipartite k-core where every
-#    user and every product has at least k interactions (k=3 by default).
+#    user and every product has at least k interactions (k=14 by default —
+#    calibrated for Video_Games; see "Data Scale" below for what other k
+#    values produce, and re-sweep if you switch genre).
 #    Writes selected_user_ids.txt / selected_product_ids.txt to
 #    <output_dir>/kcore_selection.
-python3 kg_build/select_kcore.py --k 3
+python3 kg_build/select_kcore.py --k 14
 
 # 2. Base graph (Product/User/Review/Category/Brand), scoped to the k-core
-#    selection from step 1.
+#    selection from step 1. Reads the full review file to compute it, so
+#    it's the slowest step (a few minutes for Video_Games).
 python3 kg_build/build_base_graph.py
 
 # 3. Attribute extraction (product metadata + review mentions).
 #    --product-ids-file scopes extraction to the products actually selected
-#    into the base graph in step 2.
-python3 kg_build/extract_product_attributes.py --resume --product-ids-file kg_output/video_games_kcore3/nodes_products.csv
-python3 kg_build/extract_review_mentions.py --resume
+#    into the base graph in step 2 — always pass it once real LLM calls are
+#    involved, or extraction runs over the entire raw catalog instead of just
+#    the ~1.5k k-core products.
+python3 kg_build/extract_product_attributes.py --resume --product-ids-file kg_output/video_games/nodes_products.csv
+
+#    Review mentions scale with review count (~56k for the default k=14 core),
+#    not product count — treat as best-effort enrichment on a sample rather
+#    than something to run to completion. --resume lets you extend the
+#    sample later without redoing work:
+python3 kg_build/extract_review_mentions.py --resume --limit 5000 --min-text-len 60 --batch-size 15
 
 # 4. (optional) Canonicalize attr_type/value synonyms created by the two
 #    independent extraction passes above (e.g. "item_form" vs "texture")
@@ -218,7 +229,31 @@ python3 kg_build/extract_product_attributes.py --rule-only --limit -1
 This is useful when running the costed LLM pass only on a small `--limit` for budget
 reasons, while still covering the full catalog with rule-based attributes.
 
-### 5. Start the Recommendation API
+### 5. Run Offline Evaluation
+
+Optional but recommended right after import, before touching the API — it only needs a
+live Neo4j connection (via `app/api/recommender.py`'s `Recommender`), not a running API
+server:
+
+```bash
+# Quick sanity check on a small sample first
+python3 eval/eval_offline.py --k 10 --sample 100
+
+# Full leave-one-out evaluation over every eligible user
+python3 eval/eval_offline.py --k 10 --resume
+```
+
+This measures whether RATED-based personalization (`recommend_home`, via Text2Cypher)
+beats a plain Item-based Collaborative Filtering baseline (cosine similarity over the
+user–item rating matrix), using leave-one-out HR@K/NDCG@K: each eligible user's most
+recent ≥4-star rating is held out as the target, that edge (and anything rated afterward)
+is temporarily removed, and both methods try to rank the held-out product back into the
+top K. Results are written to `eval_results.jsonl` / `eval_results.summary.json` (paths
+configurable via `--out`). **Note:** this `--k` is the recommendation cutoff (top-K), an
+unrelated parameter from `select_kcore.py`'s `--k` (k-core threshold) above — same flag
+name, different meaning.
+
+### 6. Start the Recommendation API
 
 ```bash
 uvicorn app.api.main:app --reload
@@ -231,7 +266,7 @@ python -m app.api.main
 
 Open `http://localhost:8000/docs` (or your configured host/port) for the interactive Swagger UI.
 
-### 6. Start the Frontend UI
+### 7. Start the Frontend UI
 
 ```bash
 cd app/web
@@ -241,7 +276,7 @@ npm run dev
 
 Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://localhost:8000`.
 
-### 7. Try It Out
+### 8. Try It Out
 
 1. On open, the chat page immediately shows a first batch of recommendations before you type
    anything — this is not a chat turn (no "assistant is typing" bubble), just a lightweight background
@@ -366,7 +401,22 @@ Returns top reviews for a product, ordered by helpful votes.
 
 ## Data Scale
 
-Data scale is controlled by the k-core size (`--k` on `select_kcore.py`, default 3): the largest bipartite subgraph where every user and every product has at least k interactions. This guarantees every user/product in the graph has enough history for personalization and offline evaluation to be meaningful (unlike naive top-N-products sampling, which leaves most users with only a single rating). `<output_dir>/kcore_selection/kcore_summary.json` records the resulting user/item/edge counts for a given k; after running `build_base_graph.py`, the actual imported counts are written to `kg_output/<output_dir>/build_summary.json`.
+Data scale is controlled by the k-core size (`--k` on `select_kcore.py`, default 14): the largest bipartite subgraph where every user and every product has at least k interactions. This guarantees every user/product in the graph has enough history for personalization and offline evaluation to be meaningful (unlike naive top-N-products sampling, which leaves most users with only a single rating). `<output_dir>/kcore_selection/kcore_summary.json` records the resulting user/item/edge counts for a given k; after running `build_base_graph.py`, the actual imported counts are written to `kg_output/<output_dir>/build_summary.json`.
+
+Raising k shrinks the graph fast (it's an iterative bipartite peel, not a linear cut) but makes it denser — more interactions per surviving user/product, which matters for both personalization and offline evaluation quality. Measured for `Video_Games`:
+
+| k | users | items | edges | avg edges/user | avg edges/item |
+|---|---|---|---|---|---|
+| 3 | 312,572 | 51,756 | 1,606,704 | 5.14 | 31.04 |
+| 10 | 11,658 | 5,335 | 196,508 | 16.86 | 36.83 |
+| 12 | 5,438 | 2,907 | 108,604 | 19.97 | 37.36 |
+| **14 (default)** | **2,484** | **1,524** | **56,203** | **22.63** | **36.88** |
+| 15 | 1,389 | 932 | 33,225 | 23.92 | 35.65 |
+| 20+ | — | — | — | — | core is empty (collapses above ~k=17-19) |
+
+14 is the practical sweet spot for a class-project scale: dense enough for meaningful graph
+paths and offline evaluation, small enough that the base-graph build, LLM attribute
+extraction, and Neo4j import all finish in a reasonable time on a laptop.
 
 ## Next Steps
 

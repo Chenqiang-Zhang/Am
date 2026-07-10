@@ -214,7 +214,7 @@ def main() -> None:
     data_cfg = cfg.get("data", {})
     llm_cfg = cfg.get("llm", {})
 
-    out_dir = args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games_kcore3")
+    out_dir = args.config.resolve().parent / data_cfg.get("output_dir", "kg_output/video_games")
     reviews_csv = args.reviews_csv or (out_dir / "nodes_reviews.csv")
     about_csv = args.about_csv or (out_dir / "rel_about.csv")
     output_path = args.output_path or (out_dir / "attributes" / "review_mentions.jsonl")

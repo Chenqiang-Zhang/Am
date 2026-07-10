@@ -11,7 +11,7 @@ extract_review_mentions.py + build_attribute_graph.py.
 商品・ユーザーの選定は常に select_kcore.py が確定した k-core を使う
 （全ユーザー・全商品が最低k件の相互作用を持つことを保証するため）。
 先に以下を実行してから本スクリプトを実行すること:
-    python kg_build/select_kcore.py --config config.yaml --k 3
+    python kg_build/select_kcore.py --config config.yaml --k 14
 """
 from __future__ import annotations
 
@@ -370,7 +370,7 @@ def main() -> None:
 
     review_path = args.review_path or (config_dir / data_cfg.get("review_path", "data/Video_Games.jsonl.gz"))
     meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_Video_Games.jsonl.gz"))
-    output_dir = args.output_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games_kcore3"))
+    output_dir = args.output_dir or (config_dir / data_cfg.get("output_dir", "kg_output/video_games"))
 
     min_feature_len = args.min_feature_len if args.min_feature_len is not None else scale_cfg.get("min_feature_len", 8)
 
