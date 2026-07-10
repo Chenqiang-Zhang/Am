@@ -23,7 +23,7 @@ class RecommendRequest(BaseModel):
 
 
 class HomeRecommendRequest(BaseModel):
-    user_id: str
+    user_id: str | None = None  # None = 非個人化モード（人気商品フォールバックのみ）
     limit: int = Field(default=RECOMMEND_LIMIT_DEFAULT, ge=1, le=RECOMMEND_LIMIT_MAX)
     lang: str = "en"  # explanationの出力言語（"ja" | "en"）
 

@@ -1,6 +1,7 @@
 """
 オフライン評価（leave-one-out）: RATEDベースの個人化（Text2Cypher, recommend_home）が、
-定番のItem-based Collaborative Filtering（Sarwar et al. 2001）と比べてどうかを測る。
+Item-based Collaborative Filtering（Sarwar et al. 2001）・人気度ベースラインと比べて
+どうかを測る。
 
 対象ユーザー: rating>=4のRATEDエッジを1件以上持つユーザー。
 ホールドアウト方式:
@@ -13,17 +14,28 @@
      他ユーザーの未来のデータについては許容する（設計判断として確定済み）。
   3. 削除後に残る文脈が0件になるユーザーは評価対象から除外する。
   4. recommend_home() を実際に呼び、ターゲットがtop-Kに入るか(HR@K)、
-     何位に入るか(NDCG@K)を記録する。
+     何位に入るか(NDCG@K)を記録する。K は --cutoffs で指定した全ての値について
+     同時に集計する（デフォルト 10/20/50、上位 max(cutoffs) 件を1回取得して
+     使い回す）。
   5. 評価が終わったら削除したエッジを必ず復元する。
 
-Item-KNNベースラインは、全対象ユーザーについて「自分のtarget+未来を除いた残り」だけを
-使ってアイテム-アイテムのコサイン類似度行列を1回だけ構築し（自分のターゲットが類似度計算
-自体に混ざらないようにする）、各ユーザーへのスコアリングだけを個別に行う。numpyのみで実装し、
-scipy/scikit-learn等の追加依存は増やさない。
+ベースラインは2つ:
+  - Item-KNN: 全対象ユーザーについて「自分のtarget+未来を除いた残り」だけを使って
+    アイテム-アイテムのコサイン類似度行列を1回だけ構築し（自分のターゲットが類似度
+    計算自体に混ざらないようにする）、各ユーザーへのスコアリングだけを個別に行う。
+  - Popularity: rating_count・avg_ratingで全体を1回だけ静的にランキングし、各ユーザーの
+    既知（残り）商品を除いて上位を返すだけの非個人化ベースライン。LLM/KNNが「ただ人気の
+    ものを勧めているだけ」ではないかを切り分けるために使う。
+どちらもnumpyのみで実装し、scipy/scikit-learn等の追加依存は増やさない。
+
+集計結果には、HR@K/NDCG@Kに加えて手法ごとの運用メトリクス（catalog_coverage: 全対象
+ユーザーへの推薦で実際にカバーできたカタログの割合、avg_rating/price_coverage: 推薦
+商品の平均評価・価格情報を持つ商品の割合）も含む。データ規模の健全性チェック
+（商品・ユーザー数、価格/画像/評価のカバレッジ）を評価開始前に出力する。
 
 使い方:
-    python eval/eval_offline.py --k 10
-    python eval/eval_offline.py --k 10 --sample 100  # 動作確認用
+    python eval/eval_offline.py --cutoffs 10 20 50
+    python eval/eval_offline.py --cutoffs 10 20 50 --sample 100  # 動作確認用
 """
 from __future__ import annotations
 
@@ -79,6 +91,55 @@ def build_eval_targets(by_user: dict[str, list[dict]]) -> list[dict]:
             "remaining_count": len(remaining),
         })
     return targets
+
+
+# ── データ健全性チェック ────────────────────────────────────────────────────
+
+def print_data_readiness(recommender: Recommender) -> None:
+    """評価開始前に、カタログ規模と主要フィールドのカバレッジを出力する（診断のみ、
+    中断はしない）。数値が小さすぎる/カバレッジが低い場合に、評価結果をどこまで
+    信用してよいか判断する材料にする。"""
+    with recommender._driver.session(database=recommender._neo4j_db) as session:
+        row = session.run(
+            "MATCH (p:Product) "
+            "RETURN count(p) AS n_products, "
+            "       sum(CASE WHEN p.price IS NOT NULL THEN 1 ELSE 0 END) AS with_price, "
+            "       sum(CASE WHEN p.image_url IS NOT NULL THEN 1 ELSE 0 END) AS with_image, "
+            "       sum(CASE WHEN p.avg_rating IS NOT NULL THEN 1 ELSE 0 END) AS with_rating"
+        ).single()
+        n_users = session.run("MATCH (u:User) RETURN count(u) AS n").single()["n"]
+        n_reviews = session.run("MATCH (r:Review) RETURN count(r) AS n").single()["n"]
+
+    n_products = row["n_products"] or 0
+    print("=== data readiness ===")
+    print(f"  products: {n_products:,}  users: {n_users:,}  reviews: {n_reviews:,}")
+    if n_products:
+        print(
+            f"  price coverage: {row['with_price'] / n_products:.1%}  "
+            f"image coverage: {row['with_image'] / n_products:.1%}  "
+            f"avg_rating coverage: {row['with_rating'] / n_products:.1%}"
+        )
+    print()
+
+
+def fetch_product_catalog(recommender: Recommender) -> dict[str, dict[str, Any]]:
+    """{product_id: {avg_rating, rating_count, price}} を全商品分返す。
+    運用メトリクス（catalog_coverage/avg_rating/price_coverage）と人気度ベースラインの
+    構築に使う。"""
+    catalog: dict[str, dict[str, Any]] = {}
+    with recommender._driver.session(database=recommender._neo4j_db) as session:
+        res = session.run(
+            "MATCH (p:Product) "
+            "RETURN p.product_id AS pid, p.avg_rating AS avg_rating, "
+            "       p.rating_count AS rating_count, p.price AS price"
+        )
+        for row in res:
+            catalog[row["pid"]] = {
+                "avg_rating": row["avg_rating"],
+                "rating_count": row["rating_count"] or 0,
+                "price": row["price"],
+            }
+    return catalog
 
 
 # ── Neo4j操作（削除・復元） ──────────────────────────────────────────────────
@@ -162,6 +223,36 @@ def build_item_knn_model(by_user: dict[str, list[dict]], targets: list[dict]) ->
     return ItemKnnModel(R, user_index, idx_to_item, item_sim)
 
 
+# ── 人気度ベースライン ──────────────────────────────────────────────────────
+
+class PopularityModel:
+    """rating_count・avg_ratingで全商品を1回だけ静的にランキングする非個人化ベース
+    ライン。ユーザーごとに「既に評価済み（残り）」の商品だけを除いて上位を返す。"""
+
+    def __init__(self, ranked_pids: list[str]):
+        self._ranked_pids = ranked_pids
+
+    def recommend(self, k: int, exclude_ids: set[str]) -> list[str]:
+        out: list[str] = []
+        for pid in self._ranked_pids:
+            if pid in exclude_ids:
+                continue
+            out.append(pid)
+            if len(out) >= k:
+                break
+        return out
+
+
+def build_popularity_model(catalog: dict[str, dict[str, Any]]) -> PopularityModel:
+    """rating_count降順、同点はavg_rating降順で全商品をランキングする。"""
+    ranked = sorted(
+        catalog.keys(),
+        key=lambda pid: (catalog[pid]["rating_count"] or 0, catalog[pid]["avg_rating"] or 0.0),
+        reverse=True,
+    )
+    return PopularityModel(ranked)
+
+
 # ── 指標 ──────────────────────────────────────────────────────────────────────
 
 def hit_and_rank(target_pid: str, ranked_pids: list[str]) -> tuple[bool, int | None]:
@@ -179,10 +270,16 @@ def ndcg_from_rank(rank: int | None) -> float:
 
 # ── メイン評価ループ ────────────────────────────────────────────────────────
 
+METHODS = ("llm", "knn", "pop")
+METHOD_LABELS = {"llm": "llm_personalized", "knn": "item_knn_baseline", "pop": "popularity_baseline"}
+
+
 def run_eval(
-    recommender: Recommender, targets: list[dict], knn_model: ItemKnnModel,
-    k: int, out_path: Path, resume: bool,
+    recommender: Recommender, targets: list[dict], by_user: dict[str, list[dict]],
+    knn_model: ItemKnnModel, popularity_model: PopularityModel,
+    cutoffs: list[int], out_path: Path, resume: bool,
 ) -> None:
+    max_k = max(cutoffs)
     done_ids: set[str] = set()
     if resume and out_path.exists():
         with out_path.open(encoding="utf-8") as f:
@@ -202,7 +299,7 @@ def run_eval(
 
             remove_edges(recommender, uid, t["to_remove"])
             try:
-                _, _, recs, fallback = recommender.recommend_home(uid, limit=k)
+                _, _, recs, fallback = recommender.recommend_home(uid, limit=max_k)
             except Exception as exc:
                 print(f"[{i}/{len(targets)}] {uid}: recommend_home failed: {exc}", file=sys.stderr)
                 recs, fallback = [], True
@@ -210,63 +307,104 @@ def run_eval(
                 restore_edges(recommender, uid, t["to_remove"])
 
             llm_pids = [r.product_id for r in recs]
-            llm_hit, llm_rank = hit_and_rank(t["target_product_id"], llm_pids)
-            knn_pids = knn_model.recommend(uid, k)
-            knn_hit, knn_rank = hit_and_rank(t["target_product_id"], knn_pids)
+            knn_pids = knn_model.recommend(uid, max_k)
+            removed_pids = {e["product_id"] for e in t["to_remove"]}
+            remaining_pids = {e["product_id"] for e in by_user.get(uid, [])} - removed_pids
+            pop_pids = popularity_model.recommend(max_k, exclude_ids=remaining_pids)
+
+            _, llm_rank = hit_and_rank(t["target_product_id"], llm_pids)
+            _, knn_rank = hit_and_rank(t["target_product_id"], knn_pids)
+            _, pop_rank = hit_and_rank(t["target_product_id"], pop_pids)
 
             record = {
                 "user_id": uid,
                 "target_product_id": t["target_product_id"],
                 "remaining_context_count": t["remaining_count"],
                 "llm_fallback": fallback,
-                "llm_hit": llm_hit, "llm_rank": llm_rank,
-                "knn_hit": knn_hit, "knn_rank": knn_rank,
+                "llm_rank": llm_rank, "knn_rank": knn_rank, "pop_rank": pop_rank,
+                "llm_pids": llm_pids, "knn_pids": knn_pids, "pop_pids": pop_pids,
             }
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
             out.flush()
-            print(f"[{i+1}/{len(targets)}] {uid}: llm_hit={llm_hit}(rank={llm_rank}) "
-                  f"knn_hit={knn_hit}(rank={knn_rank}) fallback={fallback}")
+            print(f"[{i+1}/{len(targets)}] {uid}: llm_rank={llm_rank} knn_rank={knn_rank} "
+                  f"pop_rank={pop_rank} fallback={fallback}")
 
     # 万一ここで例外が起きても、remove/restoreはユーザー単位でtry/finally済みなので
     # グラフに削除しっぱなしのエッジは残らない。
 
 
-def summarize(out_path: Path, k: int) -> dict[str, Any]:
+def _operational_metrics(
+    records: list[dict], method: str, catalog: dict[str, dict[str, Any]], report_k: int,
+) -> dict[str, float]:
+    """カバレッジ・平均評価・価格情報カバレッジを、上位report_k件の推薦について集計する。"""
+    all_pids: list[str] = []
+    ratings: list[float] = []
+    has_price = 0
+    total = 0
+    for r in records:
+        pids = r[f"{method}_pids"][:report_k]
+        for pid in pids:
+            total += 1
+            all_pids.append(pid)
+            meta = catalog.get(pid)
+            if not meta:
+                continue
+            if meta["avg_rating"] is not None:
+                ratings.append(float(meta["avg_rating"]))
+            if meta["price"] is not None:
+                has_price += 1
+
+    return {
+        "catalog_coverage": round(len(set(all_pids)) / len(catalog), 4) if catalog else 0.0,
+        "avg_rating": round(sum(ratings) / len(ratings), 3) if ratings else 0.0,
+        "price_coverage": round(has_price / total, 4) if total else 0.0,
+    }
+
+
+def summarize(
+    out_path: Path, cutoffs: list[int], catalog: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     records = []
     with out_path.open(encoding="utf-8") as f:
         for line in f:
             records.append(json.loads(line))
 
     n = len(records)
-    llm_hr = sum(r["llm_hit"] for r in records) / n
-    knn_hr = sum(r["knn_hit"] for r in records) / n
-    llm_ndcg = sum(ndcg_from_rank(r["llm_rank"]) for r in records) / n
-    knn_ndcg = sum(ndcg_from_rank(r["knn_rank"]) for r in records) / n
-    fallback_rate = sum(r["llm_fallback"] for r in records) / n
+    report_k = min(cutoffs)  # 運用メトリクスは実際にUIへ出す件数相当（最小カットオフ）で見る
+    summary: dict[str, Any] = {"n_users": n, "cutoffs": cutoffs}
 
-    summary = {
-        "n_users": n,
-        "k": k,
-        f"HR@{k}_llm_personalized": round(llm_hr, 4),
-        f"HR@{k}_item_knn_baseline": round(knn_hr, 4),
-        f"NDCG@{k}_llm_personalized": round(llm_ndcg, 4),
-        f"NDCG@{k}_item_knn_baseline": round(knn_ndcg, 4),
-        "llm_fallback_rate": round(fallback_rate, 4),
-    }
+    for method in METHODS:
+        ranks = [r[f"{method}_rank"] for r in records]
+        label = METHOD_LABELS[method]
+        for c in cutoffs:
+            hr = sum(1 for rk in ranks if rk is not None and rk <= c) / n
+            ndcg = sum(ndcg_from_rank(rk) if (rk is not None and rk <= c) else 0.0 for rk in ranks) / n
+            summary[f"HR@{c}_{label}"] = round(hr, 4)
+            summary[f"NDCG@{c}_{label}"] = round(ndcg, 4)
+        summary[f"operational_{label}"] = _operational_metrics(records, method, catalog, report_k)
+
+    summary["llm_fallback_rate"] = round(sum(r["llm_fallback"] for r in records) / n, 4)
     return summary
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", type=Path, default=Path(__file__).resolve().parent.parent / "config.yaml")
-    ap.add_argument("--k", type=int, default=10)
+    ap.add_argument(
+        "--cutoffs", type=int, nargs="+", default=[10, 20, 50],
+        help="HR@K/NDCG@Kを計算するK値（複数指定可）。上位max(cutoffs)件を1回だけ取得して使い回す。",
+    )
     ap.add_argument("--sample", type=int, default=None, help="デバッグ用: 対象をN人に限定する")
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--resume", action="store_true")
     args = ap.parse_args()
+    cutoffs = sorted(set(args.cutoffs))
 
     recommender = Recommender(config_path=args.config)
     out_path = args.out or (args.config.resolve().parent / "eval_results.jsonl")
+
+    print_data_readiness(recommender)
+    catalog = fetch_product_catalog(recommender)
 
     print("fetching RATED edges from Neo4j...")
     by_user = fetch_all_rated(recommender)
@@ -278,14 +416,15 @@ def main() -> None:
         print(f"--sample指定により {len(targets)} 人に限定")
 
     knn_model = build_item_knn_model(by_user, targets)
+    popularity_model = build_popularity_model(catalog)
 
     try:
-        run_eval(recommender, targets, knn_model, args.k, out_path, args.resume)
+        run_eval(recommender, targets, by_user, knn_model, popularity_model, cutoffs, out_path, args.resume)
     finally:
         recommender._home_cache.clear()  # 切り詰めたグラフでの結果が本番用途に混入しないようにする
         recommender.close()
 
-    summary = summarize(out_path, args.k)
+    summary = summarize(out_path, cutoffs, catalog)
     print("\n=== summary ===")
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     summary_path = out_path.with_suffix(".summary.json")

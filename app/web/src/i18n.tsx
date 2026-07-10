@@ -13,6 +13,7 @@ interface Dict {
   appSubtitle: string;
   greeting: string;
   devView: string;
+  generalMode: string;
   inputPlaceholder: string;
   send: string;
   omakase: string;
@@ -41,6 +42,7 @@ const ja: Dict = {
   appSubtitle: "会話しながら、あなたに合う商品をご提案します。",
   greeting: "こんにちは！どんな商品をお探しですか？",
   devView: "開発者ビュー",
+  generalMode: "一般モード（非個人化）",
   inputPlaceholder: "メッセージを入力（例：乾燥肌向けの保湿クリーム）",
   send: "送信",
   omakase: "おまかせで探す",
@@ -69,6 +71,7 @@ const en: Dict = {
   appSubtitle: "We'll suggest products for you through a short chat.",
   greeting: "Hi! What kind of product are you looking for?",
   devView: "Developer view",
+  generalMode: "General mode (no personalization)",
   inputPlaceholder: "Type a message (e.g. moisturizer for dry skin)",
   send: "Send",
   omakase: "Surprise me",

@@ -237,21 +237,24 @@ server:
 
 ```bash
 # Quick sanity check on a small sample first
-python3 eval/eval_offline.py --k 10 --sample 100
+python3 eval/eval_offline.py --cutoffs 10 20 50 --sample 100
 
 # Full leave-one-out evaluation over every eligible user
-python3 eval/eval_offline.py --k 10 --resume
+python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 ```
 
-This measures whether RATED-based personalization (`recommend_home`, via Text2Cypher)
-beats a plain Item-based Collaborative Filtering baseline (cosine similarity over the
-user–item rating matrix), using leave-one-out HR@K/NDCG@K: each eligible user's most
-recent ≥4-star rating is held out as the target, that edge (and anything rated afterward)
-is temporarily removed, and both methods try to rank the held-out product back into the
-top K. Results are written to `eval_results.jsonl` / `eval_results.summary.json` (paths
-configurable via `--out`). **Note:** this `--k` is the recommendation cutoff (top-K), an
-unrelated parameter from `select_kcore.py`'s `--k` (k-core threshold) above — same flag
-name, different meaning.
+Prints a data-readiness preflight (product/user/review counts, price/image/rating
+coverage) before running, then measures RATED-based personalization (`recommend_home`,
+via Text2Cypher) against two baselines — Item-KNN (cosine similarity over the user–item
+rating matrix) and Popularity (static rating_count/avg_rating ranking) — using
+leave-one-out HR@K/NDCG@K at every cutoff in `--cutoffs` simultaneously (default 10/20/50).
+Each eligible user's most recent ≥4-star rating is held out as the target, that edge (and
+anything rated afterward) is temporarily removed, and all three methods try to rank the
+held-out product back into the top K. The summary also reports per-method operational
+metrics (`catalog_coverage`, `avg_rating`, `price_coverage` at the smallest cutoff) so a
+method that just repeats the same popular items is visible, not only its hit rate. Results
+are written to `eval_results.jsonl` / `eval_results.summary.json` (paths configurable via
+`--out`).
 
 ### 6. Start the Recommendation API
 
@@ -433,3 +436,10 @@ extraction, and Neo4j import all finish in a reasonable time on a laptop.
   through quickly — `config.yaml`'s `llm.provider` can be switched to `gemini` as a higher-quota
   fallback if `/recommend`/`/chat` start returning `fallback: true` unexpectedly (check the API
   process's stderr for a `429`/`rate_limit_exceeded` error to confirm)
+- Reviewed against a parallel `main`-branch evaluation/UI track before merging; deliberately not
+  ported here (would need real design work first, not a mechanical port):
+  - `main`'s richer behavior-event taxonomy (impression/filter_change/restart/etc., beyond our single
+    `VIEWED` edge) and its anonymous-browser-ID identity model — the latter directly conflicts with this
+    branch's decision to drop the anonymous test-user option
+  - Coverage-gap analysis and discoverable-pool/ground-truth-scope evaluation — `main`'s versions are
+    tightly bound to product-quality/sellable-status fields our schema doesn't have

@@ -700,13 +700,15 @@ class Recommender:
         }
         return cypher, explanation, results
 
-    def warm_home_cache(self, user_id: str, limit: int = 10, lang: str = "en") -> None:
+    def warm_home_cache(self, user_id: str | None, limit: int = 10, lang: str = "en") -> None:
         """タブを閉じる/バックグラウンドに回した時などに呼ばれるfire-and-forget用途。
 
         次回開いた時にrecommend_home()が即座に返せるよう、ホーム推薦を先読みして
         キャッシュしておく。応答を待つ相手がいないのでSearchLogには残さない。
         キャッシュが既に新しければ_get_or_generate_home()内で即returnされ、LLMは呼ばれない。
         """
+        if not user_id:
+            return  # 非個人化モード（user_id無し）はキャッシュ対象がないため何もしない
         normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id)
         has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
@@ -715,14 +717,15 @@ class Recommender:
         self._get_or_generate_home(user_id, limit, normalized_lang)
 
     def recommend_home(
-        self, user_id: str, limit: int = 10, lang: str = "en"
+        self, user_id: str | None, limit: int = 10, lang: str = "en"
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
         search_id = str(uuid.uuid4())
         normalized_lang = _normalize_lang(lang)
-        user_ctx = self._get_user_context(user_id)
-        # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ
-        has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
-        generated = self._get_or_generate_home(user_id, limit, normalized_lang) if has_history else None
+        # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ。
+        # user_id自体が無い（非個人化モード）場合も同様にhas_history=Falseとして扱う。
+        user_ctx = self._get_user_context(user_id) if user_id else None
+        has_history = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
+        generated = self._get_or_generate_home(user_id, limit, normalized_lang) if has_history and user_id else None
         if generated:
             cypher, explanation, results = generated
             fallback = False
@@ -733,7 +736,8 @@ class Recommender:
             results = self._run_popular(limit, normalized_lang)
             fallback = has_history
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
-        self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
+        if user_id:
+            self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
 
     def chat(

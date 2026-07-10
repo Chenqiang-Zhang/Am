@@ -237,21 +237,23 @@ python3 kg_build/extract_product_attributes.py --rule-only --limit -1
 
 ```bash
 # まずは小さいサンプルで簡易チェック
-python3 eval/eval_offline.py --k 10 --sample 100
+python3 eval/eval_offline.py --cutoffs 10 20 50 --sample 100
 
 # 対象となる全ユーザに対するフルの leave-one-out 評価
-python3 eval/eval_offline.py --k 10 --resume
+python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 ```
 
-これは、RATED ベースのパーソナライゼーション（Text2Cypher 経由の `recommend_home`）が、
-単純な Item-based 協調フィルタリングのベースライン（ユーザー×アイテムの評価行列に対する
-コサイン類似度）を上回るかどうかを、leave-one-out の HR@K/NDCG@K で測定するものである:
-各対象ユーザの直近の★4以上の評価をターゲットとして保持しておき、そのエッジ（および
-それ以降に評価されたもの）を一時的に取り除いた上で、両手法がその保持しておいた商品を
-top K 内に再びランクインさせられるかを試す。結果は `eval_results.jsonl` /
-`eval_results.summary.json` に書き出される（パスは `--out` で設定可能）。**注意:** ここでの
-`--k` は推薦のカットオフ（top-K）であり、上記の `select_kcore.py` の `--k`（k-core の閾値）
-とは無関係なパラメータである — フラグ名は同じだが意味が異なる。
+実行前にデータ健全性チェック（商品・ユーザー・レビュー数、価格/画像/評価のカバレッジ）を
+出力したうえで、RATED ベースのパーソナライゼーション（Text2Cypher 経由の `recommend_home`）
+を2つのベースライン — Item-KNN（ユーザー×アイテムの評価行列に対するコサイン類似度）と
+Popularity（rating_count・avg_ratingによる静的ランキング）— と比較する。`--cutoffs`
+（デフォルト10/20/50）で指定した全カットオフについて leave-one-out の HR@K/NDCG@K を
+同時に集計する: 各対象ユーザの直近の★4以上の評価をターゲットとして保持しておき、その
+エッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、3手法すべてがその
+保持しておいた商品を top K 内に再びランクインさせられるかを試す。サマリには手法ごとの
+運用メトリクス（最小カットオフでの`catalog_coverage`・`avg_rating`・`price_coverage`）も
+含まれ、単にヒット率だけでなく「同じ人気商品ばかり勧めていないか」も見える。結果は
+`eval_results.jsonl` / `eval_results.summary.json` に書き出される（パスは `--out` で設定可能）。
 
 ### 6. 推薦 API を起動する
 
@@ -479,3 +481,10 @@ k を大きくするとグラフは急速に縮小する（線形カットでは
   すぐに使い切ってしまうことがある — `/recommend`/`/chat` が予期せず `fallback: true` を返し
   始めた場合は、`config.yaml` の `llm.provider` をより割り当ての多い `gemini` に切り替えると
   よい（確認するには API プロセスの stderr で `429`/`rate_limit_exceeded` エラーを探す）
+- マージ前に、並行して進んでいた `main` ブランチの評価／UI系の作業と照らし合わせた。以下は
+  意図的に取り込んでいない（機械的に移植できるものではなく、まず設計が必要なため）:
+  - `main` にあるより細かい行動イベント分類（impression／filter_change／restart等、こちら
+    の `VIEWED` エッジ単体より粒度が細かい）と、匿名ブラウザIDによる識別モデル — 後者は
+    このブランチで匿名テストユーザーの選択肢を廃止した決定と直接矛盾する
+  - カバレッジギャップ分析・discoverable-poolに基づく評価 — `main` 側の実装はこちらのスキーマ
+    に無い商品品質・販売可否フィールドに強く依存している

@@ -15,7 +15,7 @@ export interface RecommendRequest {
 
 /** POST /recommend/home のリクエスト body */
 export interface HomeRecommendRequest {
-  user_id: string;
+  user_id: string | null; // null = 非個人化モード（人気商品フォールバックのみ）
   limit: number;
   lang?: "ja" | "en";
 }

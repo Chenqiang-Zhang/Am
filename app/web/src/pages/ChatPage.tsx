@@ -35,6 +35,10 @@ export default function ChatPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [userId, setUserId] = useStoredTestUserId();
   const [initialLoading, setInitialLoading] = useState(false);
+  // 一般モード: 選択中のテストユーザーの履歴を一時的に無視し、非個人化（人気商品
+  // フォールバック相当）の結果と比較できるようにする。ユーザー選択自体は変えない。
+  const [generalMode, setGeneralMode] = useState(false);
+  const effectiveUserId = generalMode ? null : userId;
   // reset()を「会話が既に空(0件)のとき」に押しても再取得が走るよう、conversation.lengthの
   // 変化だけに頼らず明示的に発火させるためのカウンタ。
   const [reloadKey, setReloadKey] = useState(0);
@@ -51,7 +55,7 @@ export default function ChatPage() {
       setInitialLoading(true);
       setError(null);
       try {
-        const r = await recommendHome({ user_id: userId, limit: LIMIT, lang });
+        const r = await recommendHome({ user_id: effectiveUserId, limit: LIMIT, lang });
         if (cancelled) return;
         setResult({
           recommendations: r.recommendations,
@@ -69,13 +73,13 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [conversation.length, userId, lang, reloadKey]);
+  }, [conversation.length, effectiveUserId, lang, reloadKey]);
 
   // タブを閉じる/バックグラウンドに回した時に、次回開いた時のためのホーム推薦を
   // バックエンド側で先読みキャッシュしておく（履歴が無い場合は高速パスで十分なので
   // バックエンド側で無視される）。
   useEffect(() => {
-    const uid = userId;
+    const uid = effectiveUserId;
     function warm() {
       warmHomeCache({ user_id: uid, limit: LIMIT, lang });
     }
@@ -88,7 +92,7 @@ export default function ChatPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", warm);
     };
-  }, [userId, lang]);
+  }, [effectiveUserId, lang]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -103,7 +107,7 @@ export default function ChatPage() {
     setStatus("loading");
 
     try {
-      const r = await chat(next, LIMIT, lang, userId);
+      const r = await chat(next, LIMIT, lang, effectiveUserId);
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
@@ -175,6 +179,14 @@ export default function ChatPage() {
               onChange={(e) => setDevMode(e.target.checked)}
             />
             {t.devView}
+          </label>
+          <label className={styles.devToggle}>
+            <input
+              type="checkbox"
+              checked={generalMode}
+              onChange={(e) => setGeneralMode(e.target.checked)}
+            />
+            {t.generalMode}
           </label>
           <TestUserSelect userId={userId} onChange={setUserId} />
         </div>

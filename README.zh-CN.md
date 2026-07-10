@@ -230,19 +230,21 @@ python3 kg_build/extract_product_attributes.py --rule-only --limit -1
 
 ```bash
 # 先在小样本上快速做健全性检查
-python3 eval/eval_offline.py --k 10 --sample 100
+python3 eval/eval_offline.py --cutoffs 10 20 50 --sample 100
 
 # 对每个符合条件的用户做完整的留一法评估
-python3 eval/eval_offline.py --k 10 --resume
+python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 ```
 
-这项评估衡量的是：基于 RATED 的个性化（`recommend_home`，通过 Text2Cypher）是否优于
-一个纯粹的基于物品的协同过滤基线（在用户-物品评分矩阵上做余弦相似度），
-采用留一法 HR@K/NDCG@K：每个符合条件的用户，其最近一条 ≥4 星的评分被作为目标
-留出，该边（以及之后评分的任何内容）被临时移除，两种方法都尝试将被留出的商品
-重新排进 top K 中。结果会写入 `eval_results.jsonl` / `eval_results.summary.json`
-（路径可通过 `--out` 配置）。**注意：** 这里的 `--k` 是推荐结果的截断数（top-K），
-与上文 `select_kcore.py` 的 `--k`（k-core 阈值）是两个无关的参数——同名但含义不同。
+运行前会先打印数据健全性预检（商品/用户/评论数量、价格/图片/评分覆盖率），然后将基于
+RATED 的个性化（`recommend_home`，通过 Text2Cypher）与两个基线比较——Item-KNN（用户-物品
+评分矩阵上的余弦相似度）和 Popularity（按 rating_count/avg_rating 的静态排名）。会对
+`--cutoffs`（默认 10/20/50）中的每个截断值同时计算留一法 HR@K/NDCG@K：每个符合条件的
+用户，其最近一条 ≥4 星的评分被作为目标留出，该边（以及之后评分的任何内容）被临时移除，
+三种方法都会尝试将被留出的商品重新排进 top K 中。汇总结果中还包含各方法的运营类指标
+（在最小截断值下的 `catalog_coverage`/`avg_rating`/`price_coverage`），这样不仅能看命中率，
+还能看出某个方法是否只是反复推荐同一批热门商品。结果会写入 `eval_results.jsonl` /
+`eval_results.summary.json`（路径可通过 `--out` 配置）。
 
 ### 6. 启动推荐 API
 
@@ -457,3 +459,10 @@ Web UI 会调用此接口。
   ——如果 `/recommend`/`/chat` 开始意外返回 `fallback: true`，可以将 `config.yaml` 的
   `llm.provider` 切换为配额更高的 `gemini` 作为备选方案（可查看 API 进程的 stderr
   中是否有 `429`/`rate_limit_exceeded` 错误来确认）
+- 合并前对照了并行推进的 `main` 分支评估/UI 相关工作。以下内容是有意未移植的
+  （需要先做设计工作，而非机械式移植）：
+  - `main` 中更细粒度的行为事件分类（impression/filter_change/restart 等，比我们单一的
+    `VIEWED` 边更丰富）以及匿名浏览器 ID 身份模型——后者与本分支移除匿名测试用户选项的
+    决定直接冲突
+  - 覆盖缺口分析（coverage-gap analysis）与 discoverable-pool 范围评估——`main` 的实现
+    强依赖我们schema中没有的商品质量/可售状态字段
