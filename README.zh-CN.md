@@ -1,6 +1,6 @@
 # Amazon Reviews'23 知识图谱推荐系统
 
-[English](README.md) | [日本語](README.ja.md) | **中文**
+[English](README.en.md) | [日本語](README.md) | **中文**
 
 一个基于 Amazon Reviews'23 数据集构建的实验性商品推荐系统。类型/品类可通过 `config.yaml` 配置（当前为 `Video_Games`，下文所有默认值/示例均基于该类型）——schema、pipeline 脚本和 Cypher 查询都与具体类型无关（genre-agnostic）。系统将评论数据和商品元数据转换为 Neo4j 知识图谱，然后暴露一个 REST API，由 LLM 直接针对该图谱编写并执行 Cypher 查询——因此每一条推荐理由都是真实、可检查的图路径，而不是黑箱。
 
