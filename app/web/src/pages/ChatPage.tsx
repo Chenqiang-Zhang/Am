@@ -141,7 +141,8 @@ export default function ChatPage() {
   // RATED（データセット由来の評価履歴）以外——VIEWED行動ログとSearchLog検索履歴——を
   // 選択中のユーザーについて削除する。個人化の根拠であるRATEDは削除されない。
   async function handleClearHistory() {
-    if (clearingHistory || !window.confirm(t.clearHistoryConfirm)) return;
+    // 一般モードは匿名操作であり、選択中ユーザーの履歴を操作してはならない。
+    if (generalMode || clearingHistory || !window.confirm(t.clearHistoryConfirm)) return;
     setClearingHistory(true);
     try {
       await clearHistory(userId);
@@ -211,7 +212,7 @@ export default function ChatPage() {
             type="button"
             className={styles.devToggle}
             onClick={handleClearHistory}
-            disabled={clearingHistory}
+            disabled={clearingHistory || generalMode}
           >
             {t.clearHistory}
           </button>
@@ -270,7 +271,7 @@ export default function ChatPage() {
           <RecommendationList
             items={result.recommendations}
             devMode={devMode}
-            userId={userId}
+            userId={effectiveUserId}
             searchId={result.searchId}
           />
           {conversation.length > 0 && (

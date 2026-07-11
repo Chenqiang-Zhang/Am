@@ -25,8 +25,11 @@ scale:
 # attr_type は LLM が自由に定義する（ジャンル非依存）。
 # snake_case・既存の型を再利用するようプロンプトで指示し、後処理で正規化する。
 llm:
-  provider: "groq"                # gemini / groq / deepseek / openai
-  model:   # 省略時はプロバイダのデフォルト
+  # 共有用の既定値。環境ごとの値は .env の LLM_PROVIDER / LLM_MODEL /
+  # LLM_BASE_URL で上書きする（Kubera・LM Studio等の接続先はGitに入れない）。
+  provider: "groq"                # gemini / groq / deepseek / openai / ollama
+  model:
+  base_url:
   attr_type_normalize: true       # 抽出後に snake_case 正規化を行うか
   min_confidence: 0.6             # この値未満の Attribute は除外
   min_review_text_len: 30         # MENTIONS 抽出対象の最小文字数

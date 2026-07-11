@@ -50,6 +50,45 @@ from utils.llm_json import chat_json_call
 from utils.neo4j_io import connect, load_env_file, resolve_neo4j_conn
 
 
+# ── 共有ヘルパー ────────────────────────────────────────────────────────────────
+
+_SENTENCE_ENDS = ".!?。！？"
+
+
+def cut_at_sentence(text: str, max_chars: int) -> str:
+    """max_charsを超えるテキストを直近の文末（. ! ? 。等）で切り詰める。
+
+    翻訳・表示対象のテキストが文の途中でぶつ切りになるのを防ぐ。max_chars以内なら
+    そのまま返す。前半に文末が全く見つからない場合のみ語境界+「…」に落とす。"""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    last = max(cut.rfind(ch) for ch in _SENTENCE_ENDS)
+    if last >= max_chars // 2:
+        return cut[: last + 1].rstrip()
+    trimmed = cut.rsplit(" ", 1)[0].rstrip()
+    return (trimmed or cut.rstrip()) + "…"
+
+
+def translation_token_budget(
+    total_chars: int, cap: int = 8000, context_limit: int = 15000,
+) -> int:
+    """英文total_chars分の日本語訳を返すのに必要な出力トークン数の見積もり。
+
+    日本語訳はおおむね原文の6〜8割の文字数・1文字≈1トークンになることが多いが、
+    JSONラッパー分と安全マージンを載せて原文文字数×1.0+600とする。
+
+    さらにprompt側の消費(システムプロンプト+JSON入力、英文≈3.5字/トークン)を
+    差し引き、prompt+max_tokensがモデルのコンテキスト長(16Kサーバー想定、余裕を
+    みて15K)を超えないようにクランプする。超えるとvLLM/LM Studioは400エラーを
+    返すため、バッチサイズを大きくし過ぎた場合でも呼び出し自体は失敗しない。
+    ただしクランプされた分は訳が途中で切れる恐れがあるので、1バッチの原文合計は
+    8,000字程度(バッチサイズ2×4,000字)までに抑えるのが前提。"""
+    prompt_tokens = 500 + total_chars // 3
+    budget = min(cap, 600 + int(total_chars * 1.0))
+    return max(800, min(budget, context_limit - prompt_tokens))
+
+
 # ── --images ─────────────────────────────────────────────────────────────────
 
 def pick_image(images: list[dict]) -> str | None:
@@ -212,6 +251,10 @@ def run_titles_ja(
 
 # ── --reviews-ja ───────────────────────────────────────────────────────────────
 
+# UIに出るレビュー本文の翻訳上限。表示対象(各商品の上位5件)の84%はこの範囲に全文が
+# 収まる。旧上限500字は表示対象の72%を文の途中で切っており、全文が読めなかった。
+REVIEW_MAX_CHARS = 4000
+
 TRANSLATE_REVIEWS_SYSTEM_PROMPT = """\
 Translate the following e-commerce product review titles and bodies into natural,
 concise Japanese. Preserve brand names, model numbers, sizes, and quantities as-is
@@ -219,6 +262,30 @@ concise Japanese. Preserve brand names, model numbers, sizes, and quantities as-
 Return valid JSON only:
 {"translations": [{"review_id": "...", "title_ja": "...", "text_ja": "..."}]}
 """
+
+
+def _translations_schema(item_props: dict[str, dict], n_items: int) -> dict:
+    """vLLMのguided decoding用スキーマ。Qwen3.5はjson_objectモードだとバッチ内の
+    項目を黙って省略することがある（2件渡して1件しか返さない）ため、minItems/
+    maxItemsで件数まで強制する。fast_normalize_values.pyと同じ対策。"""
+    return {
+        "type": "object",
+        "properties": {
+            "translations": {
+                "type": "array",
+                "minItems": n_items,
+                "maxItems": n_items,
+                "items": {
+                    "type": "object",
+                    "properties": item_props,
+                    "required": list(item_props),
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["translations"],
+        "additionalProperties": False,
+    }
 
 
 def translate_reviews_batch(
@@ -229,9 +296,22 @@ def translate_reviews_batch(
         {"role": "system", "content": TRANSLATE_REVIEWS_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-    # Keep enough input context for long reviews on both 8k and 4k vLLM
-    # servers. Three to five reviews fit comfortably in this output budget.
-    data, _usage = chat_json_call(client, model, messages, max_output_tokens=1800, retries=retries)
+    # 出力トークンはバッチ内の原文量に応じて動的に確保する（固定1800だと
+    # 長文レビューの訳が途中で切れ、UIに全文が出ない問題があった）。
+    total_chars = sum(len(i.get("text", "")) + len(i.get("title", "")) for i in items)
+    schema = _translations_schema(
+        {
+            "review_id": {"type": "string"},
+            "title_ja": {"type": "string"},
+            "text_ja": {"type": "string"},
+        },
+        len(items),
+    )
+    data, _usage = chat_json_call(
+        client, model, messages,
+        max_output_tokens=translation_token_budget(total_chars), retries=retries,
+        response_schema=schema, schema_name="review_translations",
+    )
     return {
         str(t.get("review_id", "")): {
             "title_ja": str(t.get("title_ja", "")).strip(),
@@ -326,9 +406,10 @@ def run_reviews_ja(
             {
                 "review_id": r["review_id"],
                 "title": r["title"],
-                # Keep the Japanese field suitable for the UI while bounding
-                # prompt size. The original English text remains untouched.
-                "text": r["text"][:500] + ("…" if len(r["text"]) > 500 else ""),
+                # プロンプト暴走防止の上限は残しつつ、UIに出るレビューはほぼ全文
+                # (表示対象の84%がREVIEW_MAX_CHARS以内)を翻訳する。上限超過分も
+                # 文末で切るため、訳が文の途中でぶつ切りになることはない。
+                "text": cut_at_sentence(r["text"], REVIEW_MAX_CHARS),
             }
             for r in batch
         ]
@@ -427,7 +508,10 @@ def run_values_ja(
 
 # GET /products/{id}/description が表示する文字数と揃える
 # (app/api/recommender.py の Recommender._DESCRIPTION_MAX_CHARS と同じ値)。
-DESCRIPTION_MAX_CHARS = 800
+# 説明文の80%はこの範囲に全文が収まる。超過分（末尾は定型文・法務文が多い）は
+# cut_at_sentence()で文末まで含めて切る。旧上限800字は中央値1640字の半分しか
+# カバーできず、大半の説明文が文の途中で切れていた。
+DESCRIPTION_MAX_CHARS = 4000
 
 TRANSLATE_DESCRIPTIONS_SYSTEM_PROMPT = """\
 Translate the following e-commerce product descriptions into natural, concise
@@ -441,8 +525,8 @@ Japanese, the way Japanese online game/electronics stores actually display them.
 - Platform/hardware brand names (Nintendo Switch, PlayStation, Xbox, PC, etc.),
   company names, and alphanumeric model/SKU codes are commonly kept in Roman
   letters as-is on Japanese storefronts — do not transliterate these.
-- The description may be truncated mid-sentence (it was cut to a fixed length) —
-  translate whatever is given as-is, do not try to complete the thought.
+- Translate the FULL text you are given. Do not summarize, shorten, or drop
+  sentences — the whole description is shown to the user.
 
 Return valid JSON only:
 {"translations": [{"product_id": "...", "description_ja": "..."}]}
@@ -457,7 +541,20 @@ def translate_descriptions_batch(
         {"role": "system", "content": TRANSLATE_DESCRIPTIONS_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-    data, _usage = chat_json_call(client, model, messages, max_output_tokens=2500, retries=retries)
+    # 出力トークンはバッチ内の原文量に応じて動的に確保（固定値だと長文の訳が切れる）
+    total_chars = sum(len(i.get("description", "")) for i in items)
+    schema = _translations_schema(
+        {
+            "product_id": {"type": "string"},
+            "description_ja": {"type": "string"},
+        },
+        len(items),
+    )
+    data, _usage = chat_json_call(
+        client, model, messages,
+        max_output_tokens=translation_token_budget(total_chars), retries=retries,
+        response_schema=schema, schema_name="description_translations",
+    )
     return {
         str(t.get("product_id", "")): str(t.get("description_ja", "")).strip()
         for t in data.get("translations", [])
@@ -466,6 +563,8 @@ def translate_descriptions_batch(
 
 
 def fetch_untranslated_descriptions(driver: Any, database: str | None, limit: int | None) -> list[dict[str, str]]:
+    # substringはDESCRIPTION_MAX_CHARSより余分に取り、Python側のcut_at_sentence()で
+    # 文末まで含めて切り詰める（Cypherの固定長カットだと文の途中で切れるため）。
     query = (
         "MATCH (p:Product) "
         "WHERE p.description_ja IS NULL AND p.description IS NOT NULL AND p.description <> '' "
@@ -474,11 +573,17 @@ def fetch_untranslated_descriptions(driver: Any, database: str | None, limit: in
     if limit is not None:
         query += " LIMIT $limit"
     with driver.session(database=database) as session:
-        params = {"max_chars": DESCRIPTION_MAX_CHARS}
+        params = {"max_chars": DESCRIPTION_MAX_CHARS + 800}
         if limit is not None:
             params["limit"] = limit
         res = session.run(query, **params)
-        return [{"product_id": r["product_id"], "description": r["description"]} for r in res]
+        return [
+            {
+                "product_id": r["product_id"],
+                "description": cut_at_sentence(r["description"], DESCRIPTION_MAX_CHARS),
+            }
+            for r in res
+        ]
 
 
 def write_description_translations(driver: Any, database: str | None, rows: list[dict[str, str]]) -> None:
@@ -526,6 +631,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--images-batch-size", type=int, default=5000)
     parser.add_argument("--provider", choices=["gemini", "groq", "deepseek", "openai", "ollama"], default=None, help="[--titles-ja/--reviews-ja/--values-ja]")
     parser.add_argument("--model", default=None, help="[--titles-ja/--reviews-ja/--values-ja]")
+    parser.add_argument("--base-url", default=None, help="OpenAI互換サーバーのbase_url。config.yamlのllm.base_urlを上書きする（例: kuberaのvLLMを使う場合）")
     parser.add_argument("--titles-batch-size", type=int, default=20)
     parser.add_argument("--titles-limit", type=int, default=-1, help="[--titles-ja] -1 = translate all untranslated products")
     parser.add_argument("--reviews-batch-size", type=int, default=10, help="[--reviews-ja] smaller default than titles since review text is longer")
@@ -584,7 +690,10 @@ def main() -> None:
             cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
             provider = args.provider or cfg_provider
             model_arg = args.model or cfg_model
-            client, model = build_client(provider, model_arg, cfg_base_url)
+            # --base-url指定時はconfig.yamlのbase_urlより優先する（config.yamlが
+            # ローカルLM Studioを向いたまま、別サーバー(例: kuberaのvLLM)で
+            # 翻訳バッチだけ回したいケース用）
+            client, model = build_client(provider, model_arg, args.base_url or cfg_base_url)
 
         if args.titles_ja:
             titles_limit = None if args.titles_limit < 0 else args.titles_limit

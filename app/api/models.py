@@ -110,6 +110,19 @@ class DescriptionResponse(BaseModel):
     translated: bool = False
 
 
+# ===== 推薦フィードバック =====
+class FeedbackRequest(BaseModel):
+    user_id: str | None = None
+    search_id: str | None = None
+    helpful: bool
+    lang: str = "ja"
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    product_id: str
+
+
 # ===== デモ用テストユーザー選択 =====
 class SampleUser(BaseModel):
     user_id: str
@@ -124,3 +137,4 @@ class SampleUsersResponse(BaseModel):
 class ClearHistoryResponse(BaseModel):
     viewed_deleted: int
     searches_deleted: int
+    feedback_deleted: int = 0

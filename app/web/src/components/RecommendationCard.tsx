@@ -7,6 +7,7 @@ import { useUsdToJpy } from "../lib/exchangeRate";
 import { logView } from "../api/client";
 import ProductDescription from "./ProductDescription";
 import ReviewList from "./ReviewList";
+import FeedbackButtons from "./FeedbackButtons";
 
 function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
   if (lang === "ja") {
@@ -23,7 +24,7 @@ interface Props {
   rec: Recommendation;
   rank: number;
   devMode: boolean;
-  userId: string;
+  userId: string | null;
   searchId: string | null;
 }
 
@@ -65,6 +66,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           userId={userId}
           searchId={searchId}
         />
+        <FeedbackButtons productId={rec.product_id} userId={userId} searchId={searchId} />
         {/* <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}

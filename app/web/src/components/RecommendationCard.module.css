@@ -23,16 +23,24 @@
   border-top-color: var(--color-primary);
 }
 
-/* 商品画像 */
+/* 商品画像 — ゲームはパッケージ画像が選択の決め手になるため大きめに表示する。
+   Amazonの商品画像は白背景が前提なので、白ベースに載せて画像の欠けを目立たせない。 */
 .thumb,
 .thumbPlaceholder {
   flex: 0 0 auto;
-  width: 120px;
-  height: 120px;
+  width: 180px;
+  height: 180px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  background: #05060a;
+  background: #ffffff;
   object-fit: contain;
+  padding: 6px;
+  box-sizing: border-box;
+  transition: transform 0.25s ease;
+}
+
+.card:hover .thumb {
+  transform: scale(1.04);
 }
 
 .thumbPlaceholder {
@@ -237,8 +245,8 @@
   }
   .thumb,
   .thumbPlaceholder {
-    width: 84px;
-    height: 84px;
+    width: 120px;
+    height: 120px;
   }
   .section {
     flex-direction: column;

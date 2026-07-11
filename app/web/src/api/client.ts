@@ -8,6 +8,7 @@ import type {
   ChatResponse,
   ClearHistoryResponse,
   DescriptionResponse,
+  FeedbackResponse,
   HomeRecommendRequest,
   RecommendRequest,
   RecommendResponse,
@@ -169,6 +170,23 @@ export async function fetchDescription(
   const res = await fetch(`${BASE}/products/${productId}/description?lang=${lang}`);
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as DescriptionResponse;
+}
+
+/** 推薦フィードバック送信（POST /recommendations/{id}/feedback） */
+export async function sendFeedback(
+  productId: string,
+  helpful: boolean,
+  userId: string | null,
+  searchId: string | null,
+  lang: "ja" | "en" = "ja",
+): Promise<FeedbackResponse> {
+  const res = await fetch(`${BASE}/recommendations/${productId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, search_id: searchId, helpful, lang }),
+  });
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as FeedbackResponse;
 }
 
 /** 商品閲覧ログ（POST /behavior/view）。失敗しても画面には影響させない（fire-and-forget）。 */

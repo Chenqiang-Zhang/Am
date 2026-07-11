@@ -6,7 +6,7 @@ import styles from "./RecommendationList.module.css";
 interface Props {
   items: Recommendation[];
   devMode: boolean;
-  userId: string;
+  userId: string | null;
   searchId: string | null;
 }
 

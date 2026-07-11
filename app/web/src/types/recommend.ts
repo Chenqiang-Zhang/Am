@@ -83,6 +83,12 @@ export interface DescriptionResponse {
   translated: boolean;
 }
 
+// ===== 推薦フィードバック =====
+export interface FeedbackResponse {
+  status: string;
+  product_id: string;
+}
+
 /** POST /chat のレスポンス */
 export interface ChatResponse {
   action: "ask" | "search";
@@ -117,4 +123,5 @@ export interface SampleUsersResponse {
 export interface ClearHistoryResponse {
   viewed_deleted: number;
   searches_deleted: number;
+  feedback_deleted: number;
 }

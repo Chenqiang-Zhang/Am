@@ -332,6 +332,7 @@ _CATEGORY_KIND_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 # タイトル/カテゴリ名から推定したプラットフォームをmatched_attrsに出す際の表示名
+# （プラットフォーム名は日本のストアフロントでもローマ字表記が標準なので日英共通）
 _PLATFORM_DISPLAY: dict[str, str] = {
     "switch": "Nintendo Switch",
     "playstation_5": "PlayStation 5",
@@ -343,6 +344,70 @@ _PLATFORM_DISPLAY: dict[str, str] = {
     "nintendo_3ds": "Nintendo 3DS",
     "nintendo_ds": "Nintendo DS",
 }
+
+# 決定的マッチングが作る擬似属性(matched_attrs)の日本語表示名。
+# canonical値("game","adventure"等)がUIタグにそのまま英語で出るのを防ぐ。
+# ここに無い値は_facet_value_ja()がエイリアス表の日本語表現にフォールバックする。
+_FACET_VALUE_DISPLAY_JA: dict[str, dict[str, str]] = {
+    "product_kind": {
+        "game": "ゲームソフト", "console": "ゲーム機本体", "controller": "コントローラー",
+        "accessory": "アクセサリ", "gift_card": "ギフトカード", "bundle": "セット品",
+        "expansion": "DLC・追加コンテンツ",
+    },
+    "genre": {
+        "action": "アクション", "adventure": "アドベンチャー", "rpg": "RPG", "jrpg": "JRPG",
+        "puzzle": "パズル", "shooter": "シューティング", "racing": "レース",
+        "sports": "スポーツ", "simulation": "シミュレーション", "fighting": "格闘",
+        "horror": "ホラー", "strategy": "ストラテジー", "platformer": "プラットフォーマー",
+        "party": "パーティ", "rhythm": "リズム", "stealth": "ステルス",
+        "open_world": "オープンワールド", "sandbox": "サンドボックス",
+    },
+    "multiplayer_type": {
+        "single_player": "1人プレイ", "local_coop": "ローカル協力プレイ",
+        "online_coop": "オンライン協力プレイ", "local_multiplayer": "ローカル対戦",
+        "online_multiplayer": "オンライン対戦", "competitive": "対戦",
+    },
+    "play_mode": {
+        "single_player": "1人プレイ", "multiplayer": "マルチプレイ", "cooperative": "協力プレイ",
+    },
+    "gameplay_style": {
+        "turn_based": "ターン制", "real_time": "リアルタイム", "open_world": "オープンワールド",
+        "side_scrolling": "横スクロール", "first_person": "一人称視点",
+        "third_person": "三人称視点", "roguelike": "ローグライク", "metroidvania": "メトロイドヴァニア",
+    },
+    "difficulty": {
+        "easy": "やさしい", "normal": "ふつう", "hard": "難しい",
+        "challenging": "高難度", "beginner": "初心者向け",
+    },
+    "graphics": {
+        "pixel_art": "ドット絵", "retro": "レトロ", "3d": "3Dグラフィック",
+        "realistic": "リアル調", "cartoon": "カートゥーン調", "anime": "アニメ調", "dark": "ダーク",
+    },
+    "story": {
+        "story_driven": "ストーリー重視", "narrative": "物語性", "character_driven": "キャラクター重視",
+    },
+    "language": {"japanese": "日本語対応", "english": "英語", "multilingual": "多言語対応"},
+    "release_date": {"new": "新作", "classic": "クラシック"},
+    "price": {"cheap": "低価格", "expensive": "ハイエンド", "free": "無料", "discounted": "セール"},
+}
+
+# タイトル語の日本語表示（"mario"→"マリオ"）。_TITLE_ALIASESの逆引き（先勝ち）。
+_TITLE_ALIAS_JA: dict[str, str] = {}
+for _ja_name, _en_name in _TITLE_ALIASES.items():
+    _TITLE_ALIAS_JA.setdefault(_en_name, _ja_name)
+
+
+def _facet_value_ja(facet_type: str, value: str) -> str | None:
+    """canonical値の日本語表示名。platformはローマ字表記のまま（日本でも標準のため）。"""
+    if facet_type == "platform":
+        return _PLATFORM_DISPLAY.get(value, value)
+    curated = _FACET_VALUE_DISPLAY_JA.get(facet_type, {}).get(value)
+    if curated:
+        return curated
+    for alias in _FACET_ALIAS_MAPS.get(facet_type, {}).get(value, ()):
+        if not re.fullmatch(r"[a-z0-9 .+_|-]+", alias.lower()):
+            return alias
+    return None
 
 # 属性としては疎(genre実質~150商品)だが、レビューMENTIONS(全商品平均124値)や
 # 説明文には豊富に現れるファセット。これらはMENTIONS/descriptionも証拠として使う。
@@ -965,9 +1030,12 @@ class Recommender:
         t2c_cfg: dict = cfg.get("text2cypher", {})
         neo4j_cfg: dict = cfg.get("neo4j", {})
 
-        provider = str(llm_cfg.get("provider", "gemini"))
-        model = llm_cfg.get("model") or None
-        base_url = llm_cfg.get("base_url") or None
+        # 実行環境ごとに異なる接続先は .env / 環境変数を最優先する。
+        # config.yaml は共有可能な既定値として残し、Kubera・LM Studio・クラウド API を
+        # 同じコードから切り替えられるようにする。
+        provider = os.environ.get("LLM_PROVIDER") or str(llm_cfg.get("provider", "gemini"))
+        model = os.environ.get("LLM_MODEL") or llm_cfg.get("model") or None
+        base_url = os.environ.get("LLM_BASE_URL") or llm_cfg.get("base_url") or None
         self._llm, self._model = _build_llm_client(provider, model, base_url)
         self._max_attempts: int = int(t2c_cfg.get("max_cypher_attempts", 3))
 
@@ -1250,11 +1318,13 @@ class Recommender:
                 if kind_hits:
                     evidence.add("product_kind")
                     score += _FACET_WEIGHTS.get("product_kind", 4.0)
+                    kind_value = sorted(kind_hits)[0]
                     matched_attrs.append({
                         "attr_type": "product_kind",
-                        "value": sorted(kind_hits)[0],
+                        "value": kind_value,
+                        "value_ja": _facet_value_ja("product_kind", kind_value),
                         "canonical_type": "product_kind",
-                        "canonical_value": sorted(kind_hits)[0],
+                        "canonical_value": kind_value,
                     })
 
             if specific_title_terms:
@@ -1263,6 +1333,7 @@ class Recommender:
                     {
                         "attr_type": "title",
                         "value": term,
+                        "value_ja": _TITLE_ALIAS_JA.get(term),
                         "canonical_type": "title",
                         "canonical_value": term,
                     }
@@ -1290,6 +1361,7 @@ class Recommender:
                             facet_matches.append({
                                 "attr_type": "platform",
                                 "value": _PLATFORM_DISPLAY.get(value, value),
+                                "value_ja": _PLATFORM_DISPLAY.get(value, value),
                                 "canonical_type": "platform",
                                 "canonical_value": value,
                             })
@@ -1309,9 +1381,11 @@ class Recommender:
                 if facet_matches:
                     score += weight * min(len(facet_matches), 3)
                 elif mention_total or desc_hit:
+                    evidence_value = facet_values[0] if facet_values else facet_type
                     facet_matches = [{
                         "attr_type": facet_type,
-                        "value": facet_values[0] if facet_values else facet_type,
+                        "value": evidence_value,
+                        "value_ja": _facet_value_ja(facet_type, evidence_value),
                         "canonical_type": facet_type,
                         "canonical_value": facet_values[0] if facet_values else None,
                     }]
@@ -1363,11 +1437,15 @@ class Recommender:
         matched_labels = []
         specific_title_terms = [term for term in title_terms if term not in _TITLE_GENERIC_TERMS]
         if specific_title_terms:
-            matched_labels.append(specific_title_terms[0])
+            term = specific_title_terms[0]
+            matched_labels.append(_TITLE_ALIAS_JA.get(term, term) if lang == "ja" else term)
         for facet_type in ("platform", "genre", "multiplayer_type", "play_mode", "product_kind"):
             values = facet_signals.get(facet_type)
             if values:
-                matched_labels.append(values[0])
+                label = values[0]
+                if lang == "ja":
+                    label = _facet_value_ja(facet_type, label) or label
+                matched_labels.append(label)
         if len(matched_labels) > 3:
             matched_labels = matched_labels[:3]
         explanation = (
@@ -1662,7 +1740,23 @@ LIMIT $limit
                 rows.append(r)
             return rows
 
-    _DESCRIPTION_MAX_CHARS: int = 800
+    # 説明文の80%はこの範囲に全文が収まる（中央値1640字・超過分は定型文が多い）。
+    # kg_build/backfill_display_fields.py の DESCRIPTION_MAX_CHARS と同じ値。
+    _DESCRIPTION_MAX_CHARS: int = 4000
+
+    @staticmethod
+    def _cut_at_sentence(text: str, max_chars: int) -> str:
+        """max_charsを超えるテキストを直近の文末（. ! ? 。等）で切り詰める。
+        文の途中でぶつ切りにしない（kg_build/backfill_display_fields.pyの
+        cut_at_sentence()と同じロジック）。"""
+        if len(text) <= max_chars:
+            return text
+        cut = text[:max_chars]
+        last = max(cut.rfind(ch) for ch in ".!?。！？")
+        if last >= max_chars // 2:
+            return cut[: last + 1].rstrip()
+        trimmed = cut.rsplit(" ", 1)[0].rstrip()
+        return (trimmed or cut.rstrip()) + "…"
 
     def get_description(self, product_id: str, lang: str = "en") -> dict[str, Any] | None:
         """商品説明文(description)を返す。Text2Cypherの検索結果には含めず、UIが商品IDを
@@ -1670,9 +1764,9 @@ LIMIT $limit
         長く、生成Cypherの必須RETURN項目に加えると全検索クエリの負荷・失敗要因が増える。
         lang="ja"の場合、backfill_display_fields.py --descriptions-jaで付与済みの
         description_jaがあればそちらを返す（無ければ英語原文にフォールバック）。
-        英語原文は末尾に著作権表示等の定型文が続くことが多いため、表示用に先頭
-        _DESCRIPTION_MAX_CHARS文字で切る（description_jaも同じ長さの原文から翻訳
-        されているので一貫性がある）。"""
+        英語原文は末尾に著作権表示等の定型文が続くことが多いため、表示用に
+        _DESCRIPTION_MAX_CHARSまで・文末境界で切る（description_jaも同じ長さの
+        原文から翻訳されているので一貫性がある）。"""
         cypher = """
 MATCH (p:Product {product_id: $product_id})
 WHERE p.description IS NOT NULL AND p.description <> ''
@@ -1688,10 +1782,56 @@ RETURN p.description AS description, p.description_ja AS description_ja
             if use_ja and description_ja:
                 text = description_ja
             else:
-                text = _strip_html(description) or ""
-                if len(text) > self._DESCRIPTION_MAX_CHARS:
-                    text = text[: self._DESCRIPTION_MAX_CHARS].rstrip() + "…"
+                text = self._cut_at_sentence(
+                    _strip_html(description) or "", self._DESCRIPTION_MAX_CHARS
+                )
             return {"description": text, "translated": bool(use_ja and description_ja)}
+
+    def save_feedback(
+        self,
+        product_id: str,
+        user_id: str | None,
+        search_id: str | None,
+        helpful: bool,
+        lang: str = "ja",
+    ) -> bool:
+        """「この推薦は役に立ちましたか？」のユーザー回答をFeedbackノードとして保存する。
+
+        (f:Feedback)-[:ABOUT]->(p:Product) を必ず張り、user_id/search_idが実在すれば
+        (u:User)-[:GAVE]->(f) と (f)-[:FOR_SEARCH]->(sl:SearchLog) も張る。
+        SearchLogの照合キーはlog_idプロパティ（recommend()が返すsearch_idと同じ値）。
+        positiveなフィードバックは_get_dynamic_few_shot()がクリックより強い正例シグナル
+        として利用する。
+
+        商品が存在しない場合は ``False`` を返す。Neo4jの接続・書込み失敗は握り潰さず
+        呼び出し元へ送出し、APIが成功表示を返さないようにする。"""
+        fid = str(uuid.uuid4())
+        ts = int(time.time() * 1000)
+        write_cypher = """
+MATCH (p:Product {product_id: $product_id})
+CREATE (f:Feedback {feedback_id: $fid, product_id: $product_id,
+                    helpful: $helpful, lang: $lang, created_at: $ts})
+CREATE (f)-[:ABOUT]->(p)
+WITH f
+OPTIONAL MATCH (sl:SearchLog {log_id: $search_id})
+FOREACH (_ IN CASE WHEN sl IS NULL THEN [] ELSE [1] END | CREATE (f)-[:FOR_SEARCH]->(sl))
+WITH f
+OPTIONAL MATCH (u:User {user_id: $user_id})
+FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END | CREATE (u)-[:GAVE]->(f))
+RETURN count(DISTINCT f) AS saved
+"""
+        with self._driver.session(database=self._neo4j_db) as session:
+            record = session.run(
+                write_cypher,
+                product_id=product_id,
+                fid=fid,
+                helpful=helpful,
+                lang=lang,
+                ts=ts,
+                search_id=search_id,
+                user_id=user_id,
+            ).single()
+        return bool(record and record["saved"] == 1)
 
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30
@@ -1760,8 +1900,8 @@ RETURN p.description AS description, p.description_ja AS description_ja
 
     def clear_behavior_history(self, user_id: str) -> dict[str, int]:
         """RATED（データセット由来の評価履歴）はそのままに、このユーザーの永続的な行動データ
-        ——VIEWED行動ログとSearchLog検索履歴——だけを削除する。デモで行動ログをまっさらな
-        状態に戻したい時に使う（推薦の根拠であるRATED自体は変更しない）。"""
+        ——VIEWED行動ログ・SearchLog検索履歴・Feedback——だけを削除する。デモで行動ログを
+        まっさらな状態に戻したい時に使う（推薦の根拠であるRATED自体は変更しない）。"""
         with self._driver.session(database=self._neo4j_db) as session:
             viewed_result = session.run(
                 "MATCH (:User {user_id: $uid})-[r:VIEWED]->() "
@@ -1777,12 +1917,20 @@ RETURN p.description AS description, p.description_ja AS description_ja
                 "RETURN size(sls) AS n",
                 uid=user_id,
             ).single()
+            feedback_result = session.run(
+                "MATCH (:User {user_id: $uid})-[:GAVE]->(f:Feedback) "
+                "WITH collect(f) AS fs "
+                "FOREACH (x IN fs | DETACH DELETE x) "
+                "RETURN size(fs) AS n",
+                uid=user_id,
+            ).single()
         # 古い履歴を前提に生成されたホーム推薦キャッシュも破棄する
         for key in [k for k in self._home_cache if k.startswith(f"{user_id}:")]:
             del self._home_cache[key]
         return {
             "viewed_deleted": viewed_result["n"] if viewed_result else 0,
             "searches_deleted": search_result["n"] if search_result else 0,
+            "feedback_deleted": feedback_result["n"] if feedback_result else 0,
         }
 
     def close(self) -> None:
@@ -1846,19 +1994,23 @@ RETURN p.description AS description, p.description_ja AS description_ja
         }
 
     def _get_dynamic_few_shot(self, user_id: str) -> list[dict]:
-        """Return past (query, cypher) pairs that led to at least one click."""
+        """クリックまたはpositiveフィードバックにつながった検索を返す
+        （negativeが付いた検索は除外）。"""
         try:
             with self._driver.session(database=self._neo4j_db) as session:
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
                     "WHERE sl.cypher IS NOT NULL AND sl.query <> '[home]' "
                     "WITH u, sl "
-                    "OPTIONAL MATCH (u)-[v:VIEWED]->(:Product) "
-                    "WHERE v.search_id = sl.log_id "
-                    "WITH sl, count(v) AS clicks "
-                    "WHERE clicks > 0 "
+                    "OPTIONAL MATCH (u)-[v:VIEWED]->(:Product) WHERE v.search_id = sl.log_id "
+                    "WITH u, sl, count(v) AS clicks "
+                    "OPTIONAL MATCH (f:Feedback)-[:FOR_SEARCH]->(sl) "
+                    "WITH sl, clicks, "
+                    "     sum(CASE WHEN f.helpful THEN 1 ELSE 0 END) AS pos, "
+                    "     sum(CASE WHEN f.helpful = false THEN 1 ELSE 0 END) AS neg "
+                    "WHERE neg = 0 AND (clicks > 0 OR pos > 0) "
                     "RETURN sl.query AS query, sl.cypher AS cypher, sl.explanation AS explanation "
-                    "ORDER BY clicks DESC, sl.timestamp DESC LIMIT 3",
+                    "ORDER BY (clicks + pos * 3) DESC, sl.timestamp DESC LIMIT 3",
                     uid=user_id,
                 )
                 return [

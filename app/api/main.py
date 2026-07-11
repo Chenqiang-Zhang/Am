@@ -10,6 +10,8 @@ from .models import (
     ChatResponse,
     ClearHistoryResponse,
     DescriptionResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
@@ -129,6 +131,23 @@ async def get_description(product_id: str, lang: str = "en") -> DescriptionRespo
     if row is None:
         return DescriptionResponse(product_id=product_id, description=None, translated=False)
     return DescriptionResponse(product_id=product_id, **row)
+
+
+@app.post("/recommendations/{product_id}/feedback", response_model=FeedbackResponse)
+async def recommendation_feedback(product_id: str, req: FeedbackRequest) -> FeedbackResponse:
+    """「この推薦は役に立ちましたか？」のはい/いいえをNeo4jに記録する。"""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    try:
+        saved = await asyncio.to_thread(
+            _recommender.save_feedback, product_id, req.user_id, req.search_id, req.helpful, req.lang
+        )
+    except Exception:
+        # DB障害の詳細をクライアントへ露出せず、失敗を明示する。
+        raise HTTPException(status_code=503, detail="Could not save feedback")
+    if not saved:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return FeedbackResponse(status="ok", product_id=product_id)
 
 
 if __name__ == "__main__":
