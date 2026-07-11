@@ -173,7 +173,20 @@ ORDER BY size(matched_attrs) DESC LIMIT $limit
 
 実際のAPIでは、この元パスに加えて `Product.title/title_ja`、`BELONGS_TO`、
 `HAS_ATTRIBUTE` を会話条件でフィルタし、`avg_rating` と `rating_count` も
-ランキングに加える。`MENTIONS` はレビューで確認された属性を使う次段階の拡張候補。
+ランキングに加える。さらに、オフライン比較実験で協調フィルタリングが exact-ASIN
+予測に強いことが確認されたため、現行APIでは以下の peer collaborative meta-path も
+ランキング信号として加えている。
+
+```cypher
+MATCH (u:User {user_id: $uid})-[sr:RATED]->(seed:Product)
+      <-[pr:RATED]-(peer:User)-[cr:RATED]->(rec:Product)
+WHERE sr.rating >= 4 AND pr.rating >= 4 AND cr.rating >= 4
+  AND peer <> u
+RETURN rec, count(DISTINCT peer) AS peer_support
+ORDER BY peer_support DESC LIMIT $limit
+```
+
+`MENTIONS` はレビューで確認された属性を使う次段階の拡張候補。
 
 ### ① 4ホップ協調フィルタリング
 ```cypher

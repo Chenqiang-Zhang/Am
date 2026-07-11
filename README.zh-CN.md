@@ -23,6 +23,7 @@ Neo4j 知识图谱
 REST API（FastAPI）
     ├── 结构化搜索               （LLM 只抽取商品/类别/属性条件，不直接生成数据库查询）
     ├── 元路径排序               （User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product，
+    │                            并加入 User -> Product <- Peer User -> Product 协同支持，
     │                            再结合对话条件、类别匹配、评分和热度进行排序）
     ├── 首页推荐                 （有历史的用户使用同一条行为→属性元路径；无历史用户跳过 LLM，
     │                            直接返回热门商品）

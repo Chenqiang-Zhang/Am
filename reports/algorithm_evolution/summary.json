@@ -1,0 +1,90 @@
+{
+  "n_users": 1000,
+  "n_products": 1728,
+  "cutoffs": [
+    10,
+    20,
+    50
+  ],
+  "methods": {
+    "popularity": {
+      "coverage@10": 0.0081,
+      "avg_rating@10": 4.7011,
+      "diversity@10": 0.9219,
+      "HR@10": 0.038,
+      "NDCG@10": 0.0166,
+      "MRR@10": 0.0102,
+      "HR@20": 0.051,
+      "NDCG@20": 0.02,
+      "MRR@20": 0.0112,
+      "HR@50": 0.089,
+      "NDCG@50": 0.0274,
+      "MRR@50": 0.0124
+    },
+    "item_cf": {
+      "coverage@10": 0.6209,
+      "avg_rating@10": 4.4693,
+      "diversity@10": 0.8354,
+      "HR@10": 0.088,
+      "NDCG@10": 0.0404,
+      "MRR@10": 0.0262,
+      "HR@20": 0.141,
+      "NDCG@20": 0.0539,
+      "MRR@20": 0.03,
+      "HR@50": 0.249,
+      "NDCG@50": 0.075,
+      "MRR@50": 0.0332
+    },
+    "user_cf": {
+      "coverage@10": 0.1823,
+      "avg_rating@10": 4.4995,
+      "diversity@10": 0.8446,
+      "HR@10": 0.081,
+      "NDCG@10": 0.0394,
+      "MRR@10": 0.0269,
+      "HR@20": 0.13,
+      "NDCG@20": 0.0516,
+      "MRR@20": 0.0302,
+      "HR@50": 0.232,
+      "NDCG@50": 0.0719,
+      "MRR@50": 0.0334
+    },
+    "kg_meta_path_v1": {
+      "coverage@10": 0.3762,
+      "avg_rating@10": 4.5126,
+      "diversity@10": 0.8102,
+      "HR@10": 0.016,
+      "NDCG@10": 0.0069,
+      "MRR@10": 0.0042,
+      "HR@20": 0.031,
+      "NDCG@20": 0.0105,
+      "MRR@20": 0.0051,
+      "HR@50": 0.072,
+      "NDCG@50": 0.0186,
+      "MRR@50": 0.0064
+    },
+    "hybrid_v2": {
+      "coverage@10": 0.3715,
+      "avg_rating@10": 4.5087,
+      "diversity@10": 0.8361,
+      "HR@10": 0.084,
+      "NDCG@10": 0.039,
+      "MRR@10": 0.0254,
+      "HR@20": 0.145,
+      "NDCG@20": 0.0545,
+      "MRR@20": 0.0297,
+      "HR@50": 0.243,
+      "NDCG@50": 0.0737,
+      "MRR@50": 0.0327
+    }
+  },
+  "preflight": {
+    "products": 1728,
+    "users_with_ratings": 2917,
+    "eligible_users": 2910,
+    "evaluated_users": 1000,
+    "price_coverage": 1.0,
+    "image_coverage": 1.0,
+    "avg_rating_coverage": 1.0
+  }
+}

@@ -177,6 +177,16 @@ CALL (p) {
 }
 CALL (p) {
   MATCH (u:User {user_id: $uid})
+  OPTIONAL MATCH (u)-[sr:RATED]->(seed:Product)<-[pr:RATED]-(peer:User)-[cr:RATED]->(p)
+  WHERE toFloat(sr.rating) >= 4
+    AND toFloat(pr.rating) >= 4
+    AND toFloat(cr.rating) >= 4
+    AND peer <> u
+  RETURN count(DISTINCT peer) AS cf_peer_count,
+         count(DISTINCT seed) AS cf_seed_count
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
   OPTIONAL MATCH (u)-[seen:RATED|VIEWED]->(p)
   RETURN count(seen) AS already_seen
 }
@@ -184,8 +194,8 @@ WITH p, categories,
      [a IN product_attrs WHERE a IS NOT NULL] AS product_attrs,
      [a IN rated_attrs WHERE a IS NOT NULL] AS rated_attrs,
      [a IN viewed_attrs WHERE a IS NOT NULL] AS viewed_attrs,
-     rated_seed_count, viewed_seed_count, already_seen
-WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count, already_seen,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen
+WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen,
      [kw IN $product_keywords
       WHERE toLower(coalesce(p.title, '')) CONTAINS kw
          OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
@@ -198,15 +208,18 @@ WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_cou
            OR toLower(coalesce(a.value_ja, '')) CONTAINS kw
            OR toLower(coalesce(a.attr_type, '')) CONTAINS kw)] AS query_attrs
 WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
-     rated_seed_count, viewed_seed_count, already_seen,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen,
      (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)) AS condition_hits,
-     (size(rated_attrs) + size(viewed_attrs)) AS behavior_hits
+     (size(rated_attrs) + size(viewed_attrs) + cf_peer_count) AS behavior_hits
 WHERE already_seen = 0
   AND ($has_query = false OR condition_hits > 0)
   AND behavior_hits > 0
 WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
-     rated_seed_count, viewed_seed_count, condition_hits, behavior_hits,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, condition_hits, behavior_hits,
      (
+       log(toFloat(cf_peer_count) + 1) * 2.4
+       + log(toFloat(cf_seed_count) + 1) * 0.8
+       +
        toFloat(size(query_attrs)) * 2.0
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
@@ -226,6 +239,7 @@ RETURN p.product_id AS product_id,
        p.rating_count AS rating_count,
        score,
        CASE
+         WHEN cf_peer_count > 0 THEN $peer_explanation
          WHEN size(rated_attrs) > 0 THEN $rated_explanation
          WHEN size(viewed_attrs) > 0 THEN $viewed_explanation
          ELSE $condition_explanation
@@ -315,6 +329,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
         return {
             "top": "会話条件とユーザ履歴から、商品属性を共有する候補をグラフの元パスで推薦",
             "condition_top": "会話条件を構造化し、商品・カテゴリ・属性一致で候補を推薦",
+            "peer": "好みが近いユーザにも高評価されている候補です",
             "rated": "高評価した商品と共有する属性が強い候補です",
             "viewed": "最近閲覧した商品と共有する属性がある候補です",
             "condition": "会話で指定された条件に一致する候補です",
@@ -322,6 +337,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
     return {
         "top": "Meta-path recommendation using dialogue constraints and user-history attribute links",
         "condition_top": "Structured dialogue constraints matched against product, category, and attribute data",
+        "peer": "Highly rated by users with overlapping taste",
         "rated": "Shares attributes with products this user rated highly",
         "viewed": "Shares attributes with products this user recently viewed",
         "condition": "Matches the structured dialogue constraints",
@@ -1414,6 +1430,7 @@ LIMIT $limit
             "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
             "min_rating": float(conditions.get("min_rating") or 0.0),
             "has_query": has_query,
+            "peer_explanation": explanations["peer"],
             "rated_explanation": explanations["rated"],
             "viewed_explanation": explanations["viewed"],
             "condition_explanation": explanations["condition"],

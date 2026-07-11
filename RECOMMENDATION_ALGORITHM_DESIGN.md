@@ -55,14 +55,21 @@ This is safer and easier to evaluate because the algorithm is no longer a differ
 
 ## Slide 4: Minimal Meta-Path Version
 
-First implemented path:
+Implemented paths:
 
 ```text
+Path A:
 User
   -> RATED / VIEWED
   -> seed Product
   -> HAS_ATTRIBUTE
   -> candidate Product
+
+Path B:
+User
+  -> RATED seed Product
+  <- RATED peer User
+  -> RATED candidate Product
 ```
 
 Dialogue conditions are used as filters and ranking signals:
@@ -78,6 +85,7 @@ Ranking combines:
 
 - shared attributes from highly rated products
 - shared attributes from recently viewed products
+- peer users with overlapping taste
 - direct match to dialogue conditions
 - average rating
 - rating count
@@ -88,6 +96,7 @@ The explanation is derived from the strongest path:
 
 - Shares attributes with products this user rated highly
 - Shares attributes with products this user recently viewed
+- Highly rated by users with overlapping taste
 - Matches the structured dialogue constraints
 
 This makes the reason inspectable in the developer view because the returned `intent.cypher` is a fixed meta-path query, and `matched_attrs` shows the attributes used in the path.
@@ -97,6 +106,7 @@ This makes the reason inspectable in the developer view because the returned `in
 Current minimum version:
 
 - implemented: User -> Product -> Attribute -> Product
+- implemented: User -> Product <- Peer User -> Product
 - implemented: dialogue condition filtering by product/category/attribute terms
 - implemented: home recommendation uses the same meta-path for users with history
 - retained: legacy Text2Cypher as a fallback only

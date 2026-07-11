@@ -24,6 +24,7 @@ REST API (FastAPI)
     ├── Structured search       (LLM extracts product/category/attribute conditions; Neo4j executes
     │                            fixed meta-path retrieval instead of trusting generated Cypher)
     ├── Meta-path ranking       (User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product,
+    │                            plus User -> Product <- Peer User -> Product collaborative support,
     │                            combined with dialogue filters, category matches, ratings, and popularity)
     ├── Home recommendations    (users with history use the same behavior-to-attribute meta-path;
     │                            users without history skip the LLM and return popular products)

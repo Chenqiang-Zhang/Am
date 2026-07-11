@@ -23,6 +23,7 @@ Neo4j ナレッジグラフ
 REST API（FastAPI）
     ├── 構造化検索               （LLM は商品・カテゴリ・属性条件を抽出し、Cypher 文字列は直接生成しない）
     ├── 元パスランキング         （User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product を
+    │                            基本に、User -> Product <- Peer User -> Product の協調支援も加え、
     │                            会話条件・カテゴリ一致・評価値・人気度と組み合わせて順位付けする）
     ├── ホーム推薦               （履歴のあるユーザは同じ行動→属性の元パスを使い、履歴のないユーザは
     │                            LLM をスキップして人気商品を返す）
