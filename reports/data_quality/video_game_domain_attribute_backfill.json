@@ -1,0 +1,255 @@
+{
+  "products_scanned": 1728,
+  "product_attribute_edges_inferred": 4021,
+  "dry_run": false,
+  "replace": true,
+  "domain_relationships_deleted": 4270,
+  "domain_attributes_deleted": 48,
+  "products_with_attr_type": {
+    "domain_franchise": 450,
+    "domain_platform": 1390,
+    "domain_product_type": 1602
+  },
+  "top_values": [
+    {
+      "attr_type": "domain_product_type",
+      "value": "video_game",
+      "count": 1345
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "ps3",
+      "count": 304
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "xbox_360",
+      "count": 238
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "ps4",
+      "count": 220
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "nintendo_switch",
+      "count": 213
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "pc",
+      "count": 181
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "wii",
+      "count": 179
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "xbox_one",
+      "count": 173
+    },
+    {
+      "attr_type": "domain_product_type",
+      "value": "accessory",
+      "count": 132
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "nintendo_3ds",
+      "count": 95
+    },
+    {
+      "attr_type": "domain_product_type",
+      "value": "console",
+      "count": 87
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "playstation_vita",
+      "count": 87
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "nintendo_ds",
+      "count": 78
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "wii_u",
+      "count": 78
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "mario",
+      "count": 75
+    },
+    {
+      "attr_type": "domain_product_type",
+      "value": "controller",
+      "count": 63
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "xbox_series_x",
+      "count": 48
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "final_fantasy",
+      "count": 36
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "resident_evil",
+      "count": 33
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "lego",
+      "count": 30
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "zelda",
+      "count": 28
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "sonic",
+      "count": 23
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "star_wars",
+      "count": 21
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "call_of_duty",
+      "count": 21
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "pokemon",
+      "count": 18
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "assassins_creed",
+      "count": 18
+    },
+    {
+      "attr_type": "domain_platform",
+      "value": "ps5",
+      "count": 18
+    },
+    {
+      "attr_type": "domain_product_type",
+      "value": "headset",
+      "count": 15
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "kingdom_hearts",
+      "count": 14
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "halo",
+      "count": 13
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "madden",
+      "count": 13
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "nba_2k",
+      "count": 13
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "forza",
+      "count": 12
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "metroid",
+      "count": 11
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "spider_man",
+      "count": 11
+    },
+    {
+      "attr_type": "domain_product_type",
+      "value": "storage",
+      "count": 10
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "dragon_quest",
+      "count": 10
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "kirby",
+      "count": 9
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "battlefield",
+      "count": 8
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "grand_theft_auto",
+      "count": 7
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "fire_emblem",
+      "count": 6
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "animal_crossing",
+      "count": 5
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "red_dead",
+      "count": 5
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "monster_hunter",
+      "count": 5
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "minecraft",
+      "count": 5
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "fifa",
+      "count": 4
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "splatoon",
+      "count": 2
+    },
+    {
+      "attr_type": "domain_franchise",
+      "value": "mlb_the_show",
+      "count": 1
+    }
+  ]
+}

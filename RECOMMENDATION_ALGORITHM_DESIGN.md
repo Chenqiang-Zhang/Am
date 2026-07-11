@@ -10,7 +10,7 @@ The recommended architecture is:
 Dialogue / search input
   -> LLM extracts structured conditions
   -> Neo4j recalls candidates through graph meta-paths
-  -> transition-first ranking combines behavior, attributes, categories, rating, popularity
+  -> domain-constrained ranking for search, transition-first ranking for home
   -> strongest graph path becomes the recommendation reason
 ```
 
@@ -89,6 +89,7 @@ candidate Product
 
 Ranking combines:
 
+- explicit platform / franchise / product-type constraints
 - sequential transition support from similar users
 - recent item-item collaborative similarity
 - shared attributes from highly rated products
@@ -103,6 +104,7 @@ Ranking combines:
 The explanation is derived from the strongest path:
 
 - Often chosen next after games similar to the user's recent likes
+- Matches the requested platform, franchise, or product type
 - Shares attributes with products this user rated highly
 - Shares attributes with products this user recently viewed
 - Highly rated by users with overlapping taste
@@ -117,6 +119,8 @@ Current minimum version:
 - implemented: User -> Product -> Attribute -> Product
 - implemented: User -> Product <- Peer User -> Product
 - implemented: User -> recent Product <- Peer User -> next Product
+- implemented: normalized domain attributes (`domain_platform`, `domain_franchise`, `domain_product_type`)
+- implemented: controlled fallback that relaxes franchise before platform/product type
 - implemented: dialogue condition filtering by product/category/attribute terms
 - implemented: home recommendation uses the same meta-path for users with history
 - retained: legacy Text2Cypher as a fallback only

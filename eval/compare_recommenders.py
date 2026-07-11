@@ -50,6 +50,12 @@ IGNORED_ATTR_TYPES = {
     "terms_of_use",
 }
 
+DOMAIN_PREFIXES = {
+    "platform": "domain_platform:",
+    "franchise": "domain_franchise:",
+    "product_type": "domain_product_type:",
+}
+
 
 @dataclass
 class GraphData:
@@ -416,6 +422,27 @@ def diversity_for_list(pids: list[str], data: GraphData) -> float:
     return sum(dists) / len(dists) if dists else 0.0
 
 
+def domain_values(pid: str, data: GraphData, prefix: str) -> set[str]:
+    return {
+        value.removeprefix(prefix)
+        for value in data.attrs_by_product.get(pid, set())
+        if value.startswith(prefix)
+    }
+
+
+def domain_match_for_list(target_pid: str, recs: list[str], data: GraphData, prefix: str) -> float | None:
+    target_values = domain_values(target_pid, data, prefix)
+    if not target_values:
+        return None
+    if not recs:
+        return 0.0
+    matches = 0
+    for pid in recs:
+        if target_values & domain_values(pid, data, prefix):
+            matches += 1
+    return matches / len(recs)
+
+
 def summarize(records: list[dict[str, Any]], data: GraphData, cutoffs: list[int]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "n_users": len(records),
@@ -438,6 +465,17 @@ def summarize(records: list[dict[str, Any]], data: GraphData, cutoffs: list[int]
             f"avg_rating@{report_k}": round(float(np.mean(ratings)), 4) if ratings else 0.0,
             f"diversity@{report_k}": round(float(np.mean([diversity_for_list(x, data) for x in rec_lists])), 4),
         }
+        domain_scores: list[float] = []
+        for name, prefix in DOMAIN_PREFIXES.items():
+            values = [
+                domain_match_for_list(record["target_product_id"], record["recommendations"][method][:report_k], data, prefix)
+                for record in records
+            ]
+            values = [v for v in values if v is not None]
+            score = round(float(np.mean(values)), 4) if values else 0.0
+            method_summary[f"{name}_match@{report_k}"] = score
+            domain_scores.append(score)
+        method_summary[f"domain_match@{report_k}"] = round(float(np.mean(domain_scores)), 4) if domain_scores else 0.0
         for c in cutoffs:
             method_summary[f"HR@{c}"] = round(sum(1 for rk in ranks if rk is not None and rk <= c) / len(ranks), 4)
             method_summary[f"NDCG@{c}"] = round(sum(ndcg(rk) if rk is not None and rk <= c else 0.0 for rk in ranks) / len(ranks), 4)
@@ -480,7 +518,7 @@ def plot_summary(summary: dict[str, Any], out_dir: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 5))
     width = 0.25
     ax.bar(x - width, values(f"coverage@{top_k}"), width, label=f"Catalog Coverage@{top_k}")
-    ax.bar(x, values(f"avg_rating@{top_k}"), width, label=f"Avg Rating@{top_k}")
+    ax.bar(x, values(f"domain_match@{top_k}"), width, label=f"Domain Match@{top_k}")
     ax.bar(x + width, values(f"diversity@{top_k}"), width, label=f"Diversity@{top_k}")
     ax.set_title("Operational Quality Metrics")
     ax.set_ylabel("Score")
@@ -527,7 +565,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         f"- 评估用户数：{summary['n_users']}",
         f"- 商品数：{summary['n_products']}",
         f"- 留出方式：每个用户最新一条 4 星及以上评分作为未来目标商品。",
-        f"- 指标：HR@K、NDCG@K、MRR@K、Catalog Coverage@{top_k}、Avg Rating@{top_k}、Diversity@{top_k}。",
+        f"- 指标：HR@K、NDCG@K、MRR@K、Catalog Coverage@{top_k}、Domain Match@{top_k}、Diversity@{top_k}。",
         f"- 本轮说明：{phase_note}",
         f"- 数据完整性：价格覆盖率 {summary['preflight']['price_coverage']:.2%}，图片覆盖率 {summary['preflight']['image_coverage']:.2%}，评分覆盖率 {summary['preflight']['avg_rating_coverage']:.2%}。",
         "",
@@ -539,13 +577,15 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "",
         f"![hr](hr_by_cutoff.png)",
         "",
-        "| 方法 | HR@{} | NDCG@{} | MRR@{} | Coverage@{} | Diversity@{} |".format(cut, cut, cut, top_k, top_k),
-        "|---|---:|---:|---:|---:|---:|",
+        "| 方法 | HR@{} | NDCG@{} | MRR@{} | Coverage@{} | Domain@{} | Platform@{} | Franchise@{} | Type@{} |".format(cut, cut, cut, top_k, top_k, top_k, top_k, top_k),
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for method, vals in methods.items():
         lines.append(
             f"| {method} | {vals[f'HR@{cut}']:.4f} | {vals[f'NDCG@{cut}']:.4f} | "
-            f"{vals[f'MRR@{cut}']:.4f} | {vals[f'coverage@{top_k}']:.4f} | {vals[f'diversity@{top_k}']:.4f} |"
+            f"{vals[f'MRR@{cut}']:.4f} | {vals[f'coverage@{top_k}']:.4f} | "
+            f"{vals[f'domain_match@{top_k}']:.4f} | {vals[f'platform_match@{top_k}']:.4f} | "
+            f"{vals[f'franchise_match@{top_k}']:.4f} | {vals[f'product_type_match@{top_k}']:.4f} |"
         )
 
     lines.extend([
@@ -556,6 +596,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "2. 第二轮改进：加入 `item_cf_recent` 和 `transition_cf`。结果显示近期兴趣、顺序转移明显优于普通 KG 属性路径，说明相关性差的主因是排序缺少行为时序信号。",
         "3. 第三轮调参：RRF 融合可以提高较深位置的覆盖，但会稀释 Top10。对前端推荐来说，用户首先看到的是前几条，因此不能只追 HR@50。",
         "4. 第四轮方案：采用 `hybrid_v4`，即 Transition-first。先保留“相似用户在相似游戏之后选择了什么”的候选顺序，再用 Recent Item-CF、User-CF、KG、Popularity 补召回。",
+        "5. 第五轮方案：参考 All Beauty 阶段的数据清洗经验，发现 Video Games 的旧 `product_type/franchise/platform` 属性存在描述串扰和类型误判，因此新增干净的 `domain_product_type/domain_platform/domain_franchise`。搜索场景先满足平台、系列、商品类型等强约束，再在候选内使用 Transition-first 排序；如果“系列 + 平台”过窄导致无结果，只放松系列，不放松平台和商品类型。",
         "",
         "## 客观判断",
         "",
@@ -563,6 +604,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         f"- Top{cut} 综合命中最优方法：`{best_deep}`，NDCG@{cut} = {methods[best_deep][f'NDCG@{cut}']:.4f}。",
         f"- `hybrid_v4` 相比热门推荐：HR@{top_k} 提升 {lift(hybrid, popularity, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, popularity, f'NDCG@{top_k}')}。",
         f"- `hybrid_v4` 相比普通 Item-CF：HR@{top_k} 提升 {lift(hybrid, item_cf, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, item_cf, f'NDCG@{top_k}')}。",
+        f"- `kg_meta_path_v1` 的 Domain@{top_k} = {methods.get('kg_meta_path_v1', {}).get(f'domain_match@{top_k}', 0.0):.4f}，说明 KG 更适合保证同平台、同系列、同商品类型的一致性；行为方法更适合 exact-ASIN 预测。",
         "- 因此，当前推荐器不应被描述为“LLM 生成 Cypher 后直接推荐”，而应描述为：LLM 结构化对话条件，图数据库用用户行为元路径召回，Transition-first 行为排序决定前排，KG 属性路径负责条件过滤和可解释理由。",
         "",
         "## 仍然存在的限制",
@@ -574,8 +616,10 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "## 当前采用方案",
         "",
         "- 线上推荐排序采用 Transition-first：相似用户在相似游戏之后更可能选择的候选优先。",
+        "- 搜索推荐采用 domain-constrained ranking：明确的 franchise/platform/product_type 先作为强约束和高权重特征，避免“用户要 Switch 游戏却返回其他平台或配件”。",
+        "- 当具体系列覆盖不足时，系统只进行受控降级：保留平台和商品类型，放松系列约束。",
         "- Recent Item-CF / User-CF 用于补足行为相似性和召回。",
-        "- KG 元路径继续保留，用于对话条件过滤、属性解释和冷启动补充。",
+        "- KG 元路径继续保留，用于对话条件过滤、属性解释、冷启动补充和 domain-level 一致性控制。",
         "- 热门推荐只作为无用户历史或召回为空时的兜底。",
     ])
     (out_dir / "算法进化报告.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

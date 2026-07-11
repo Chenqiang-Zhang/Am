@@ -222,18 +222,54 @@ WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_cou
       WHERE any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS category_kw_hits,
      [a IN product_attrs
       WHERE any(kw IN $attribute_keywords
-        WHERE toLower(coalesce(a.value, '')) CONTAINS kw
-           OR toLower(coalesce(a.value_ja, '')) CONTAINS kw
-           OR toLower(coalesce(a.attr_type, '')) CONTAINS kw)] AS query_attrs
-WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
+        WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.attr_type, '')), '_', ' ') CONTAINS kw)] AS query_attrs,
+     [kw IN $platform_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS platform_text_hits,
+     [kw IN $franchise_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS franchise_text_hits,
+     [kw IN $product_type_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_type_text_hits,
+     [a IN product_attrs
+      WHERE a.attr_type IN $platform_attr_types
+        AND any(kw IN $platform_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS platform_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $franchise_attr_types
+        AND any(kw IN $franchise_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS franchise_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $product_type_attr_types
+        AND any(kw IN $product_type_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
      transition_peer_count, transition_seed_count, already_seen,
-     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)) AS condition_hits,
+     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
+      + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
+      + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits,
      (size(rated_attrs) + size(viewed_attrs) + cf_peer_count + transition_peer_count) AS behavior_hits
 WHERE already_seen = 0
   AND ($has_query = false OR condition_hits > 0)
+  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
+  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
+  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
   AND behavior_hits > 0
-WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
      transition_peer_count, transition_seed_count, condition_hits, behavior_hits,
      (
@@ -245,6 +281,12 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attr
        toFloat(size(query_attrs)) * 2.0
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
+       + toFloat(size(franchise_text_hits)) * 14.0
+       + toFloat(size(platform_text_hits)) * 12.0
+       + toFloat(size(product_type_text_hits)) * 8.0
+       + toFloat(size(franchise_attrs)) * 5.0
+       + toFloat(size(platform_attrs)) * 4.0
+       + toFloat(size(product_type_attrs)) * 2.5
        + toFloat(size(rated_attrs)) * 0.85
        + toFloat(size(viewed_attrs)) * 0.7
        + toFloat(rated_seed_count) * 0.2
@@ -265,9 +307,9 @@ RETURN p.product_id AS product_id,
          WHEN cf_peer_count > 0 THEN $peer_explanation
          WHEN size(rated_attrs) > 0 THEN $rated_explanation
          WHEN size(viewed_attrs) > 0 THEN $viewed_explanation
-         ELSE $condition_explanation
+       ELSE $condition_explanation
        END AS explanation,
-       [a IN (query_attrs + rated_attrs + viewed_attrs)[0..8]
+       [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs + rated_attrs + viewed_attrs)[0..8]
         WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
 ORDER BY score DESC LIMIT $limit
 """
@@ -297,17 +339,58 @@ WITH p, categories, product_attrs,
       WHERE any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS category_kw_hits,
      [a IN product_attrs
       WHERE any(kw IN $attribute_keywords
-        WHERE toLower(coalesce(a.value, '')) CONTAINS kw
-           OR toLower(coalesce(a.value_ja, '')) CONTAINS kw
-           OR toLower(coalesce(a.attr_type, '')) CONTAINS kw)] AS query_attrs
-WITH p, product_kw_hits, category_kw_hits, query_attrs,
-     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)) AS condition_hits
+        WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.attr_type, '')), '_', ' ') CONTAINS kw)] AS query_attrs,
+     [kw IN $platform_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS platform_text_hits,
+     [kw IN $franchise_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS franchise_text_hits,
+     [kw IN $product_type_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_type_text_hits,
+     [a IN product_attrs
+      WHERE a.attr_type IN $platform_attr_types
+        AND any(kw IN $platform_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS platform_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $franchise_attr_types
+        AND any(kw IN $franchise_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS franchise_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $product_type_attr_types
+        AND any(kw IN $product_type_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs,
+     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
+      + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
+      + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits
 WHERE condition_hits > 0
-WITH p, product_kw_hits, category_kw_hits, query_attrs,
+  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
+  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
+  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs, product_type_attrs,
      (
        toFloat(size(query_attrs)) * 2.0
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
+       + toFloat(size(franchise_text_hits)) * 14.0
+       + toFloat(size(platform_text_hits)) * 12.0
+       + toFloat(size(product_type_text_hits)) * 8.0
+       + toFloat(size(franchise_attrs)) * 5.0
+       + toFloat(size(platform_attrs)) * 4.0
+       + toFloat(size(product_type_attrs)) * 2.5
        + coalesce(toFloat(p.avg_rating), 3.5) * 0.45
        + log(toFloat(coalesce(p.rating_count, 1)) + 1) * 0.12
      ) AS score
@@ -320,7 +403,7 @@ RETURN p.product_id AS product_id,
        p.rating_count AS rating_count,
        score,
        $condition_explanation AS explanation,
-       [a IN query_attrs[0..8]
+       [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs)[0..8]
         WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
 ORDER BY score DESC LIMIT $limit
 """
@@ -345,6 +428,66 @@ _IGNORED_BEHAVIOR_ATTR_TYPES = [
     "return_policy",
     "terms_of_use",
 ]
+
+_PLATFORM_ATTR_TYPES = [
+    "domain_platform",
+]
+
+_FRANCHISE_ATTR_TYPES = [
+    "domain_franchise",
+]
+
+_PRODUCT_TYPE_ATTR_TYPES = [
+    "domain_product_type",
+]
+
+_DOMAIN_ALIASES: dict[str, dict[str, list[str]]] = {
+    "platform": {
+        "nintendo_switch": ["nintendo switch", "switch", "nintendo_switch", "スイッチ"],
+        "ps5": ["playstation 5", "ps5", "ps 5"],
+        "ps4": ["playstation 4", "ps4", "ps 4"],
+        "ps3": ["playstation 3", "ps3", "ps 3"],
+        "playstation_vita": ["playstation vita", "ps vita", "vita"],
+        "xbox_series_x": ["xbox series x", "xbox series s", "series x", "series s"],
+        "xbox_one": ["xbox one"],
+        "xbox_360": ["xbox 360", "360"],
+        "wii_u": ["wii u", "wiiu"],
+        "wii": ["nintendo wii", "wii"],
+        "nintendo_3ds": ["nintendo 3ds", "3ds"],
+        "nintendo_ds": ["nintendo ds", "ds"],
+        "pc": ["pc", "windows", "steam", "computer"],
+    },
+    "franchise": {
+        "mario": ["mario", "super mario", "マリオ"],
+        "zelda": ["zelda", "legend of zelda", "ゼルダ"],
+        "pokemon": ["pokemon", "pokémon", "ポケモン"],
+        "sonic": ["sonic", "ソニック"],
+        "minecraft": ["minecraft", "マインクラフト"],
+        "call_of_duty": ["call of duty", "cod"],
+        "final_fantasy": ["final fantasy", "ff"],
+        "spider_man": ["spider-man", "spider man", "spiderman"],
+        "grand_theft_auto": ["grand theft auto", "gta"],
+        "red_dead": ["red dead redemption", "red dead"],
+        "assassins_creed": ["assassin's creed", "assassins creed"],
+        "lego": ["lego"],
+        "star_wars": ["star wars"],
+        "madden": ["madden"],
+        "nba_2k": ["nba 2k", "2k"],
+        "fifa": ["fifa"],
+        "mlb_the_show": ["mlb the show", "baseball"],
+        "animal_crossing": ["animal crossing", "どうぶつの森"],
+        "kirby": ["kirby", "カービィ"],
+        "splatoon": ["splatoon", "スプラトゥーン"],
+    },
+    "product_type": {
+        "video_game": ["game", "games", "video game", "software", "ゲーム"],
+        "controller": ["controller", "gamepad", "joy-con", "joy con", "dualshock", "dualsense"],
+        "headset": ["headset", "headphone", "gaming headset"],
+        "console": ["console", "system", "本体"],
+        "storage": ["memory card", "microsd", "micro sd", "sd card", "storage"],
+        "accessory": ["accessory", "case", "charger", "cable", "stand", "protector", "skin"],
+    },
+}
 
 
 def _metapath_explanations(lang: str) -> dict[str, str]:
@@ -387,6 +530,12 @@ Guidelines:
   "consoles".
 - attribute_keywords: desired properties or gameplay terms such as "family",
   "multiplayer", "party", "sports", "baseball", "rpg", "co-op".
+- platform_keywords: normalized device/platform terms such as "nintendo switch",
+  "ps5", "ps4", "xbox one", "pc".
+- franchise_keywords: named series/IP terms such as "mario", "zelda", "pokemon",
+  "minecraft", "call of duty".
+- product_type_keywords: product class terms such as "video game", "controller",
+  "headset", "console", "storage", "accessory".
 - Translate user intent into English keywords when that is likely to match the
   catalog, but keep useful Japanese terms too when the user wrote Japanese.
 - min_rating is null unless the user explicitly asks for high-rated/well-reviewed
@@ -399,6 +548,9 @@ Schema:
   "product_keywords": [],
   "category_keywords": [],
   "attribute_keywords": [],
+  "platform_keywords": [],
+  "franchise_keywords": [],
+  "product_type_keywords": [],
   "min_rating": null
 }}
 """
@@ -421,6 +573,44 @@ def _keyword_list(value: Any, max_items: int = 10) -> list[str]:
         if len(cleaned) >= max_items:
             break
     return cleaned
+
+
+def _domain_constraints_from_terms(terms: list[str]) -> dict[str, list[str]]:
+    text = " ".join(str(t or "").lower().replace("_", " ") for t in terms)
+    constraints: dict[str, list[str]] = {
+        "platform_keywords": [],
+        "franchise_keywords": [],
+        "product_type_keywords": [],
+    }
+
+    def add_unique(key: str, values: list[str]) -> None:
+        for value in values:
+            value = value.strip().lower().replace("_", " ")
+            if value and value not in constraints[key]:
+                constraints[key].append(value)
+
+    for group, aliases in _DOMAIN_ALIASES.items():
+        out_key = f"{group}_keywords"
+        for canonical, variants in aliases.items():
+            if any(v in text for v in variants):
+                add_unique(out_key, [canonical, canonical.replace("_", " "), *variants])
+
+    # If the user asks for a game, prefer game software over accessories. Do not
+    # force this when the query explicitly names accessory or hardware terms.
+    accessory_terms = {"controller", "headset", "console", "storage", "accessory"}
+    if constraints["product_type_keywords"]:
+        has_accessory_intent = any(
+            term in text for term in ("controller", "headset", "console", "memory", "microsd", "accessory", "case")
+        )
+        if not has_accessory_intent and any(x in text for x in ("game", "games", "video game", "ゲーム")):
+            add_unique("product_type_keywords", ["video_game", "video game", "games"])
+        elif has_accessory_intent:
+            constraints["product_type_keywords"] = [
+                v for v in constraints["product_type_keywords"]
+                if not (v in {"video game", "video_game", "games", "game"} and any(t in text for t in accessory_terms))
+            ]
+
+    return constraints
 
 
 def _fallback_condition_terms(query: str) -> dict[str, Any]:
@@ -1393,6 +1583,9 @@ LIMIT $limit
                 "product_keywords": [],
                 "category_keywords": [],
                 "attribute_keywords": [],
+                "platform_keywords": [],
+                "franchise_keywords": [],
+                "product_type_keywords": [],
                 "min_rating": None,
             }
         try:
@@ -1407,6 +1600,9 @@ LIMIT $limit
         product_keywords = _keyword_list(data.get("product_keywords")) or fallback["product_keywords"]
         category_keywords = _keyword_list(data.get("category_keywords")) or fallback["category_keywords"]
         attribute_keywords = _keyword_list(data.get("attribute_keywords")) or fallback["attribute_keywords"]
+        platform_keywords = _keyword_list(data.get("platform_keywords"))
+        franchise_keywords = _keyword_list(data.get("franchise_keywords"))
+        product_type_keywords = _keyword_list(data.get("product_type_keywords"))
         try:
             min_rating = data.get("min_rating", fallback.get("min_rating"))
             min_rating = float(min_rating) if min_rating not in (None, "") else fallback.get("min_rating")
@@ -1415,10 +1611,23 @@ LIMIT $limit
 
         # Keep the common Video_Games demo terms robust even when the LLM returns
         # Japanese-only labels or omits obvious catalog keywords.
-        expanded = _fallback_condition_terms(" ".join([query, *product_keywords, *attribute_keywords]))
+        expanded_query = " ".join([query, *product_keywords, *attribute_keywords])
+        expanded = _fallback_condition_terms(expanded_query)
+        domain = _domain_constraints_from_terms(
+            [expanded_query, *platform_keywords, *franchise_keywords, *product_type_keywords]
+        )
         product_keywords = _keyword_list([*product_keywords, *expanded["product_keywords"]], max_items=12)
         category_keywords = _keyword_list([*category_keywords, *expanded["category_keywords"]], max_items=8)
         attribute_keywords = _keyword_list([*attribute_keywords, *expanded["attribute_keywords"]], max_items=12)
+        platform_keywords = _keyword_list(
+            [*platform_keywords, *domain["platform_keywords"]], max_items=12
+        )
+        franchise_keywords = _keyword_list(
+            [*franchise_keywords, *domain["franchise_keywords"]], max_items=12
+        )
+        product_type_keywords = _keyword_list(
+            [*product_type_keywords, *domain["product_type_keywords"]], max_items=12
+        )
         if min_rating is None:
             min_rating = expanded.get("min_rating")
 
@@ -1426,6 +1635,9 @@ LIMIT $limit
             "product_keywords": product_keywords,
             "category_keywords": category_keywords,
             "attribute_keywords": attribute_keywords,
+            "platform_keywords": platform_keywords,
+            "franchise_keywords": franchise_keywords,
+            "product_type_keywords": product_type_keywords,
             "min_rating": min_rating,
         }
 
@@ -1442,6 +1654,9 @@ LIMIT $limit
             conditions["product_keywords"]
             or conditions["category_keywords"]
             or conditions["attribute_keywords"]
+            or conditions["platform_keywords"]
+            or conditions["franchise_keywords"]
+            or conditions["product_type_keywords"]
         )
         if not user_id and not has_query:
             return "", "", []
@@ -1452,6 +1667,15 @@ LIMIT $limit
             "product_keywords": conditions["product_keywords"],
             "category_keywords": conditions["category_keywords"],
             "attribute_keywords": conditions["attribute_keywords"],
+            "platform_keywords": conditions["platform_keywords"],
+            "franchise_keywords": conditions["franchise_keywords"],
+            "product_type_keywords": conditions["product_type_keywords"],
+            "platform_attr_types": _PLATFORM_ATTR_TYPES,
+            "franchise_attr_types": _FRANCHISE_ATTR_TYPES,
+            "product_type_attr_types": _PRODUCT_TYPE_ATTR_TYPES,
+            "platform_required": bool(conditions["platform_keywords"]),
+            "franchise_required": bool(conditions["franchise_keywords"]),
+            "product_type_required": bool(conditions["product_type_keywords"]),
             "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
             "min_rating": float(conditions.get("min_rating") or 0.0),
             "has_query": has_query,
@@ -1468,6 +1692,24 @@ LIMIT $limit
             cypher = _METAPATH_CONDITION_CYPHER
 
         results = self._execute_and_map(cypher, params, normalized_lang)
+        if not results and has_query and params["franchise_required"]:
+            relaxed_params = dict(params)
+            relaxed_params["franchise_required"] = False
+            # Keep platform/product-type constraints, but allow a nearby game
+            # when a very specific franchise query has no catalog coverage.
+            results = self._execute_and_map(cypher, relaxed_params, normalized_lang)
+            if results:
+                params = relaxed_params
+
+        if not results and has_query and user_id:
+            # For explicit searches, relevance to the query is more important
+            # than forcing a behavior path. If the personalized meta-path is too
+            # narrow, fall back to the condition-only query before legacy
+            # Text2Cypher.
+            condition_params = dict(params)
+            condition_params.pop("uid", None)
+            cypher = _METAPATH_CONDITION_CYPHER
+            results = self._execute_and_map(cypher, condition_params, normalized_lang)
         top_explanation = explanations["top"] if user_id else explanations["condition_top"]
         return cypher, top_explanation, results
 

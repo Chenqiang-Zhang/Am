@@ -62,6 +62,8 @@
 | value_ja | string | 欠損あり。`backfill_display_fields.py --values-ja` で後付け。表示言語が日本語のとき、Text2Cypherが生成するCypherがmatched_attrsに含めていれば`value`の代わりに使われる |
 
 > **ジャンル非依存の仕組み**: `attr_type` は LLM が自由に命名するか、`extract_product_attributes.py` が metadata の `details` キーを自動で snake_case 化して生成する（手動の対応表は持たない）。config.yaml にジャンル別の属性リストは持たない。プロンプトで「snake_case・既存の型を再利用」と指示することに加え、抽出完了後に `canonicalize_attributes.py` が全体の attr_type／value を見て同義語の統合マップを LLM に作らせ、`build_attribute_graph.py` が適用することで表記ゆれを解消する（例: `item_form` と `texture` の統合）。スキーマ・エッジ・Cypher クエリはジャンルによらず共通。
+>
+> **Video Games 補助属性**: 検索制約には、説明文由来のノイズが混ざりやすい旧 `platform` / `franchise` / `product_type` ではなく、`scripts/backfill_video_game_domain_attributes.py` が補完する `domain_platform` / `domain_franchise` / `domain_product_type` を使う。
 
 ### 検索ログ（SearchLog）
 | プロパティ | 型 | 備考 |
@@ -207,6 +209,10 @@ ORDER BY transition_support DESC LIMIT $limit
 
 この設計は、単なる属性一致よりも「次に選ばれやすい商品」を前方に出すためのもので、
 属性元パスは会話条件のフィルタと推薦理由に使う。
+
+Video Games の明示的検索では、platform / franchise / product type を先に満たす候補を
+優先する。具体的には `domain_platform` / `domain_franchise` / `domain_product_type` を
+強制約と高重み特徴に使い、特定シリーズの在庫が薄い場合はシリーズ制約だけを緩める。
 
 `MENTIONS` はレビューで確認された属性を使う次段階の拡張候補。
 

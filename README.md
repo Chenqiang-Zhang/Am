@@ -23,7 +23,8 @@ Neo4j ナレッジグラフ
 REST API（FastAPI）
     ├── 構造化検索               （LLM は商品・カテゴリ・属性条件を抽出し、Cypher 文字列は直接生成しない）
     ├── 元パスランキング         （User -> recent high-rated Product <- Peer User -> next Product を
-    │                            主順位にし、行動→属性、協調フィルタ、会話条件、評価値、人気度で補完する）
+    │                            主順位にし、検索時は domain_platform/domain_franchise/domain_product_type
+    │                            を強制約としてから行動→属性、協調フィルタ、評価値、人気度で補完する）
     ├── ホーム推薦               （履歴のあるユーザは同じ transition-first 元パスを使い、履歴のないユーザは
     │                            LLM をスキップして人気商品を返す）
     ├── 対話チャット             （LLM が同じ稼働中の attr_type 語彙に基づき、何を尋ねるか・いつ検索する
@@ -252,9 +253,18 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 python3 eval/compare_recommenders.py --sample 1000 --out-dir reports/algorithm_evolution
 ```
 
+Video Games では、検索関連性を安定させるために、インポート後に以下の決定的な補助属性を
+追加できる。これは旧 `platform` / `franchise` / `product_type` に混ざる説明文由来のノイズを
+避け、検索時の platform / franchise / product type 制約に使う:
+
+```bash
+python3 scripts/backfill_video_game_domain_attributes.py --replace --out-dir reports/data_quality
+```
+
 実行前にデータ健全性チェック（商品・ユーザー・レビュー数、価格/画像/評価のカバレッジ）を
 出力したうえで、RATED ベースのパーソナライゼーションをベースライン — Popularity、Item-CF、
-Recent Item-CF、User-CF、Transition-CF、KG meta-path、Hybrid v4 — と比較する。
+Recent Item-CF、User-CF、Transition-CF、KG meta-path、Hybrid v4 — と比較する。加えて
+`domain_platform` / `domain_franchise` / `domain_product_type` に基づく Domain Match@K も報告する。
 **カットオフ**とは
 HR@K/NDCG@K の K のこと — 上位いくつの推薦を「見つけられたか」の判定に使うかを表す:
 カットオフ10なら保持しておいた商品が上位10件に入ったかを問い、カットオフ50ならその手法に
