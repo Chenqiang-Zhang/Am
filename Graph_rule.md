@@ -157,6 +157,24 @@ Category -[SUBCATEGORY_OF]-> Category
 
 ## 代表的な多段推論クエリ
 
+### 推薦器の最小元パス（実装済み）
+現行APIの主経路は、LLMにCypher全文を書かせるのではなく、LLMが会話を
+`product_keywords` / `category_keywords` / `attribute_keywords` へ構造化し、
+Neo4j側では固定の元パスを実行する。
+
+```cypher
+MATCH (u:User {user_id: $uid})-[r:RATED|VIEWED]->(seed:Product)
+      -[:HAS_ATTRIBUTE]->(a:Attribute)
+      <-[:HAS_ATTRIBUTE]-(rec:Product)
+WHERE NOT (u)-[:RATED|VIEWED]->(rec)
+RETURN rec, collect(DISTINCT a.value) AS matched_attrs
+ORDER BY size(matched_attrs) DESC LIMIT $limit
+```
+
+実際のAPIでは、この元パスに加えて `Product.title/title_ja`、`BELONGS_TO`、
+`HAS_ATTRIBUTE` を会話条件でフィルタし、`avg_rating` と `rating_count` も
+ランキングに加える。`MENTIONS` はレビューで確認された属性を使う次段階の拡張候補。
+
 ### ① 4ホップ協調フィルタリング
 ```cypher
 MATCH (u:User {user_id: $uid})-[:RATED]->(seen:Product)

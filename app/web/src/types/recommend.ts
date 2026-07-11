@@ -20,7 +20,7 @@ export interface HomeRecommendRequest {
   lang?: "ja" | "en";
 }
 
-/** クエリの「システムによる解釈」（Text2Cypher: LLMが生成したCypherとその一文説明） */
+/** クエリの「システムによる解釈」（構造化条件/元パス検索、またはfallback時のCypherと説明） */
 export interface SearchIntent {
   cypher: string;
   cypher_explanation: string;

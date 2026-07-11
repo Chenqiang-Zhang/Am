@@ -2,7 +2,7 @@
 
 **English** | [日本語](README.md) | [中文](README.zh-CN.md)
 
-An experimental product recommendation system built on the Amazon Reviews'23 dataset. The genre/category is configurable via `config.yaml` (currently `Video_Games`, and all defaults/examples below assume this genre) — the schema, pipeline scripts, and Cypher queries are all genre-agnostic. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM writes and runs Cypher queries directly against the graph — so every recommendation reason is a real, inspectable graph path, not a black box.
+An experimental product recommendation system built on the Amazon Reviews'23 dataset. The genre/category is configurable via `config.yaml` (currently `Video_Games`, and all defaults/examples below assume this genre) — the schema and pipeline scripts are genre-agnostic. The system transforms review data and product metadata into a Neo4j knowledge graph, then exposes a REST API where an LLM structures the user's dialogue/search intent and Neo4j performs fixed meta-path retrieval and ranking. Recommendation reasons are derived from inspectable graph paths rather than opaque generated text.
 
 ## Architecture
 
@@ -21,22 +21,16 @@ Neo4j Knowledge Graph
     ↓ backfill_display_fields.py --images --titles-ja (optional — Product.image_url / Product.title_ja)
     ↓
 REST API (FastAPI)
-    ├── Text2Cypher search      (LLM writes and runs a Cypher query per request; graph schema and the
-    │                            attr_type vocabulary are read from the live graph, so the prompt adapts
-    │                            to whatever genre/catalog is actually loaded — no hardcoded categories;
-    │                            falls back to a popularity query whenever generation/execution fails
-    │                            OR legitimately returns zero rows)
-    ├── Personalization         (user rating/attribute history + past successful queries as few-shot;
-    │                            $uid is only ever bound when a user_id has real RATED/attribute history)
-    ├── Home recommendations    (behavior-based, no query text; skips the LLM entirely for users with
-    │                            no history — falling straight back to the popularity query with no
-    │                            latency penalty — and caches each personalized user's generated query
-    │                            in memory so a background "warm" call — fired when the tab is hidden/
-    │                            closed — can make the next page open instant)
+    ├── Structured search       (LLM extracts product/category/attribute conditions; Neo4j executes
+    │                            fixed meta-path retrieval instead of trusting generated Cypher)
+    ├── Meta-path ranking       (User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product,
+    │                            combined with dialogue filters, category matches, ratings, and popularity)
+    ├── Home recommendations    (users with history use the same behavior-to-attribute meta-path;
+    │                            users without history skip the LLM and return popular products)
     ├── Conversational chat     (LLM decides what to ask and when to search, based on the same live
     │                            attr_type vocabulary — genre-agnostic; Python only enforces a hard cap
     │                            on the number of questions and a fallback if the LLM call itself fails)
-    └── Review lookup and view logging (all written to Neo4j)
+    └── Review lookup, view logging, and legacy Text2Cypher fallback (all written to/read from Neo4j)
 ```
 
 ## Graph Schema
@@ -104,7 +98,7 @@ The authoritative schema definition is [`Graph_rule.md`](Graph_rule.md) (kept in
 ├── app/                   # The running application (backend + frontend)
 │   ├── api/                       # Recommendation REST API
 │   │   ├── main.py                # FastAPI app / routes
-│   │   ├── recommender.py         # Text2Cypher generation, chat, personalization, reviews
+│   │   ├── recommender.py         # structured-intent search, meta-path ranking, chat, personalization, reviews
 │   │   └── models.py              # Pydantic request/response models
 │   └── web/                       # React + TypeScript conversational UI
 ```
@@ -129,7 +123,7 @@ Edit `.env` with:
 - `NEO4J_URI` / `NEO4J_PASSWORD` (Neo4j Aura connection info)
 - An API key for whichever LLM provider you choose in `config.yaml` (`llm.provider`): `GEMINI_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, or `OPENAI_API_KEY`. Gemini and Groq both have a free tier.
 
-`config.yaml` controls the LLM provider/model, data paths, and Text2Cypher retry settings — see the comments in that file. Product/user selection is controlled separately by the k-core size (`--k` on `select_kcore.py`, see step 4 below), not by a config value.
+`config.yaml` controls the LLM provider/model, data paths, and legacy Text2Cypher fallback retry settings — see the comments in that file. Product/user selection is controlled separately by the k-core size (`--k` on `select_kcore.py`, see step 4 below), not by a config value.
 
 ### 3. Start Neo4j
 
@@ -260,7 +254,7 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 
 Prints a data-readiness preflight (product/user/review counts, price/image/rating
 coverage) before running, then measures RATED-based personalization (`recommend_home`,
-via Text2Cypher) against two baselines — Item-KNN (cosine similarity over the user–item
+via the meta-path recommender) against two baselines — Item-KNN (cosine similarity over the user–item
 rating matrix) and Popularity (static rating_count/avg_rating ranking). A **cutoff** is the
 K in HR@K/NDCG@K — how many top recommendations count as "did we find it": cutoff 10 asks
 whether the held-out product landed in the top 10, cutoff 50 gives the method much more
@@ -312,11 +306,11 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to `http://lo
    or "a co-op couch game for the PS5 that's fun for kids and adults together".
 4. The assistant will either ask a clarifying question (answer it, or pick "こだわらない" / "no
    preference" to skip) or go straight to search once it has enough signal.
-5. Recommendations show the LLM's one-sentence `explanation` — written in the UI's current language
-   (toggle "日本語"/"EN" at the top) — and, in dev mode, the matched attributes and the raw generated
-   Cypher (`intent.cypher`) so every recommendation reason is inspectable, not a black box. If Text2Cypher
-   generation/execution fails, or the query legitimately matches nothing, the list falls back to popular
-   highly-rated products instead of showing an empty screen (`fallback: true` in the response).
+5. Recommendations show a one-sentence `explanation` — written in the UI's current language
+   (toggle "日本語"/"EN" at the top) — and, in dev mode, the matched attributes and executed
+   Cypher (`intent.cypher`) so every recommendation reason is inspectable, not a black box. If the
+   fixed meta-path path and the legacy fallback both fail or match nothing, the list falls back to
+   popular highly-rated products instead of showing an empty screen (`fallback: true` in the response).
 6. Opening "レビューを見る" or clicking "Amazon.comで見る" logs a `VIEWED` edge via `/behavior/view`,
    linked to the originating `search_id`. `_get_dynamic_few_shot()` reads these back (joined against
    `SearchLog`) to prioritize past queries that led to a click when building this user's next prompt.
@@ -339,7 +333,7 @@ first.
 
 ### `POST /recommend`
 
-Accepts a natural-language query. The LLM generates one Cypher query against the graph and returns its results. Personalization only kicks in when `user_id` refers to a user with actual `RATED`/attribute history — a `user_id` with no history is treated the same as an anonymous request (no `$uid` is bound, so the LLM cannot reference it; a validator rejects any generated Cypher that references `$uid` when it isn't bound, or that hardcodes a literal `user_id` string instead of using `$uid`).
+Accepts a natural-language query. The LLM extracts structured product/category/attribute conditions, then Neo4j executes a fixed meta-path query and returns ranked results. Personalization kicks in when `user_id` refers to a user with actual `RATED`, `VIEWED`, or inferred attribute history. Legacy Text2Cypher remains only as a fallback when the fixed meta-path query returns no results.
 
 **Request:**
 ```json
@@ -384,11 +378,11 @@ Accepts a natural-language query. The LLM generates one Cypher query against the
 
 `lang` ("ja" | "en", default "en") controls the language of both the top-level `intent.cypher_explanation` and each recommendation's `explanation` — the LLM is instructed to write both in the requested language (the few-shot examples in the prompt are English for illustration only), and — if `backfill_display_fields.py --titles-ja` has been run — `lang="ja"` also populates `display_title` with the cached Japanese translation (`null` otherwise; the frontend falls back to `title`).
 
-If Cypher generation/execution fails after retries, **or the generated query runs successfully but returns zero rows**, the response falls back to a popularity-based query (`fallback: true`) instead of showing an empty result.
+If the fixed meta-path query and the legacy Text2Cypher fallback both fail after retries, **or both return zero rows**, the response falls back to a popularity-based query (`fallback: true`) instead of showing an empty result.
 
 ### `POST /recommend/home`
 
-Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). For a user with no `RATED`/attribute history, this skips the LLM entirely and returns popular, highly-rated products directly from Neo4j (no LLM call, effectively no latency beyond the database round-trip) — this is the path used for the initial recommendations shown before the user has typed anything, since the built-in test user starts with no history. For a user with history, the LLM generates a personalized Cypher query on first call and the result is cached server-side (per `user_id`+`lang`+`limit`, 1-hour TTL) — later calls return instantly from that cache. See `/recommend/home/warm` below for how the cache gets pre-populated before the user even asks.
+Behavior-based recommendations with no query text (`user_id` required, `lang` optional as above). For a user with no `RATED`/`VIEWED`/attribute history, this skips the LLM entirely and returns popular, highly-rated products directly from Neo4j. For a user with history, the backend runs the fixed User -> Product -> Attribute -> Product meta-path and caches the result server-side (per `user_id`+`lang`+`limit`, 1-hour TTL). See `/recommend/home/warm` below for how the cache gets pre-populated before the user even asks.
 
 ### `POST /recommend/home/warm`
 
@@ -400,7 +394,7 @@ Logs that a user viewed a product (`user_id`, `product_id`, optional `search_id`
 
 ### `POST /chat`
 
-Runs one turn of conversational recommendation. Each turn, the LLM is given the attribute types actually present in the graph (queried once from Neo4j and cached) plus the genre from `config.yaml`, and decides itself — via `action`/`filled_slots` in its structured response — whether to ask another clarifying question or move to search; this makes the question flow adapt to whatever catalog/genre is loaded, with no hardcoded categories or question templates. Python only enforces a hard cap (`MAX_QUESTIONS = 5`) and falls back to searching immediately if the LLM call itself fails. Once search is triggered, it delegates to the same Text2Cypher path as `/recommend`.
+Runs one turn of conversational recommendation. Each turn, the LLM is given the attribute types actually present in the graph (queried once from Neo4j and cached) plus the genre from `config.yaml`, and decides itself — via `action`/`filled_slots` in its structured response — whether to ask another clarifying question or move to search; this makes the question flow adapt to whatever catalog/genre is loaded, with no hardcoded categories or question templates. Python only enforces a hard cap (`MAX_QUESTIONS = 5`) and falls back to searching immediately if the LLM call itself fails. Once search is triggered, it delegates to the same structured-condition + meta-path path as `/recommend`.
 
 ```json
 {

@@ -128,7 +128,7 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
 }
 
 // ===== 開発者モード：機械的な根拠データ（ガラス張り） =====
-// Text2Cypher: 一致した構造化属性 + LLMによる一文説明を主役にする。
+// 元パス検索: 一致した構造化属性 + グラフ由来の一文説明を主役にする。
 function DevExplanation({ rec }: { rec: Recommendation }) {
   const { t } = useI18n();
   return (
