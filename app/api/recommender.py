@@ -33,7 +33,7 @@ Flow (chat):
      catalog is loaded
   2. The LLM decides itself (via "action"/"filled_slots" in its structured
      response) whether to ask another clarifying question or move to search.
-     Python requires at least one clarification question before search,
+     Python requires at least three clarification questions before search,
      enforces MAX_QUESTIONS as a hard cap, and has a safe first-turn question
      if the LLM call itself fails
   3. Once search is triggered, delegate to the same Text2Cypher search used
@@ -941,6 +941,9 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
 
 # 対話型推薦：聞き返しは最大この回数まで（LLMがaction判断に失敗し続けた場合の安全網）
 MAX_QUESTIONS = 5
+# 推薦前に必ず行う深掘り質問の回数。商品カテゴリ以外の希望を十分集めるため、
+# 初回入力の具体性にかかわらず最低3問を聞く。
+MIN_CLARIFYING_QUESTIONS = 3
 
 
 def _normalize_lang(lang: str | None) -> str:
@@ -952,7 +955,8 @@ def _build_chat_system_prompt(genre: str, attr_vocab_text: str, target_language:
 
     どんな属性を聞くべきかはハードコードせず、グラフに実際にある attr_type 語彙
     (attr_vocab_text) から都度組み立てる。ask/search の判断・スロット追跡もすべて
-    LLM自身のfilled_slots/actionに委ね、Python側はMAX_QUESTIONSの安全網のみ持つ。
+    LLM自身のfilled_slots/actionに委ね、Python側は最低質問数とMAX_QUESTIONSの
+    安全網のみ持つ。
     """
     vocab_section = attr_vocab_text or (
         "(no attribute data available yet in the graph — ask about general product preferences)"
@@ -975,15 +979,15 @@ ALWAYS include one "no preference / skip this" option as the last option.
 DECISION RULE:
 - filled_slots = number of DISTINCT preferences the user has explicitly confirmed so far
   (do not count the product category itself, and do not count a "no preference" answer).
-- On the FIRST assistant turn, ALWAYS set action = "ask", even if the initial
-  request is already specific or the user says they have no preference. Ask one
-  useful confirmation question before searching.
-- After at least one assistant question, action = "ask" while filled_slots < 2
-  AND fewer than {MAX_QUESTIONS} questions have been asked so far AND the user
-  hasn't said they have no preferences at all.
-- After at least one assistant question, action = "search" once filled_slots >= 2,
-  OR the user said they have no preference at all, OR {MAX_QUESTIONS} questions
-  have already been asked.
+- For the FIRST {MIN_CLARIFYING_QUESTIONS} assistant turns, ALWAYS set action =
+  "ask", even if the request is already specific or the user says they have no
+  preference. Each question must explore a different useful preference.
+- After at least {MIN_CLARIFYING_QUESTIONS} assistant questions, action = "ask"
+  while filled_slots < 2 AND fewer than {MAX_QUESTIONS} questions have been asked
+  so far AND the user hasn't said they have no preferences at all.
+- After at least {MIN_CLARIFYING_QUESTIONS} assistant questions, action = "search"
+  once filled_slots >= 2, OR the user said they have no preference at all, OR
+  {MAX_QUESTIONS} questions have already been asked.
 - Use the full conversation history (including your own prior questions) to avoid asking
   about something already answered or already skipped.
 
@@ -1638,9 +1642,9 @@ class Recommender:
         """対話型推薦の1ターン。
 
         どの属性について聞くか・いつ検索に切り替えるかはハードコードせず、LLM自身の
-        action/filled_slotsに委ねる（カテゴリ非依存）。ただし初回は必ず一度だけ
-        聞き返すため、最低2ユーザーターン後に推薦する。Python側はMAX_QUESTIONSの
-        安全網と、LLM呼び出し自体が失敗した場合の安全な初回質問を持つ。
+        action/filled_slotsに委ねる（カテゴリ非依存）。ただし推薦前に必ず3回
+        聞き返すため、最低4ユーザーターン後に推薦する。Python側はMAX_QUESTIONSの
+        安全網と、LLM呼び出し自体が失敗した場合の安全な深掘り質問を持つ。
         search が決まった後の商品検索は self.recommend() 経由の Text2Cypher に委譲する。
         """
         all_user_msgs = [m for m in messages if m.get("role") == "user"]
@@ -1670,12 +1674,12 @@ class Recommender:
         except (TypeError, ValueError):
             filled_slots = 0
 
-        # 初回入力では、希望が十分具体的でも一度は確認質問を返す。LLMが初手で
-        # searchを選んだ・一時的に失敗した場合も、空の質問画面を出さないよう
-        # 固定の確認質問へフォールバックする。
-        must_ask_first_question = asked == 0
+        # 最初の3問は、希望が十分具体的でも必ず深掘りする。LLMが早期にsearchを
+        # 選んだ・一時的に失敗した場合も、空の質問画面を出さないよう固定質問へ
+        # フォールバックする。
+        must_ask_clarifying_question = asked < MIN_CLARIFYING_QUESTIONS
         should_search = (
-            not must_ask_first_question
+            not must_ask_clarifying_question
             and (
                 not data
                 or data.get("action") == "search"
@@ -1706,17 +1710,21 @@ class Recommender:
                 "search_id": search_id,
             }
 
-        if must_ask_first_question:
-            fallback_question = (
-                "よりぴったりなゲームを選ぶため、どの遊び方を重視しますか？"
+        if must_ask_clarifying_question:
+            fallback_steps = (
+                [
+                    ("よりぴったりなゲームを選ぶため、どの遊び方を重視しますか？", ["友達と協力して遊びたい", "一人でじっくり遊びたい", "アクションを楽しみたい", "こだわりなし"]),
+                    ("ゲームの雰囲気はどれに近いですか？", ["物語をじっくり楽しみたい", "気軽に盛り上がりたい", "歯ごたえのある挑戦がしたい", "こだわりなし"]),
+                    ("どのプラットフォームで遊ぶ予定ですか？", ["Nintendo Switch", "PlayStation", "PC", "こだわりなし"]),
+                ]
                 if normalized_lang == "ja"
-                else "To find a better match, what kind of play do you prefer?"
+                else [
+                    ("To find a better match, what kind of play do you prefer?", ["Play cooperatively with friends", "Enjoy playing solo", "Enjoy action", "No preference"]),
+                    ("What kind of game atmosphere sounds best?", ["Enjoy a rich story", "Have casual fun", "Take on a challenge", "No preference"]),
+                    ("Which platform will you play on?", ["Nintendo Switch", "PlayStation", "PC", "No preference"]),
+                ]
             )
-            fallback_options = (
-                ["友達と協力して遊びたい", "一人でじっくり遊びたい", "アクションを楽しみたい", "こだわりなし"]
-                if normalized_lang == "ja"
-                else ["Play cooperatively with friends", "Enjoy playing solo", "Enjoy action", "No preference"]
-            )
+            fallback_question, fallback_options = fallback_steps[min(asked, len(fallback_steps) - 1)]
             question = data.get("question") if data.get("action") == "ask" else None
             options = data.get("options") if data.get("action") == "ask" else None
         else:
