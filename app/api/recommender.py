@@ -1094,7 +1094,7 @@ LIMIT $limit
         for attempt in range(self._max_attempts):
             is_last = attempt >= self._max_attempts - 1
             try:
-                self._validate_cypher(cypher, limit, has_uid)
+                self._validate_cypher(cypher, limit, has_uid, exec_params)
             except Exception as exc:
                 if is_last:
                     break
@@ -1128,7 +1128,13 @@ LIMIT $limit
     _UID_REF = re.compile(r"\$uid\b")
     _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
 
-    def _validate_cypher(self, cypher: str, limit: int, has_uid: bool = False) -> None:
+    def _validate_cypher(
+        self,
+        cypher: str,
+        limit: int,
+        has_uid: bool = False,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if not cypher:
             raise ValueError("Empty Cypher query")
         if self._HARDCODED_USER_ID.search(cypher):
@@ -1143,8 +1149,9 @@ LIMIT $limit
                 "$uid will not be bound. Rewrite the query without $uid or any pattern "
                 "that requires a specific User node."
             )
+        explain_params = {"limit": limit, **(params or {})}
         with self._driver.session(database=self._neo4j_db) as session:
-            session.run(f"EXPLAIN {cypher}", limit=limit).consume()
+            session.run(f"EXPLAIN {cypher}", **explain_params).consume()
 
     # ── query execution ──────────────────────────────────────────────────────────
 
@@ -1165,4 +1172,3 @@ LIMIT $limit
         return self._execute_and_map(
             _FALLBACK_CYPHER, {"limit": limit, "explanation": _popular_explanation(lang)}, lang
         )
-
