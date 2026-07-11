@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -43,7 +44,9 @@ async def health() -> dict:
 async def recommend(req: RecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    search_id, intent, results, fallback = _recommender.recommend(req.query, req.user_id, req.limit, req.lang)
+    search_id, intent, results, fallback = await asyncio.to_thread(
+        _recommender.recommend, req.query, req.user_id, req.limit, req.lang
+    )
     return RecommendResponse(
         query=req.query, mode="search", intent=intent, recommendations=results,
         search_id=search_id, fallback=fallback,
@@ -54,7 +57,9 @@ async def recommend(req: RecommendRequest) -> RecommendResponse:
 async def recommend_home(req: HomeRecommendRequest) -> RecommendResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    search_id, intent, results, fallback = _recommender.recommend_home(req.user_id, req.limit, req.lang)
+    search_id, intent, results, fallback = await asyncio.to_thread(
+        _recommender.recommend_home, req.user_id, req.limit, req.lang
+    )
     return RecommendResponse(
         query="[home]", mode="home", intent=intent, recommendations=results,
         search_id=search_id, fallback=fallback,
@@ -67,14 +72,14 @@ async def recommend_home_warm(req: HomeRecommendRequest) -> None:
     recommend_home()が即座に返せるようホーム推薦を先読みキャッシュしておく。"""
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    _recommender.warm_home_cache(req.user_id, req.limit, req.lang)
+    await asyncio.to_thread(_recommender.warm_home_cache, req.user_id, req.limit, req.lang)
 
 
 @app.post("/behavior/view", status_code=204)
 async def log_view(req: ViewLogRequest) -> None:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    _recommender.log_view(req.user_id, req.product_id, req.search_id)
+    await asyncio.to_thread(_recommender.log_view, req.user_id, req.product_id, req.search_id)
 
 
 @app.post("/users/{user_id}/clear_history", response_model=ClearHistoryResponse)
@@ -83,7 +88,7 @@ async def clear_history(user_id: str) -> ClearHistoryResponse:
     SearchLog検索履歴——をこのユーザーについて削除する。"""
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    counts = _recommender.clear_behavior_history(user_id)
+    counts = await asyncio.to_thread(_recommender.clear_behavior_history, user_id)
     return ClearHistoryResponse(**counts)
 
 
@@ -91,7 +96,9 @@ async def clear_history(user_id: str) -> ClearHistoryResponse:
 async def chat(req: ChatRequest) -> ChatResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    result = _recommender.chat([m.model_dump() for m in req.messages], req.limit, req.lang, req.user_id)
+    result = await asyncio.to_thread(
+        _recommender.chat, [m.model_dump() for m in req.messages], req.limit, req.lang, req.user_id
+    )
     return ChatResponse(**result)
 
 
@@ -100,7 +107,7 @@ async def sample_users(limit: int = 10) -> SampleUsersResponse:
     """デモ用: 評価履歴を持つ実ユーザーを何件か返す（テストユーザー選択に使用）。"""
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    rows = _recommender.sample_users(limit)
+    rows = await asyncio.to_thread(_recommender.sample_users, limit)
     return SampleUsersResponse(users=[SampleUser(**r) for r in rows])
 
 
@@ -108,7 +115,7 @@ async def sample_users(limit: int = 10) -> SampleUsersResponse:
 async def get_reviews(product_id: str, limit: int = 5, lang: str = "en") -> ReviewsResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
-    rows = _recommender.get_reviews(product_id, limit, lang)
+    rows = await asyncio.to_thread(_recommender.get_reviews, product_id, limit, lang)
     reviews = [ReviewItem(**r) for r in rows]
     return ReviewsResponse(product_id=product_id, reviews=reviews)
 
