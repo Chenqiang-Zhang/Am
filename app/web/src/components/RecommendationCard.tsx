@@ -48,6 +48,8 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           )}
         </div>
 
+        {!devMode && <UserExplanation rec={rec} />}
+
         <div className={styles.meta}>
           <RatingStars rating={rec.avg_rating} count={rec.rating_count} />
           <span className={rec.price != null ? styles.price : styles.priceUnknown}>
@@ -58,7 +60,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           {devMode && <span className={styles.id}>{rec.product_id}</span>}
         </div>
 
-        {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
+        {devMode && <DevExplanation rec={rec} />}
         <ProductDescription productId={rec.product_id} />
         <ReviewList
           productId={rec.product_id}
@@ -113,20 +115,21 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
 
 // ===== ユーザーモード：やさしい「おすすめポイント」 =====
 function UserExplanation({ rec }: { rec: Recommendation }) {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const tags = friendlyTags(rec, lang);
+
+  if (tags.length === 0) return null;
 
   return (
     <div className={styles.user}>
-      {tags.length > 0 && (
-        <div className={styles.userTags}>
-          {tags.map((t) => (
-            <span key={t} className={styles.userTag}>
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
+      <span className={styles.reasonHeading}>{t.recommendationReasons}</span>
+      <div className={styles.userTags}>
+        {tags.map((tag) => (
+          <span key={tag} className={styles.userTag}>
+            {tag}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

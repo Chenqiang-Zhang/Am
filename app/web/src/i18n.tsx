@@ -14,6 +14,9 @@ interface Dict {
   greeting: string;
   devView: string;
   generalMode: string;
+  personalizedMode: string;
+  personalizedModeDetail: string;
+  generalModeDetail: string;
   clearHistory: string;
   clearHistoryConfirm: string;
   clearHistoryDone: string;
@@ -26,6 +29,7 @@ interface Dict {
   other: string;
   otherPlaceholder: string;
   yourPreferences: string;
+  recommendationReasons: string;
   empty: string;
   resultFilter: string;
   filterAvailable: string;
@@ -47,6 +51,9 @@ const ja: Dict = {
   greeting: "こんにちは！どんなゲームをお探しですか？",
   devView: "開発者ビュー",
   generalMode: "一般モード（非個人化）",
+  personalizedMode: "個人化推薦",
+  personalizedModeDetail: "評価・閲覧履歴をおすすめに反映中",
+  generalModeDetail: "履歴を使わない匿名のおすすめ",
   clearHistory: "履歴をクリア",
   clearHistoryConfirm: "このユーザーの閲覧履歴・検索履歴を削除します（評価履歴は削除されません）。よろしいですか？",
   clearHistoryDone: "履歴をクリアしました",
@@ -59,6 +66,7 @@ const ja: Dict = {
   other: "その他（自由に入力）",
   otherPlaceholder: "自由に入力…",
   yourPreferences: "あなたの希望",
+  recommendationReasons: "おすすめの理由",
   empty: "条件に一致する商品が見つかりませんでした。言葉を変えて、もう一度お試しください。",
   resultFilter: "表示",
   filterAvailable: "購入可能",
@@ -80,6 +88,9 @@ const en: Dict = {
   greeting: "Hi! What kind of game are you looking for?",
   devView: "Developer view",
   generalMode: "General mode (no personalization)",
+  personalizedMode: "Personalized recommendations",
+  personalizedModeDetail: "Using your ratings and viewing history",
+  generalModeDetail: "Anonymous recommendations without history",
   clearHistory: "Clear history",
   clearHistoryConfirm: "This deletes this user's viewed/search history (rating history is not deleted). Continue?",
   clearHistoryDone: "History cleared",
@@ -92,6 +103,7 @@ const en: Dict = {
   other: "Other (type your own)",
   otherPlaceholder: "Type here…",
   yourPreferences: "Your preferences",
+  recommendationReasons: "Why it fits",
   empty: "No matching products found. Try rephrasing your request.",
   resultFilter: "View",
   filterAvailable: "Available",

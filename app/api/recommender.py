@@ -32,9 +32,10 @@ Flow (chat):
      prompt — no hardcoded categories/slots, so the flow adapts to whatever
      catalog is loaded
   2. The LLM decides itself (via "action"/"filled_slots" in its structured
-     response) whether to ask another clarifying question or move to search;
-     Python only enforces MAX_QUESTIONS as a hard cap and falls back to
-     searching immediately if the LLM call itself fails
+     response) whether to ask another clarifying question or move to search.
+     Python requires at least one clarification question before search,
+     enforces MAX_QUESTIONS as a hard cap, and has a safe first-turn question
+     if the LLM call itself fails
   3. Once search is triggered, delegate to the same Text2Cypher search used
      by /recommend
 """
@@ -46,6 +47,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -973,10 +975,15 @@ ALWAYS include one "no preference / skip this" option as the last option.
 DECISION RULE:
 - filled_slots = number of DISTINCT preferences the user has explicitly confirmed so far
   (do not count the product category itself, and do not count a "no preference" answer).
-- action = "ask" while filled_slots < 2 AND fewer than {MAX_QUESTIONS} questions have been
-  asked so far AND the user hasn't said they have no preferences at all.
-- action = "search" once filled_slots >= 2, OR the user said they have no preference at
-  all, OR {MAX_QUESTIONS} questions have already been asked.
+- On the FIRST assistant turn, ALWAYS set action = "ask", even if the initial
+  request is already specific or the user says they have no preference. Ask one
+  useful confirmation question before searching.
+- After at least one assistant question, action = "ask" while filled_slots < 2
+  AND fewer than {MAX_QUESTIONS} questions have been asked so far AND the user
+  hasn't said they have no preferences at all.
+- After at least one assistant question, action = "search" once filled_slots >= 2,
+  OR the user said they have no preference at all, OR {MAX_QUESTIONS} questions
+  have already been asked.
 - Use the full conversation history (including your own prior questions) to avoid asking
   about something already answered or already skipped.
 
@@ -985,6 +992,10 @@ across the ENTIRE conversation so far (not just this latest turn) as short label
 display, written in {target_language} only (do not mix languages). This MUST include
 the product category/type itself if it's known (e.g. what kind of product the user
 originally asked for), in addition to every other preference confirmed in any turn.
+When the display language is Japanese, translate canonical catalog values into natural
+Japanese labels (for example: "mario" -> "マリオ", "narrative" -> "物語性"). Do not
+output an internal attribute/slot name by itself (for example, never output "game_mode"
+without the user's actual preference value).
 
 CONVERSATION HISTORY NOTE: previous assistant messages in the history contain only the
 question text shown to the user. This does NOT mean you should respond in plain text —
@@ -1059,6 +1070,11 @@ class Recommender:
         self._genre: str = str(cfg.get("genre", "products"))
         self._attr_vocab_text: str | None = None  # lazily populated, see _get_attr_vocab_text()
         self._home_cache: dict[str, dict[str, Any]] = {}  # see _get_or_generate_home()
+        # 同じユーザーのホーム推薦を同時に生成しないためのsingle-flight用ロック。
+        # キャッシュが空の初回に、Reactの再実行やwarm endpointが重なってもLLM呼び出しは
+        # 1本だけにする。ロックはuser/lang/limitごとに保持する（キー数はデモ規模で小さい）。
+        self._home_cache_locks: dict[str, threading.Lock] = {}
+        self._home_cache_locks_guard = threading.Lock()
         self._product_catalog: list[dict[str, Any]] | None = None  # lazy cache for canonical reranking
 
     # ── public API ──────────────────────────────────────────────────────────────
@@ -1525,6 +1541,15 @@ class Recommender:
 
     _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
 
+    def _get_home_cache_lock(self, cache_key: str) -> threading.Lock:
+        """Return the per-home-cache-key lock, creating it atomically if needed."""
+        with self._home_cache_locks_guard:
+            lock = self._home_cache_locks.get(cache_key)
+            if lock is None:
+                lock = threading.Lock()
+                self._home_cache_locks[cache_key] = lock
+            return lock
+
     def _get_or_generate_home(
         self, user_id: str, limit: int, lang: str
     ) -> tuple[str, str, list[Recommendation]] | None:
@@ -1538,25 +1563,33 @@ class Recommender:
         if cached and (time.time() - cached["cached_at"]) < self._HOME_CACHE_TTL_SECONDS:
             return cached["cypher"], cached["explanation"], cached["results"]
 
-        user_ctx = self._get_user_context(user_id)
-        dynamic_few_shot = self._get_dynamic_few_shot(user_id)
-        try:
-            system_prompt = _build_home_prompt(
-                self._genre, user_ctx, self._get_attr_vocab_text(), lang, dynamic_few_shot
-            )
-            user_msg = "Generate personalized home-page product recommendations based on user history."
-            cypher, explanation, results = self._generate_cypher_and_execute(
-                system_prompt, user_msg, limit, {"limit": limit, "uid": user_id}, True, lang
-            )
-        except Exception as exc:
-            print(f"[recommender] home generation failed: {exc}", file=sys.stderr)
-            return None
-        if not results:
-            return None
-        self._home_cache[cache_key] = {
-            "cypher": cypher, "explanation": explanation, "results": results, "cached_at": time.time(),
-        }
-        return cypher, explanation, results
+        # キャッシュを確認してからロックを取ることで、通常のキャッシュヒットは待たせない。
+        # 待機したリクエストはロック取得後に必ず再確認するため、生成中に作られた結果を
+        # そのまま返せる（double-checked single-flight）。
+        with self._get_home_cache_lock(cache_key):
+            cached = self._home_cache.get(cache_key)
+            if cached and (time.time() - cached["cached_at"]) < self._HOME_CACHE_TTL_SECONDS:
+                return cached["cypher"], cached["explanation"], cached["results"]
+
+            user_ctx = self._get_user_context(user_id)
+            dynamic_few_shot = self._get_dynamic_few_shot(user_id)
+            try:
+                system_prompt = _build_home_prompt(
+                    self._genre, user_ctx, self._get_attr_vocab_text(), lang, dynamic_few_shot
+                )
+                user_msg = "Generate personalized home-page product recommendations based on user history."
+                cypher, explanation, results = self._generate_cypher_and_execute(
+                    system_prompt, user_msg, limit, {"limit": limit, "uid": user_id}, True, lang
+                )
+            except Exception as exc:
+                print(f"[recommender] home generation failed: {exc}", file=sys.stderr)
+                return None
+            if not results:
+                return None
+            self._home_cache[cache_key] = {
+                "cypher": cypher, "explanation": explanation, "results": results, "cached_at": time.time(),
+            }
+            return cypher, explanation, results
 
     def warm_home_cache(self, user_id: str | None, limit: int = 10, lang: str = "en") -> None:
         """タブを閉じる/バックグラウンドに回した時などに呼ばれるfire-and-forget用途。
@@ -1605,8 +1638,9 @@ class Recommender:
         """対話型推薦の1ターン。
 
         どの属性について聞くか・いつ検索に切り替えるかはハードコードせず、LLM自身の
-        action/filled_slotsに委ねる（カテゴリ非依存）。Python側はMAX_QUESTIONSの
-        安全網と、LLM呼び出し自体が失敗した場合に検索へフォールバックする処理のみ持つ。
+        action/filled_slotsに委ねる（カテゴリ非依存）。ただし初回は必ず一度だけ
+        聞き返すため、最低2ユーザーターン後に推薦する。Python側はMAX_QUESTIONSの
+        安全網と、LLM呼び出し自体が失敗した場合の安全な初回質問を持つ。
         search が決まった後の商品検索は self.recommend() 経由の Text2Cypher に委譲する。
         """
         all_user_msgs = [m for m in messages if m.get("role") == "user"]
@@ -1623,7 +1657,7 @@ class Recommender:
         try:
             response = self._llm.chat.completions.create(
                 model=self._model, messages=llm_messages,
-                response_format={"type": "json_object"}, temperature=0,
+                response_format={"type": "text"}, temperature=0,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
         except Exception as exc:
@@ -1636,12 +1670,18 @@ class Recommender:
         except (TypeError, ValueError):
             filled_slots = 0
 
-        # LLM呼び出し自体が失敗した場合(dataが空)は、聞き返しを続けられないので検索へ倒す
+        # 初回入力では、希望が十分具体的でも一度は確認質問を返す。LLMが初手で
+        # searchを選んだ・一時的に失敗した場合も、空の質問画面を出さないよう
+        # 固定の確認質問へフォールバックする。
+        must_ask_first_question = asked == 0
         should_search = (
-            not data
-            or data.get("action") == "search"
-            or filled_slots >= 2
-            or asked >= MAX_QUESTIONS
+            not must_ask_first_question
+            and (
+                not data
+                or data.get("action") == "search"
+                or filled_slots >= 2
+                or asked >= MAX_QUESTIONS
+            )
         )
 
         # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
@@ -1666,11 +1706,28 @@ class Recommender:
                 "search_id": search_id,
             }
 
-        fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
+        if must_ask_first_question:
+            fallback_question = (
+                "よりぴったりなゲームを選ぶため、どの遊び方を重視しますか？"
+                if normalized_lang == "ja"
+                else "To find a better match, what kind of play do you prefer?"
+            )
+            fallback_options = (
+                ["友達と協力して遊びたい", "一人でじっくり遊びたい", "アクションを楽しみたい", "こだわりなし"]
+                if normalized_lang == "ja"
+                else ["Play cooperatively with friends", "Enjoy playing solo", "Enjoy action", "No preference"]
+            )
+            question = data.get("question") if data.get("action") == "ask" else None
+            options = data.get("options") if data.get("action") == "ask" else None
+        else:
+            fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
+            fallback_options = []
+            question = data.get("question")
+            options = data.get("options")
         return {
             "action": "ask",
-            "question": data.get("question") or fallback_question,
-            "options": data.get("options") or [],
+            "question": question or fallback_question,
+            "options": options or fallback_options,
             "preference_summary": summary,
             "intent": None,
             "recommendations": [],
@@ -2030,7 +2087,7 @@ RETURN count(DISTINCT f) AS saved
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            response_format={"type": "json_object"},
+            response_format={"type": "text"},
             temperature=0,
             max_tokens=3000,
         )

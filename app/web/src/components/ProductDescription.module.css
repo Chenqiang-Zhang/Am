@@ -1,15 +1,44 @@
 .trigger {
-  padding: 0;
-  border: none;
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
   color: var(--color-primary);
   font-size: 12px;
-  text-decoration: underline;
+  font-weight: 600;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .trigger:hover {
-  opacity: 0.75;
+  border-color: var(--color-primary);
+  background: var(--color-primary-weak);
+  transform: translateY(-1px);
+}
+
+.triggerIcon,
+.panelIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: ui-serif, Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chevron {
+  font-size: 17px;
+  line-height: 10px;
+  margin-left: 1px;
 }
 
 .loading,
@@ -26,8 +55,10 @@
 
 .block {
   margin-top: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
 }
 
 .header {
@@ -38,26 +69,29 @@
 }
 
 .heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
 }
 
 .closeBtn {
   margin-left: auto;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-primary);
-  font-size: 12px;
-  text-decoration: underline;
+  padding: 3px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 11px;
   cursor: pointer;
 }
 
 .closeBtn:hover {
-  opacity: 0.75;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .text {
@@ -66,4 +100,33 @@
   line-height: 1.6;
   color: var(--color-text);
   white-space: pre-wrap;
+}
+
+/* 長い商品説明で推薦カード全体が伸びないよう、本文だけをスクロール領域にする。 */
+.content {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 7px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.content:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.content::-webkit-scrollbar-thumb {
+  border: 2px solid var(--color-surface-2);
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
 }

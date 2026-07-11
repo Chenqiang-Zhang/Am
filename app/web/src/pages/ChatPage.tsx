@@ -220,6 +220,16 @@ export default function ChatPage() {
         <div className={styles.headerText}>
           <h1 className={styles.title}>{t.appTitle}</h1>
           <p className={styles.subtitle}>{t.appSubtitle}</p>
+          <div
+            className={`${styles.modeStatus} ${generalMode ? styles.modeStatusGeneral : styles.modeStatusPersonalized}`}
+            role="status"
+          >
+            <span className={styles.modeDot} aria-hidden="true" />
+            <span className={styles.modeCopy}>
+              <strong>{generalMode ? t.generalMode : t.personalizedMode}</strong>
+              <span>{generalMode ? t.generalModeDetail : t.personalizedModeDetail}</span>
+            </span>
+          </div>
         </div>
       </header>
 

@@ -32,8 +32,10 @@ export default function ProductDescription({ productId }: Props) {
 
   if (status === "idle") {
     return (
-      <button type="button" className={styles.trigger} onClick={load}>
-        {lang === "ja" ? "商品説明を見る" : "Show description"} ▼
+      <button type="button" className={styles.trigger} onClick={load} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">i</span>
+        <span>{lang === "ja" ? "商品説明を見る" : "Show description"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -52,8 +54,10 @@ export default function ProductDescription({ productId }: Props) {
 
   if (!open) {
     return (
-      <button type="button" className={styles.trigger} onClick={() => setOpen(true)}>
-        {lang === "ja" ? "商品説明を見る" : "Show description"} ▼
+      <button type="button" className={styles.trigger} onClick={() => setOpen(true)} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">i</span>
+        <span>{lang === "ja" ? "商品説明を見る" : "Show description"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -61,16 +65,25 @@ export default function ProductDescription({ productId }: Props) {
   return (
     <div className={styles.block}>
       <div className={styles.header}>
-        <span className={styles.heading}>{lang === "ja" ? "商品説明" : "Description"}</span>
-        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)}>
-          {lang === "ja" ? "閉じる" : "Close"} ▲
+        <span className={styles.heading}>
+          <span className={styles.panelIcon} aria-hidden="true">i</span>
+          {lang === "ja" ? "商品説明" : "Description"}
+        </span>
+        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)} aria-expanded={true}>
+          {lang === "ja" ? "閉じる" : "Close"} <span aria-hidden="true">×</span>
         </button>
       </div>
-      {description ? (
-        <p className={styles.text}>{description}</p>
-      ) : (
-        <p className={styles.empty}>{lang === "ja" ? "商品説明がありません" : "No description"}</p>
-      )}
+      <div
+        className={styles.content}
+        tabIndex={0}
+        aria-label={lang === "ja" ? "商品説明本文" : "Product description"}
+      >
+        {description ? (
+          <p className={styles.text}>{description}</p>
+        ) : (
+          <p className={styles.empty}>{lang === "ja" ? "商品説明がありません" : "No description"}</p>
+        )}
+      </div>
     </div>
   );
 }

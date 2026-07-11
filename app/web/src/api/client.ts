@@ -19,6 +19,7 @@ import type {
 
 // dev は vite.config.ts の proxy 経由で :8000 へ届く（CORS 不要）。
 const BASE = "/api";
+const CHAT_TIMEOUT_MS = 45_000;
 
 /** API 呼び出しの失敗を表す例外（画面側で status を出し分けられるよう保持） */
 export class ApiError extends Error {
@@ -129,14 +130,22 @@ export async function chat(
   userId?: string | null,
 ): Promise<ChatResponse> {
   let res: Response;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
   try {
     res = await fetch(`${BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, limit, lang, user_id: userId ?? null }),
+      signal: controller.signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(0, "AIの応答に時間がかかっています。しばらくしてからもう一度お試しください。");
+    }
     throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
   if (!res.ok) {
     throw new ApiError(res.status, `APIエラー (${res.status})`);

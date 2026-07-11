@@ -8,14 +8,14 @@ interface Props {
 }
 
 // サイトに入った瞬間に表示する、8-bit横スクロール風の起動アニメーション。
-// minDurationMs経過後にフェードアウトを開始し、トランジション終了後にonDone()でApp側から
-// アンマウントしてもらう（アンマウントを急に行うとチラつくため、フェード分の余韻を持たせる）。
+// minDurationMs経過後にタイトルメニューを出し、ユーザーが開始を選ぶとフェードアウトする。
 export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
+  const [showMenu, setShowMenu] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const showTimer = setTimeout(() => setFadingOut(true), reduceMotion ? 700 : minDurationMs);
+    const showTimer = setTimeout(() => setShowMenu(true), reduceMotion ? 700 : minDurationMs);
     return () => clearTimeout(showTimer);
   }, [minDurationMs]);
 
@@ -25,6 +25,22 @@ export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
     return () => clearTimeout(doneTimer);
   }, [fadingOut, onDone]);
 
+  function startGame() {
+    if (!fadingOut) setFadingOut(true);
+  }
+
+  useEffect(() => {
+    if (!showMenu || fadingOut) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        startGame();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showMenu, fadingOut]);
+
   const durationStyle = {
     "--splash-duration": `${minDurationMs}ms`,
   } as CSSProperties;
@@ -33,7 +49,8 @@ export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
     <div
       className={`${styles.overlay} ${fadingOut ? styles.fadeOut : ""}`}
       style={durationStyle}
-      aria-hidden="true"
+      role="dialog"
+      aria-label="Game Concierge title screen"
     >
       <div className={styles.pixelGrid} />
       <div className={styles.stars}>
@@ -53,15 +70,30 @@ export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
         <div className={styles.ground} />
       </div>
 
-      <div className={styles.loading}>
-        <div className={styles.loadingRow}>
-          <span>NOW LOADING</span>
-          <span className={styles.dots}>...</span>
+      {!showMenu ? (
+        <div className={styles.loading}>
+          <div className={styles.loadingRow}>
+            <span>NOW LOADING</span>
+            <span className={styles.dots}>...</span>
+          </div>
+          <div className={styles.barTrack}>
+            <div className={styles.barFill} />
+          </div>
         </div>
-        <div className={styles.barTrack}>
-          <div className={styles.barFill} />
+      ) : (
+        <div className={styles.menu}>
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={startGame}
+            autoFocus
+          >
+            <span className={styles.cursor} aria-hidden="true">▶</span>
+            はじめる
+          </button>
+          <p className={styles.menuHint}>クリック または Enter で すすむ</p>
         </div>
-      </div>
+      )}
     </div>
   );
 }
