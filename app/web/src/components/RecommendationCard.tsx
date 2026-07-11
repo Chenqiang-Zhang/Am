@@ -5,6 +5,7 @@ import type { Lang } from "../i18n";
 import { friendlyTags } from "../lib/explain";
 import { useUsdToJpy } from "../lib/exchangeRate";
 import { logView } from "../api/client";
+import ProductDescription from "./ProductDescription";
 import ReviewList from "./ReviewList";
 
 function formatPrice(usd: number, lang: Lang, jpyRate: number): string {
@@ -57,6 +58,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
         </div>
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
+        <ProductDescription productId={rec.product_id} />
         <ReviewList
           productId={rec.product_id}
           ratingNumber={rec.rating_count}

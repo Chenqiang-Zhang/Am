@@ -18,13 +18,19 @@ in a single call (a shared Neo4j connection is reused for all):
                examples always collect value_ja alongside value in matched_attrs,
                so once this has run, recommendation responses show the
                translated value when lang="ja" and a translation exists.
+  --descriptions-ja
+               Translate Product.description (truncated to the first N chars,
+               matching what GET /products/{id}/description shows) to
+               Product.description_ja. Only untranslated products
+               (description_ja IS NULL) are picked up.
 
 Usage:
     python3 kg_build/backfill_display_fields.py --images
     python3 kg_build/backfill_display_fields.py --titles-ja
     python3 kg_build/backfill_display_fields.py --reviews-ja --reviews-limit 2000
     python3 kg_build/backfill_display_fields.py --values-ja
-    python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --values-ja
+    python3 kg_build/backfill_display_fields.py --descriptions-ja
+    python3 kg_build/backfill_display_fields.py --images --titles-ja --reviews-ja --values-ja --descriptions-ja
 """
 from __future__ import annotations
 
@@ -87,9 +93,21 @@ def run_images(driver: Any, database: str | None, meta_path: Path, batch_size: i
 # ── --titles-ja ────────────────────────────────────────────────────────────────
 
 TRANSLATE_SYSTEM_PROMPT = """\
-Translate the following e-commerce product titles into natural, concise Japanese.
-Preserve brand names, model numbers, sizes, and quantities as-is (do not translate
-proper nouns or units). Return valid JSON only:
+Translate the following e-commerce product titles into natural, concise Japanese,
+the way Japanese online game/electronics stores actually display them.
+
+- Game and media titles (franchise/movie/anime names) must be transliterated into
+  natural Japanese katakana, using the official Japanese title if you know it
+  (e.g. "Super Mario Odyssey" -> "スーパーマリオ オデッセイ", "The Legend of Zelda:
+  Breath of the Wild" -> "ゼルダの伝説 ブレス オブ ザ ワイルド"). Do not leave a
+  well-known title untranslated just because it is a proper noun — that defeats the
+  purpose of this translation.
+- Platform/hardware brand names (Nintendo Switch, PlayStation, Xbox, PC, etc.),
+  company names, and alphanumeric model/SKU codes are commonly kept in Roman
+  letters as-is on Japanese storefronts — do not transliterate these.
+- Preserve sizes, quantities, and units as-is.
+
+Return valid JSON only:
 {"translations": [{"product_id": "...", "title_ja": "..."}]}
 """
 
@@ -405,6 +423,95 @@ def run_values_ja(
     print(f"Done. {total:,} attribute values translated to value_ja.")
 
 
+# ── --descriptions-ja ────────────────────────────────────────────────────────────
+
+# GET /products/{id}/description が表示する文字数と揃える
+# (app/api/recommender.py の Recommender._DESCRIPTION_MAX_CHARS と同じ値)。
+DESCRIPTION_MAX_CHARS = 800
+
+TRANSLATE_DESCRIPTIONS_SYSTEM_PROMPT = """\
+Translate the following e-commerce product descriptions into natural, concise
+Japanese, the way Japanese online game/electronics stores actually display them.
+
+- Game and media titles (franchise/movie/anime names) mentioned inside the
+  description must be transliterated into natural Japanese katakana, using the
+  official Japanese title if you know it (e.g. "Super Mario Odyssey" ->
+  "スーパーマリオ オデッセイ"). Do not leave a well-known title untranslated just
+  because it is a proper noun.
+- Platform/hardware brand names (Nintendo Switch, PlayStation, Xbox, PC, etc.),
+  company names, and alphanumeric model/SKU codes are commonly kept in Roman
+  letters as-is on Japanese storefronts — do not transliterate these.
+- The description may be truncated mid-sentence (it was cut to a fixed length) —
+  translate whatever is given as-is, do not try to complete the thought.
+
+Return valid JSON only:
+{"translations": [{"product_id": "...", "description_ja": "..."}]}
+"""
+
+
+def translate_descriptions_batch(
+    client: Any, model: str, items: list[dict[str, str]], retries: int,
+) -> dict[str, str]:
+    user_content = json.dumps({"descriptions": items}, ensure_ascii=False)
+    messages = [
+        {"role": "system", "content": TRANSLATE_DESCRIPTIONS_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    data, _usage = chat_json_call(client, model, messages, max_output_tokens=2500, retries=retries)
+    return {
+        str(t.get("product_id", "")): str(t.get("description_ja", "")).strip()
+        for t in data.get("translations", [])
+        if t.get("product_id") and t.get("description_ja")
+    }
+
+
+def fetch_untranslated_descriptions(driver: Any, database: str | None, limit: int | None) -> list[dict[str, str]]:
+    query = (
+        "MATCH (p:Product) "
+        "WHERE p.description_ja IS NULL AND p.description IS NOT NULL AND p.description <> '' "
+        "RETURN p.product_id AS product_id, substring(p.description, 0, $max_chars) AS description"
+    )
+    if limit is not None:
+        query += " LIMIT $limit"
+    with driver.session(database=database) as session:
+        params = {"max_chars": DESCRIPTION_MAX_CHARS}
+        if limit is not None:
+            params["limit"] = limit
+        res = session.run(query, **params)
+        return [{"product_id": r["product_id"], "description": r["description"]} for r in res]
+
+
+def write_description_translations(driver: Any, database: str | None, rows: list[dict[str, str]]) -> None:
+    query = (
+        "UNWIND $rows AS row "
+        "MATCH (p:Product {product_id: row.product_id}) "
+        "SET p.description_ja = row.description_ja"
+    )
+    with driver.session(database=database) as session:
+        session.execute_write(lambda tx, rs: tx.run(query, rows=rs).consume(), rows)
+
+
+def run_descriptions_ja(
+    driver: Any, database: str | None, client: Any, model: str,
+    batch_size: int, limit: int | None, retries: int, workers: int = 16,
+) -> None:
+    print("Fetching untranslated product descriptions...")
+    rows = fetch_untranslated_descriptions(driver, database, limit)
+    print(f"  {len(rows):,} product descriptions need translation")
+
+    def process(batch: list) -> list[dict]:
+        items = [{"product_id": r["product_id"], "description": r["description"]} for r in batch]
+        translated = translate_descriptions_batch(client, model, items, retries)
+        return [{"product_id": pid, "description_ja": d} for pid, d in translated.items()]
+
+    total = run_batches_parallel(
+        rows, batch_size, process,
+        lambda wr: write_description_translations(driver, database, wr),
+        "descriptions-ja", workers,
+    )
+    print(f"Done. {total:,} product descriptions translated to description_ja.")
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
@@ -414,6 +521,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--titles-ja", action="store_true", help="Translate Product.title to Product.title_ja.")
     parser.add_argument("--reviews-ja", action="store_true", help="Translate Review.title/text to Review.title_ja/text_ja.")
     parser.add_argument("--values-ja", action="store_true", help="Translate Attribute.value to Attribute.value_ja.")
+    parser.add_argument("--descriptions-ja", action="store_true", help="Translate Product.description (truncated) to Product.description_ja.")
     parser.add_argument("--meta-path", type=Path, help="[--images] Path to meta_*.jsonl.gz (default: config.yaml data.meta_path)")
     parser.add_argument("--images-batch-size", type=int, default=5000)
     parser.add_argument("--provider", choices=["gemini", "groq", "deepseek", "openai", "ollama"], default=None, help="[--titles-ja/--reviews-ja/--values-ja]")
@@ -427,6 +535,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reviews-shard-count", type=int, default=1, help="[--reviews-ja] number of disjoint Product shards")
     parser.add_argument("--values-batch-size", type=int, default=30, help="[--values-ja] larger default since attribute values are short")
     parser.add_argument("--values-limit", type=int, default=-1, help="[--values-ja] -1 = translate all untranslated attribute values")
+    parser.add_argument("--descriptions-batch-size", type=int, default=8, help="[--descriptions-ja] smaller default since descriptions are long")
+    parser.add_argument("--descriptions-limit", type=int, default=-1, help="[--descriptions-ja] -1 = translate all untranslated descriptions")
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--workers", type=int, default=16, help="[--titles-ja/--reviews-ja/--values-ja] parallel LLM request workers")
     parser.add_argument("--uri", default=None)
@@ -441,8 +551,8 @@ def main() -> None:
     if args.reviews_shard_count < 1 or not 0 <= args.reviews_shard_index < args.reviews_shard_count:
         parser_error = "--reviews-shard-index must be in [0, --reviews-shard-count)"
         raise SystemExit(parser_error)
-    if not args.images and not args.titles_ja and not args.reviews_ja and not args.values_ja:
-        print("Nothing to do: pass --images and/or --titles-ja and/or --reviews-ja and/or --values-ja.", file=sys.stderr)
+    if not args.images and not args.titles_ja and not args.reviews_ja and not args.values_ja and not args.descriptions_ja:
+        print("Nothing to do: pass --images and/or --titles-ja and/or --reviews-ja and/or --values-ja and/or --descriptions-ja.", file=sys.stderr)
         sys.exit(2)
 
     config_dir = args.config.resolve().parent
@@ -469,7 +579,7 @@ def main() -> None:
             run_images(driver, database, meta_path, args.images_batch_size)
 
         client, model = None, None
-        if args.titles_ja or args.reviews_ja or args.values_ja:
+        if args.titles_ja or args.reviews_ja or args.values_ja or args.descriptions_ja:
             llm_cfg = cfg.get("llm", {})
             cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
             provider = args.provider or cfg_provider
@@ -495,6 +605,11 @@ def main() -> None:
             values_limit = None if args.values_limit < 0 else args.values_limit
             print("\n[values-ja]")
             run_values_ja(driver, database, client, model, args.values_batch_size, values_limit, args.retries, args.workers)
+
+        if args.descriptions_ja:
+            descriptions_limit = None if args.descriptions_limit < 0 else args.descriptions_limit
+            print("\n[descriptions-ja]")
+            run_descriptions_ja(driver, database, client, model, args.descriptions_batch_size, descriptions_limit, args.retries, args.workers)
     finally:
         driver.close()
 

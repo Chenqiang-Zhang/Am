@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import html as _html_mod
 import json
+import math
 import os
 import re
 import sys
@@ -68,7 +69,8 @@ Nodes:
   Category  { category_id, name, level (int, 0=root) }
   Brand     { brand_id, name }
   Attribute { attribute_id, attr_type, value,
-               value_ja (string|null, Japanese translation of value) }
+               value_ja (string|null, Japanese translation of value),
+               canonical_type (string|null), canonical_value (string|null) }
     attr_type is genre-dependent and open-ended (see "Attribute Types Currently
     in the Graph" below for what's actually available in this catalog).
 
@@ -107,6 +109,11 @@ User: "a well-reviewed option with a specific feature the user names"
 
 _RULES = """\
 ## Rules
+- Named products, franchises, characters, brands, and series are hard constraints.
+  Search both `toLower(p.title)` and `toLower(coalesce(p.title_ja, ''))` for them.
+  When the user writes a name in Japanese or another language, also use its likely
+  English catalog spelling (e.g. a transliterated franchise name). Never discard a
+  named-entity constraint merely to broaden a zero-result query.
 - Use $uid when referencing the user; NEVER hardcode a user_id string
 - End every query with: ORDER BY score DESC LIMIT $limit
 - Case-insensitive match: toLower(a.value) CONTAINS toLower("keyword")
@@ -114,8 +121,13 @@ _RULES = """\
 - NEVER use CREATE, MERGE, DELETE, SET, or any write clause
 - Required RETURN aliases (exact names):
     product_id, title, title_ja, price, avg_rating, rating_count, score, explanation, matched_attrs, image_url
-- matched_attrs: collect({attr_type: a.attr_type, value: a.value, value_ja: a.value_ja})  — use [] when no attrs
+- matched_attrs: collect({attr_type: coalesce(a.canonical_type, a.attr_type),
+                          value: coalesce(a.canonical_value, a.value),
+                          value_ja: a.value_ja})  — use [] when no attrs
   (always include value_ja alongside value — Python picks whichever fits the requested language)
+- When canonical_type/canonical_value exist, prefer them for normalized facet matching.
+- `MENTIONS` from reviews are soft evidence only; do not use them as the sole hard filter
+  unless the user explicitly asks for review-based evidence.
 
 ## Excluding already-rated/viewed products (CRITICAL)
 Bind the user node in MATCH first, then filter in WHERE:
@@ -146,6 +158,216 @@ _FALLBACK_CYPHER = (
 
 def _popular_explanation(lang: str) -> str:
     return "評価の高い人気商品" if lang == "ja" else "Popular highly-rated products"
+
+
+_TITLE_GENERIC_TERMS = {
+    "game", "games", "gaming", "want", "wanted", "looking", "play", "please",
+    "for", "the", "a", "an", "to", "of", "my", "with", "something",
+    "action", "adventure", "puzzle", "rpg", "other",
+    "switch", "nintendo", "playstation", "xbox", "steam", "console", "pc",
+    "ゲーム", "ゲーミング", "欲しい", "ほしい", "探して", "お願い", "いる",
+    "アクション", "アドベンチャー", "パズル", "その他", "特にこだわりなし",
+}
+
+_TITLE_ALIASES = {
+    "マリオ": "mario",
+    "ゼルダ": "zelda",
+    "ポケモン": "pokemon",
+    "ポケットモンスター": "pokemon",
+    "カービィ": "kirby",
+    "ソニック": "sonic",
+    "スプラトゥーン": "splatoon",
+    "どうぶつの森": "animal crossing",
+    "モンハン": "monster hunter",
+    "ドラクエ": "dragon quest",
+    "ファイナルファンタジー": "final fantasy",
+}
+
+_FACET_ALIAS_MAPS: dict[str, dict[str, tuple[str, ...]]] = {
+    "platform": {
+        "switch": ("switch", "nintendo switch", "ニンテンドースイッチ", "任天堂スイッチ", "スイッチ"),
+        "playstation_5": ("ps5", "playstation 5", "playstation5", "プレイステーション5", "プレステ5"),
+        "playstation_4": ("ps4", "playstation 4", "playstation4", "プレイステーション4", "プレステ4"),
+        "xbox_series_x": ("xbox series x", "xbox series s", "xbox series", "series x", "series s"),
+        "xbox_one": ("xbox one", "xboxone", "エックスボックスワン"),
+        "pc": ("pc", "steam", "windows", "computer", "パソコン"),
+        "wii_u": ("wii u", "wiiu", "wiiu版"),
+        "nintendo_3ds": ("3ds", "nintendo 3ds", "ニンテンドー3ds", "3ds版"),
+        "nintendo_ds": ("ds", "nintendo ds", "ニンテンドーds", "nds"),
+    },
+    "genre": {
+        "action": ("action", "アクション"),
+        "adventure": ("adventure", "アドベンチャー"),
+        "rpg": ("rpg", "role playing", "ロールプレイング"),
+        "jrpg": ("jrpg", "日本製rpg", "和製rpg"),
+        "puzzle": ("puzzle", "パズル"),
+        "shooter": ("shooter", "シューティング"),
+        "racing": ("racing", "レース"),
+        "sports": ("sports", "スポーツ"),
+        "simulation": ("simulation", "シミュレーション"),
+        "fighting": ("fighting", "格闘"),
+        "horror": ("horror", "ホラー"),
+        "strategy": ("strategy", "ストラテジー"),
+        "platformer": ("platformer", "横スクロール", "2dアクション"),
+        "party": ("party", "パーティ"),
+        "rhythm": ("rhythm", "リズム"),
+        "stealth": ("stealth", "ステルス"),
+        "open_world": ("open world", "オープンワールド"),
+        "sandbox": ("sandbox", "サンドボックス"),
+    },
+    "multiplayer_type": {
+        "single_player": ("single player", "single-player", "1人", "一人", "ソロ"),
+        "local_coop": ("local co-op", "local coop", "協力プレイ", "ローカル協力", "ローカルco-op"),
+        "online_coop": ("online co-op", "online coop", "オンライン協力"),
+        "local_multiplayer": ("local multiplayer", "オフライン対戦", "画面分割", "対戦"),
+        "online_multiplayer": ("online multiplayer", "オンライン対戦", "ネット対戦"),
+        "competitive": ("competitive", "versus", "対戦"),
+    },
+    "play_mode": {
+        "single_player": ("single player", "single-player", "1人", "一人", "ソロ"),
+        "multiplayer": ("multiplayer", "対戦", "協力", "みんなで"),
+        "cooperative": ("co-op", "coop", "協力", "協力プレイ"),
+    },
+    "product_kind": {
+        "game": ("game", "games", "ソフト", "ゲーム", "タイトル"),
+        "accessory": ("accessory", "周辺機器", "アクセサリ"),
+        "console": ("console", "本体", "ハード"),
+        "controller": ("controller", "コントローラ", "コントローラー"),
+        "bundle": ("bundle", "セット", "同梱"),
+        "gift_card": ("gift card", "プリペイド", "カード"),
+        "expansion": ("expansion", "dlc", "追加コンテンツ"),
+    },
+    "difficulty": {
+        "easy": ("easy", "やさしい", "簡単"),
+        "normal": ("normal", "standard", "普通"),
+        "hard": ("hard", "難しい", "むずかしい"),
+        "challenging": ("challenging", "やりごたえ", "高難度"),
+        "beginner": ("beginner", "初心者向け"),
+    },
+    "gameplay_style": {
+        "turn_based": ("turn based", "turn-based", "ターン制"),
+        "real_time": ("real time", "リアルタイム"),
+        "open_world": ("open world", "オープンワールド"),
+        "side_scrolling": ("side scrolling", "横スクロール", "2dスクロール"),
+        "first_person": ("first person", "fps視点", "一人称"),
+        "third_person": ("third person", "三人称"),
+        "roguelike": ("roguelike", "ローグライク"),
+        "metroidvania": ("metroidvania", "メトロイドヴァニア"),
+    },
+    "graphics": {
+        "pixel_art": ("pixel art", "pixel-art", "ドット絵", "レトロ"),
+        "retro": ("retro", "レトロ", "昭和", "8bit", "16bit", "8-bit", "16-bit"),
+        "3d": ("3d", "3d graphics", "立体"),
+        "realistic": ("realistic", "写実"),
+        "cartoon": ("cartoon", "カートゥーン"),
+        "anime": ("anime", "アニメ"),
+        "dark": ("dark", "ダーク", "黒"),
+    },
+    "story": {
+        "story_driven": ("story driven", "story-driven", "ストーリー重視", "物語"),
+        "narrative": ("narrative", "物語", "シナリオ"),
+        "character_driven": ("character driven", "キャラクター重視"),
+    },
+    "language": {
+        "japanese": ("japanese", "日本語"),
+        "english": ("english", "英語"),
+        "multilingual": ("multilingual", "multi language", "多言語"),
+    },
+    "release_date": {
+        "new": ("new", "recent", "latest", "新しい", "新作"),
+        "classic": ("classic", "old", "レトロ"),
+    },
+    "price": {
+        "cheap": ("cheap", "budget", "安い", "低価格"),
+        "expensive": ("expensive", "high end", "高い"),
+        "free": ("free", "無料"),
+        "discounted": ("discount", "sale", "セール"),
+    },
+    "franchise": {},
+}
+
+_FACET_WEIGHTS: dict[str, float] = {
+    "platform": 4.5,
+    "product_kind": 4.0,
+    "genre": 3.5,
+    "franchise": 5.0,
+    "play_mode": 3.0,
+    "multiplayer_type": 3.2,
+    "player_count": 2.5,
+    "online_support": 2.0,
+    "difficulty": 1.8,
+    "gameplay_style": 2.2,
+    "graphics": 1.7,
+    "story": 1.4,
+    "language": 1.2,
+    "release_date": 0.8,
+    "price": 1.2,
+}
+
+_TITLE_MATCH_BOOST = 6.0
+_POPULARITY_RATING_WEIGHT = 0.45
+_POPULARITY_COUNT_WEIGHT = 0.18
+
+
+def _normalize_search_text(text: str) -> str:
+    return re.sub(r"[\s\-_]+", " ", text.lower()).strip()
+
+
+def _phrase_hits(text: str, phrases: tuple[str, ...]) -> bool:
+    return any(phrase in text for phrase in phrases)
+
+
+def _unique_list(items: list[Any]) -> list[Any]:
+    seen: set[str] = set()
+    out: list[Any] = []
+    for item in items:
+        key = json.dumps(item, sort_keys=True, ensure_ascii=False) if isinstance(item, dict) else str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _extract_facet_signals(text: str) -> dict[str, set[str]]:
+    normalized = _normalize_search_text(text)
+    signals: dict[str, set[str]] = {}
+    for canonical_type, alias_map in _FACET_ALIAS_MAPS.items():
+        for canonical_value, aliases in alias_map.items():
+            if aliases and _phrase_hits(normalized, aliases):
+                signals.setdefault(canonical_type, set()).add(canonical_value)
+    return signals
+
+
+def _extract_title_terms(query: str) -> list[str]:
+    """Extract short catalog-title candidates from a multi-turn query string.
+
+    This is intentionally conservative: generic requests/platforms may support
+    ranking, but cannot by themselves trigger the deterministic title path.
+    """
+    lowered = query.lower()
+    terms: list[str] = []
+    terms.extend(re.findall(r"[a-z0-9][a-z0-9.+_-]{1,}", lowered))
+
+    # Split Japanese preference phrases at particles and generic request words,
+    # leaving franchise/person names such as "マリオ" or "ゼルダ".
+    for chunk in re.findall(r"[぀-ヿ㐀-鿿ー]+", lowered):
+        parts = re.split(
+            r"(?:ゲームが欲しい|ゲーム|が欲しい|がほしい|"
+            r"を探して|がしたい|遊べる|できる|ほしい|欲しい|おすすめ|タイトル|作品|"
+            r"の|が|を|は|で|に|と|も)",
+            chunk,
+        )
+        terms.extend(part for part in parts if len(part) >= 2)
+
+    terms = [_TITLE_ALIASES.get(term, term) for term in terms]
+    unique_terms: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        if len(term) >= 2 and term not in seen:
+            seen.add(term)
+            unique_terms.append(term)
+    return unique_terms
 
 def _build_fix_prompt(lang: str) -> str:
     target = "Japanese" if lang == "ja" else "English"
@@ -495,11 +717,15 @@ def _to_int(value: Any) -> int | None:
 def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
     matched_attrs: list[MatchedAttr] = []
     for m in (record.get("matched_attrs") or []):
-        if isinstance(m, dict) and m.get("attr_type") and m.get("value"):
+        if isinstance(m, dict):
+            attr_type = m.get("canonical_type") or m.get("attr_type")
+            value = m.get("canonical_value") or m.get("value")
+            if not (attr_type and value):
+                continue
             value_ja = m.get("value_ja")
-            display_value = value_ja if (lang == "ja" and value_ja) else str(m["value"])
+            display_value = value_ja if (lang == "ja" and value_ja) else str(value)
             matched_attrs.append(
-                MatchedAttr(attr_type=str(m["attr_type"]), value=display_value)
+                MatchedAttr(attr_type=str(attr_type), value=display_value)
             )
     title_ja = record.get("title_ja") or None
     return Recommendation(
@@ -630,8 +856,287 @@ class Recommender:
         self._genre: str = str(cfg.get("genre", "products"))
         self._attr_vocab_text: str | None = None  # lazily populated, see _get_attr_vocab_text()
         self._home_cache: dict[str, dict[str, Any]] = {}  # see _get_or_generate_home()
+        self._product_catalog: list[dict[str, Any]] | None = None  # lazy cache for canonical reranking
 
     # ── public API ──────────────────────────────────────────────────────────────
+
+    def _run_title_match(
+        self, query: str, limit: int, lang: str,
+    ) -> tuple[str, str, list[Recommendation]] | None:
+        """Resolve explicit product/franchise names against the real catalog."""
+        terms = _extract_title_terms(query)
+        if not terms:
+            return None
+
+        count_cypher = (
+            "UNWIND $terms AS term "
+            "MATCH (p:Product) "
+            "WHERE toLower(coalesce(p.title, '')) CONTAINS term "
+            "   OR toLower(coalesce(p.title_ja, '')) CONTAINS term "
+            "RETURN term, count(DISTINCT p) AS cnt"
+        )
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                counts = {r["term"]: int(r["cnt"]) for r in session.run(count_cypher, terms=terms)}
+        except Exception as exc:
+            print(f"[recommender] title-term lookup failed: {exc}", file=sys.stderr)
+            return None
+
+        matched_terms = [term for term in terms if counts.get(term, 0) > 0]
+        specific_terms = [
+            term for term in matched_terms
+            if term not in _TITLE_GENERIC_TERMS and counts[term] <= 100
+        ]
+        if not specific_terms:
+            return None
+
+        display_term = next(
+            (
+                ja_term for ja_term, catalog_term in _TITLE_ALIASES.items()
+                if catalog_term == specific_terms[0] and ja_term in query
+            ),
+            specific_terms[0],
+        )
+        explanation = (
+            f"商品名・シリーズ名「{display_term}」に一致"
+            if lang == "ja"
+            else f'Matched product or series name "{display_term}"'
+        )
+        cypher = (
+            "MATCH (p:Product) "
+            "WITH p, [term IN $terms WHERE "
+            "  toLower(coalesce(p.title, '')) CONTAINS term OR "
+            "  toLower(coalesce(p.title_ja, '')) CONTAINS term] AS matched_terms "
+            "WHERE any(term IN matched_terms WHERE term IN $specific_terms) "
+            "WITH p, matched_terms, "
+            "  toFloat(size(matched_terms)) * 10.0 "
+            "  + coalesce(p.avg_rating, 3.5) * 0.5 "
+            "  + log(toFloat(coalesce(p.rating_count, 0)) + 1) * 0.2 AS score "
+            "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, "
+            "  p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, "
+            "  p.rating_count AS rating_count, score, $explanation AS explanation, "
+            "  [] AS matched_attrs "
+            "ORDER BY score DESC LIMIT $limit"
+        )
+        results = self._execute_and_map(
+            cypher,
+            {
+                "terms": matched_terms,
+                "specific_terms": specific_terms,
+                "explanation": explanation,
+                "limit": limit,
+            },
+            lang,
+        )
+        return (cypher, explanation, results) if results else None
+
+    def _get_product_catalog(self) -> list[dict[str, Any]]:
+        """Load products and their attributes once for fast canonical reranking."""
+        if self._product_catalog is not None:
+            return self._product_catalog
+
+        catalog: list[dict[str, Any]] = []
+        cypher = (
+            "MATCH (p:Product) "
+            "OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute) "
+            "WITH p, collect(DISTINCT {"
+            "  attr_type:a.attr_type, value:a.value, value_ja:a.value_ja, "
+            "  canonical_type:a.canonical_type, canonical_value:a.canonical_value"
+            "}) AS attrs "
+            "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, "
+            "       p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, "
+            "       p.rating_count AS rating_count, attrs "
+            "ORDER BY p.product_id"
+        )
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                for record in session.run(cypher):
+                    row = dict(record)
+                    row["attrs"] = [a for a in (row.get("attrs") or []) if isinstance(a, dict)]
+                    catalog.append(row)
+        except Exception as exc:
+            print(f"[recommender] product catalog load failed: {exc}", file=sys.stderr)
+        self._product_catalog = catalog
+        return catalog
+
+    def _extract_search_signals(self, query: str, user_ctx: dict | None = None) -> dict[str, Any]:
+        """Extract deterministic signals used for canonical ranking."""
+        title_terms = _extract_title_terms(query)
+        facet_signals = _extract_facet_signals(query)
+        if user_ctx:
+            for pref in user_ctx.get("preferred_attrs", []):
+                if not isinstance(pref, dict):
+                    continue
+                pref_text = f"{pref.get('attr_type', '')} {pref.get('value', '')}"
+                for ctype, values in _extract_facet_signals(pref_text).items():
+                    facet_signals.setdefault(ctype, set()).update(values)
+        return {
+            "title_terms": title_terms,
+            "facets": {k: sorted(v) for k, v in facet_signals.items()},
+        }
+
+    def _match_attr_to_signal(self, attr: dict[str, Any], facet_type: str, facet_values: list[str]) -> bool:
+        attr_type = _normalize_search_text(str(attr.get("canonical_type") or attr.get("attr_type") or ""))
+        if attr_type != _normalize_search_text(facet_type):
+            return False
+
+        value = attr.get("canonical_value") or attr.get("value") or ""
+        value_text = _normalize_search_text(str(value))
+        if not facet_values:
+            return bool(value_text)
+
+        alias_map = _FACET_ALIAS_MAPS.get(facet_type, {})
+        candidate_aliases = set()
+        for canonical_value in facet_values:
+            candidate_aliases.add(canonical_value)
+            candidate_aliases.update(_normalize_search_text(alias) for alias in alias_map.get(canonical_value, ()))
+        return bool(value_text and value_text in candidate_aliases)
+
+    def _rank_local_candidates(
+        self, query: str, user_ctx: dict | None, limit: int, lang: str
+    ) -> tuple[str, str, list[Recommendation]] | None:
+        signals = self._extract_search_signals(query, user_ctx)
+        title_terms: list[str] = signals["title_terms"]
+        facet_signals: dict[str, list[str]] = signals["facets"]
+        if not title_terms and not facet_signals:
+            return None
+
+        catalog = self._get_product_catalog()
+        if not catalog:
+            return None
+
+        seen_ids = set()
+        if user_ctx:
+            for section in ("rated", "viewed"):
+                for item in user_ctx.get(section, []) or []:
+                    pid = item.get("product_id")
+                    if pid:
+                        seen_ids.add(str(pid))
+
+        title_term_set = {term for term in title_terms if term not in _TITLE_GENERIC_TERMS}
+        strong_facet_types = [ft for ft in facet_signals if ft != "product_kind"]
+        platform_values = facet_signals.get("platform") or []
+        scored: list[tuple[float, dict[str, Any], list[dict[str, Any]]]] = []
+        for product in catalog:
+            product_id = str(product.get("product_id", ""))
+            if product_id in seen_ids:
+                continue
+
+            title = _normalize_search_text(str(product.get("title") or ""))
+            title_ja = _normalize_search_text(str(product.get("title_ja") or ""))
+            matched_title_terms = [
+                term for term in title_terms
+                if term and (term in title or term in title_ja)
+            ]
+            specific_title_terms = [term for term in matched_title_terms if term not in _TITLE_GENERIC_TERMS]
+            if title_term_set and not specific_title_terms:
+                # If the query clearly names a title/franchise, keep the result pool tight.
+                continue
+
+            attrs = product.get("attrs") or []
+            matched_attrs: list[dict[str, Any]] = []
+            score = (
+                _to_float(product.get("avg_rating")) or 3.5
+            ) * _POPULARITY_RATING_WEIGHT + math.log(((_to_int(product.get("rating_count")) or 0) + 1)) * _POPULARITY_COUNT_WEIGHT
+
+            product_kind_values = facet_signals.get("product_kind") or []
+            if product_kind_values:
+                kind_matches = [
+                    attr for attr in attrs
+                    if self._match_attr_to_signal(attr, "product_kind", product_kind_values)
+                ]
+                if not kind_matches:
+                    continue
+                if "game" in product_kind_values:
+                    score += _FACET_WEIGHTS.get("product_kind", 4.0) * min(len(kind_matches), 2)
+                matched_attrs.extend(kind_matches[:2])
+
+            if specific_title_terms:
+                score += len(specific_title_terms) * _TITLE_MATCH_BOOST
+                matched_attrs.extend(
+                    {
+                        "attr_type": "title",
+                        "value": term,
+                        "canonical_type": "title",
+                        "canonical_value": term,
+                    }
+                    for term in specific_title_terms
+                )
+
+            strong_match_count = 0
+            platform_match = False
+            for facet_type, facet_values in facet_signals.items():
+                weight = _FACET_WEIGHTS.get(facet_type, 1.0)
+                facet_matches = [
+                    attr for attr in attrs
+                    if self._match_attr_to_signal(attr, facet_type, facet_values)
+                ]
+                if not facet_matches:
+                    continue
+                if facet_type == "platform":
+                    platform_match = True
+                if facet_type != "product_kind":
+                    strong_match_count += 1
+                score += weight * min(len(facet_matches), 3)
+                matched_attrs.extend(facet_matches[:3])
+
+            if platform_values and not platform_match:
+                continue
+            if strong_facet_types and not specific_title_terms and strong_match_count == 0:
+                continue
+            if not matched_attrs:
+                continue
+
+            scored.append((score, product, _unique_list(matched_attrs)))
+
+        if not scored:
+            return None
+
+        scored.sort(
+            key=lambda item: (
+                item[0],
+                _to_float(item[1].get("avg_rating")) or 0.0,
+                _to_int(item[1].get("rating_count")) or 0,
+                str(item[1].get("title") or ""),
+            ),
+            reverse=True,
+        )
+        top = scored[:limit]
+
+        matched_labels = []
+        specific_title_terms = [term for term in title_terms if term not in _TITLE_GENERIC_TERMS]
+        if specific_title_terms:
+            matched_labels.append(specific_title_terms[0])
+        for facet_type in ("platform", "genre", "multiplayer_type", "play_mode", "product_kind"):
+            values = facet_signals.get(facet_type)
+            if values:
+                matched_labels.append(values[0])
+        if len(matched_labels) > 3:
+            matched_labels = matched_labels[:3]
+        explanation = (
+            "タイトルと正規化属性で再ランキングしました"
+            if lang == "ja"
+            else "Reranked by title and canonical attributes"
+        )
+        if matched_labels:
+            if lang == "ja":
+                explanation = " / ".join(matched_labels) + " に一致した候補を再ランキング"
+            else:
+                explanation = f"Reranked candidates matching {' / '.join(matched_labels)}"
+
+        cypher = (
+            "CANONICAL_RANKING "
+            "MATCH (p:Product) ... "
+            "using cached canonical_type/canonical_value reranking in Python"
+        )
+        results: list[Recommendation] = []
+        for score, product, matched_attrs in top:
+            row = dict(product)
+            row["score"] = score
+            row["explanation"] = explanation
+            row["matched_attrs"] = matched_attrs
+            results.append(_record_to_recommendation(row, lang))
+        return cypher, explanation, results
 
     def recommend(
         self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en"
@@ -644,19 +1149,27 @@ class Recommender:
         # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
         has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
         dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
-        system_prompt = _build_search_prompt(
-            self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
-        )
-        try:
-            params: dict[str, Any] = {"limit": limit}
-            if has_uid:
-                params["uid"] = user_id
-            cypher, explanation, results = self._generate_cypher_and_execute(
-                system_prompt, query, limit, params, has_uid, normalized_lang
-            )
-        except Exception as exc:
-            print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
-            cypher, explanation, results = "", "", []
+        canonical_search = self._rank_local_candidates(query, user_ctx, limit, normalized_lang)
+        if canonical_search:
+            cypher, explanation, results = canonical_search
+        else:
+            direct_title_match = self._run_title_match(query, limit, normalized_lang)
+            if direct_title_match:
+                cypher, explanation, results = direct_title_match
+            else:
+                system_prompt = _build_search_prompt(
+                    self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+                )
+                try:
+                    params: dict[str, Any] = {"limit": limit}
+                    if has_uid:
+                        params["uid"] = user_id
+                    cypher, explanation, results = self._generate_cypher_and_execute(
+                        system_prompt, query, limit, params, has_uid, normalized_lang
+                    )
+                except Exception as exc:
+                    print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
+                    cypher, explanation, results = "", "", []
         # _generate_cypher_and_execute()は構文エラー・0件ヒットのどちらも内部でリトライ
         # した上で、それでも結果が得られない場合にだけ ("", "", []) を返す。
         # ここではその「リトライを使い切っても駄目だった」場合にだけフォールバックする。
@@ -878,6 +1391,37 @@ LIMIT $limit
                 rows.append(r)
             return rows
 
+    _DESCRIPTION_MAX_CHARS: int = 800
+
+    def get_description(self, product_id: str, lang: str = "en") -> dict[str, Any] | None:
+        """商品説明文(description)を返す。Text2Cypherの検索結果には含めず、UIが商品IDを
+        指定して個別取得する(get_reviews()と同じ設計)。理由: description は最大2万字超と
+        長く、生成Cypherの必須RETURN項目に加えると全検索クエリの負荷・失敗要因が増える。
+        lang="ja"の場合、backfill_display_fields.py --descriptions-jaで付与済みの
+        description_jaがあればそちらを返す（無ければ英語原文にフォールバック）。
+        英語原文は末尾に著作権表示等の定型文が続くことが多いため、表示用に先頭
+        _DESCRIPTION_MAX_CHARS文字で切る（description_jaも同じ長さの原文から翻訳
+        されているので一貫性がある）。"""
+        cypher = """
+MATCH (p:Product {product_id: $product_id})
+WHERE p.description IS NOT NULL AND p.description <> ''
+RETURN p.description AS description, p.description_ja AS description_ja
+"""
+        use_ja = _normalize_lang(lang) == "ja"
+        with self._driver.session(database=self._neo4j_db) as session:
+            record = session.run(cypher, product_id=product_id).single()
+            if record is None:
+                return None
+            description = record["description"]
+            description_ja = record["description_ja"]
+            if use_ja and description_ja:
+                text = description_ja
+            else:
+                text = _strip_html(description) or ""
+                if len(text) > self._DESCRIPTION_MAX_CHARS:
+                    text = text[: self._DESCRIPTION_MAX_CHARS].rstrip() + "…"
+            return {"description": text, "translated": bool(use_ja and description_ja)}
+
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30
 
@@ -984,25 +1528,26 @@ LIMIT $limit
             with self._driver.session(database=self._neo4j_db) as session:
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product) "
-                    "RETURN p.title AS title, r.rating AS rating "
+                    "RETURN p.product_id AS product_id, p.title AS title, r.rating AS rating "
                     "ORDER BY r.rating DESC, r.timestamp DESC LIMIT 6",
                     uid=user_id,
                 )
-                rated = [{"title": r["title"], "rating": r["rating"]} for r in res]
+                rated = [{"product_id": r["product_id"], "title": r["title"], "rating": r["rating"]} for r in res]
 
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[v:VIEWED]->(p:Product) "
-                    "RETURN p.title AS title "
+                    "RETURN p.product_id AS product_id, p.title AS title "
                     "ORDER BY v.timestamp DESC LIMIT 4",
                     uid=user_id,
                 )
-                viewed = [{"title": r["title"]} for r in res]
+                viewed = [{"product_id": r["product_id"], "title": r["title"]} for r in res]
 
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product)"
                     "-[:HAS_ATTRIBUTE]->(a:Attribute) "
                     "WHERE r.rating >= 4 "
-                    "RETURN a.attr_type AS attr_type, a.value AS value, "
+                    "RETURN coalesce(a.canonical_type, a.attr_type) AS attr_type, "
+                    "       coalesce(a.canonical_value, a.value) AS value, "
                     "count(*) AS freq "
                     "ORDER BY freq DESC LIMIT 8",
                     uid=user_id,
@@ -1165,4 +1710,3 @@ LIMIT $limit
         return self._execute_and_map(
             _FALLBACK_CYPHER, {"limit": limit, "explanation": _popular_explanation(lang)}, lang
         )
-

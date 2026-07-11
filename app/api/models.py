@@ -103,6 +103,13 @@ class ReviewsResponse(BaseModel):
     reviews: list[ReviewItem]
 
 
+# ===== 商品説明文取得 =====
+class DescriptionResponse(BaseModel):
+    product_id: str
+    description: str | None = None
+    translated: bool = False
+
+
 # ===== デモ用テストユーザー選択 =====
 class SampleUser(BaseModel):
     user_id: str

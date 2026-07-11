@@ -76,6 +76,13 @@ export interface ReviewsResponse {
   reviews: ReviewItem[];
 }
 
+// ===== 商品説明文 =====
+export interface DescriptionResponse {
+  product_id: string;
+  description: string | null;
+  translated: boolean;
+}
+
 /** POST /chat のレスポンス */
 export interface ChatResponse {
   action: "ask" | "search";

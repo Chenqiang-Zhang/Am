@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   ChatResponse,
   ClearHistoryResponse,
+  DescriptionResponse,
   HomeRecommendRequest,
   RecommendRequest,
   RecommendResponse,
@@ -158,6 +159,16 @@ export async function fetchReviews(
   const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}&lang=${lang}`);
   if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
   return (await res.json()) as ReviewsResponse;
+}
+
+/** 商品説明文取得（GET /products/{id}/description） */
+export async function fetchDescription(
+  productId: string,
+  lang: "ja" | "en" = "en",
+): Promise<DescriptionResponse> {
+  const res = await fetch(`${BASE}/products/${productId}/description?lang=${lang}`);
+  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
+  return (await res.json()) as DescriptionResponse;
 }
 
 /** 商品閲覧ログ（POST /behavior/view）。失敗しても画面には影響させない（fire-and-forget）。 */

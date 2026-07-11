@@ -9,6 +9,7 @@ from .models import (
     ChatRequest,
     ChatResponse,
     ClearHistoryResponse,
+    DescriptionResponse,
     HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
@@ -118,6 +119,16 @@ async def get_reviews(product_id: str, limit: int = 5, lang: str = "en") -> Revi
     rows = await asyncio.to_thread(_recommender.get_reviews, product_id, limit, lang)
     reviews = [ReviewItem(**r) for r in rows]
     return ReviewsResponse(product_id=product_id, reviews=reviews)
+
+
+@app.get("/products/{product_id}/description", response_model=DescriptionResponse)
+async def get_description(product_id: str, lang: str = "en") -> DescriptionResponse:
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    row = await asyncio.to_thread(_recommender.get_description, product_id, lang)
+    if row is None:
+        return DescriptionResponse(product_id=product_id, description=None, translated=False)
+    return DescriptionResponse(product_id=product_id, **row)
 
 
 if __name__ == "__main__":
