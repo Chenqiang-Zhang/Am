@@ -199,7 +199,7 @@ CALL (p) {
   WHERE toFloat(sr.rating) >= 4
   WITH u, seed, sr
   ORDER BY toInteger(sr.timestamp) DESC
-  LIMIT 15
+  LIMIT 20
   OPTIONAL MATCH (seed)<-[pr:RATED]-(peer:User)-[tr:RATED]->(p)
   WHERE peer <> u
     AND toFloat(pr.rating) >= 4

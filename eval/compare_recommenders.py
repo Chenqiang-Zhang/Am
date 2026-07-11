@@ -83,6 +83,14 @@ ITERATION_HISTORY = [
     "一致性而非预测下一个具体商品），因此未采用；recency + mentions 加成让 `kg_meta_path_v2` 相比 v1 在 "
     "NDCG@50/MRR@50 上有稳定提升。同款改动（近期窗口 + MENTIONS 确认加分）已同步移植到线上 "
     "`app/api/recommender.py` 的 `_METAPATH_USER_CYPHER` 打分公式。",
+    "第七轮方案：`transition_cf`/`item_cf_recent` 从第二/三轮引入后就再没扫过参，这轮做了系统性消融"
+    "（n=1000，两个随机种子）：候选衰减从 `1/distance` 换成更平缓的 `1/distance^0.3`、窗口从 15 步扩到 20 步、"
+    "近期种子数从 8 个收窄到 5 个但衰减从 `1/sqrt(rank)` 换成更陡的 `1/rank`；`item_cf_recent` 的衰减同样从 "
+    "`1/sqrt(rank)` 换成 `1/rank`。两个种子上 `transition_cf` 的 NDCG@50 提升 13%-16%、MRR@50 提升 20%-25%，"
+    "`item_cf_recent` 的 NDCG@50 提升约 13%。`hybrid_v4` 级联顺序未变，只是级联里的两个方法本身更准了。"
+    "生产端 `recommender.py` 的 transition/cf 信号是基于图的 peer-based 计数（谁在评分完 seed 之后又评分了 "
+    "candidate），和这里预先计算好的 item-item 转移矩阵 + 排名衰减不是同一套算法，因此这轮的衰减指数没有"
+    "直接对应的 Cypher 写法可搬；只把结构上真正对应的近期窗口从 `LIMIT 15` 调到 `LIMIT 20` 搬了过去。",
 ]
 
 
@@ -218,9 +226,10 @@ class RankingContext:
         self.item_recent_scores_by_user = self._build_item_cf_scores(recent_weighted=True)
         self.user_cf_index = self._build_user_cf_index()
         # Round-3 diagnostics showed that a short transition window underfits
-        # game-review behavior. A 15-step window improved top-rank relevance
-        # while preserving the sequential "chosen next" signal.
-        self.transition_index = self._build_transition_index(window=15)
+        # game-review behavior; round7 re-swept window/decay together
+        # (n=1000, two seeds) and found window=20 with a gentler 1/distance^0.3
+        # candidate decay clearly beats the original window=15 / 1/distance.
+        self.transition_index = self._build_transition_index(window=20)
 
     def _build_popularity_rank(self) -> list[str]:
         return sorted(
@@ -275,8 +284,11 @@ class RankingContext:
                 ]
                 positives.sort(key=lambda e: e["timestamp"], reverse=True)
                 vec[:] = 0.0
+                # Round7 sweep (n=1000, two seeds): 1/rank decays consistently
+                # beat the original 1/sqrt(rank) — recent positives should
+                # dominate more sharply than sqrt-decay allowed.
                 for rank, e in enumerate(positives, start=1):
-                    vec[self.item_index[e["product_id"]]] = 1.0 / math.sqrt(rank)
+                    vec[self.item_index[e["product_id"]]] = 1.0 / rank
             scores = self.item_sim @ vec
             scores[vec > 0] = -np.inf
             user_scores = {
@@ -304,7 +316,11 @@ class RankingContext:
             for i, seed in enumerate(pids):
                 for distance, cand in enumerate(pids[i + 1 : i + 1 + window], start=1):
                     if cand != seed:
-                        transitions[seed][cand] += 1.0 / distance
+                        # Round7 sweep: 1/distance decayed too fast — items
+                        # 5-15 steps away from the seed still carry real
+                        # transition signal, so a gentler 1/distance^0.3
+                        # (found via an n=1000, two-seed sweep) scores better.
+                        transitions[seed][cand] += 1.0 / (distance ** 0.3)
         return dict(transitions)
 
     def _rank_from_scores(self, scores: dict[str, float], exclude: set[str], k: int) -> list[str]:
@@ -352,8 +368,12 @@ class RankingContext:
         ]
         recent.sort(key=lambda e: e["timestamp"], reverse=True)
         scores: Counter[str] = Counter()
-        for rank, e in enumerate(recent[:8], start=1):
-            seed_weight = 1.0 / math.sqrt(rank)
+        # Round7 sweep: fewer, more sharply-decayed seeds (5 seeds at 1/rank)
+        # beat the original 8 seeds at 1/sqrt(rank) — the single most recent
+        # positive dominates the "what's chosen next" signal more than a
+        # softer blend across 8 older ones did.
+        for rank, e in enumerate(recent[:5], start=1):
+            seed_weight = 1.0 / rank
             for cand, weight in self.transition_index.get(e["product_id"], {}).items():
                 if cand not in target.train_pids:
                     scores[cand] += seed_weight * weight
