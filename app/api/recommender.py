@@ -165,10 +165,17 @@ CALL (p) {
 }
 CALL (p) {
   MATCH (u:User {user_id: $uid})
-  OPTIONAL MATCH (u)-[r:RATED]->(rated_seed:Product)-[:HAS_ATTRIBUTE]->(ra:Attribute)<-[:HAS_ATTRIBUTE]-(p)
+  MATCH (u)-[r:RATED]->(rated_seed:Product)
   WHERE toFloat(r.rating) >= 4
-    AND NOT ra.attr_type IN $ignored_behavior_attr_types
-  RETURN collect(DISTINCT ra) AS rated_attrs, count(DISTINCT rated_seed) AS rated_seed_count
+  WITH rated_seed
+  ORDER BY toInteger(r.timestamp) DESC
+  LIMIT 15
+  OPTIONAL MATCH (rated_seed)-[:HAS_ATTRIBUTE]->(ra:Attribute)<-[:HAS_ATTRIBUTE]-(p)
+  WHERE NOT ra.attr_type IN $ignored_behavior_attr_types
+  WITH p, collect(DISTINCT ra) AS rated_attrs, count(DISTINCT rated_seed) AS rated_seed_count
+  OPTIONAL MATCH (p)<-[:ABOUT]-(rev:Review)-[:MENTIONS {sentiment: 'positive'}]->(ma:Attribute)
+  WHERE ma IN rated_attrs
+  RETURN rated_attrs, rated_seed_count, count(DISTINCT rev) AS confirmed_rated_mentions
 }
 CALL (p) {
   MATCH (u:User {user_id: $uid})
@@ -211,9 +218,10 @@ WITH p, categories,
      [a IN rated_attrs WHERE a IS NOT NULL] AS rated_attrs,
      [a IN viewed_attrs WHERE a IS NOT NULL] AS viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
-     transition_peer_count, transition_seed_count, already_seen
+     transition_peer_count, transition_seed_count, already_seen, confirmed_rated_mentions
 WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count,
      cf_peer_count, cf_seed_count, transition_peer_count, transition_seed_count, already_seen,
+     confirmed_rated_mentions,
      [kw IN $product_keywords
       WHERE toLower(coalesce(p.title, '')) CONTAINS kw
          OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
@@ -256,7 +264,7 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
      product_type_attrs, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
-     transition_peer_count, transition_seed_count, already_seen,
+     transition_peer_count, transition_seed_count, already_seen, confirmed_rated_mentions,
      (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
       + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
       + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits,
@@ -291,6 +299,7 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
        + toFloat(size(viewed_attrs)) * 0.7
        + toFloat(rated_seed_count) * 0.2
        + toFloat(viewed_seed_count) * 0.12
+       + log(toFloat(confirmed_rated_mentions) + 1) * 1.2
        + coalesce(toFloat(p.avg_rating), 3.5) * 0.45
        + log(toFloat(coalesce(p.rating_count, 1)) + 1) * 0.12
      ) AS score

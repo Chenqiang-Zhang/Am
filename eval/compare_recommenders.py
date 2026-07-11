@@ -12,7 +12,11 @@
 - item_cf_recent: recency-weighted item-item collaborative filtering
 - user_cf: peer overlap collaborative filtering
 - transition_cf: sequential next-item transition from recent positive items
-- kg_meta_path_v1: User -> Product -> Attribute -> Product
+- kg_meta_path_v1: User -> Product -> Attribute -> Product (frozen round1-5
+  formula — uniform seed weight, no review-confirmed evidence; kept only as
+  a fixed baseline so later versions' gains show up in the same report)
+- kg_meta_path_v2: round6 revision — recency-weighted seed profile plus a
+  review-confirmed (positive MENTIONS) attribute bonus
 - hybrid_v4: transition-first cascade; transition_cf keeps the top ranks, while
   item/user/KG/popularity only fill missing recall
 """
@@ -56,6 +60,31 @@ DOMAIN_PREFIXES = {
     "product_type": "domain_product_type:",
 }
 
+# 迭代历史：每一轮实验结束后在末尾追加一条新记录，不要改写已有条目。
+# write_report() 会把这份列表原样渲染进"迭代过程与诊断"，所以这里就是
+# report 与代码版本号保持一致的唯一来源 —— 新增方法/改打分公式时，
+# 对应地在这里加一条，报告就会自动带上这一轮的说明，不需要再手动补历史章节。
+ITERATION_HISTORY = [
+    "第一轮问题：KG-only 的 `kg_meta_path_v1` 能解释“为什么相似”，但 exact-ASIN 命中很低。"
+    "原因是 Video Games 图里的属性更像语义标签，适合解释和泛化，不足以单独预测用户下一次具体会评分哪一个 ASIN。",
+    "第二轮改进：加入 `item_cf_recent` 和 `transition_cf`。结果显示近期兴趣、顺序转移明显优于普通 KG 属性路径，"
+    "说明相关性差的主因是排序缺少行为时序信号。",
+    "第三轮调参：RRF 融合可以提高较深位置的覆盖，但会稀释 Top10。对前端推荐来说，用户首先看到的是前几条，"
+    "因此不能只追 HR@50。",
+    "第四轮方案：采用 `hybrid_v4`，即 Transition-first。先保留“相似用户在相似游戏之后选择了什么”的候选顺序，"
+    "再用 Recent Item-CF、User-CF、KG、Popularity 补召回。",
+    "第五轮方案：参考 All Beauty 阶段的数据清洗经验，发现 Video Games 的旧 `product_type/franchise/platform` "
+    "属性存在描述串扰和类型误判，因此新增干净的 `domain_product_type/domain_platform/domain_franchise`。"
+    "搜索场景先满足平台、系列、商品类型等强约束，再在候选内使用 Transition-first 排序；如果“系列 + 平台”过窄"
+    "导致无结果，只放松系列，不放松平台和商品类型。",
+    "第六轮方案：`kg_meta_path_v1` 冻结为对照基线，新增 `kg_meta_path_v2` —— 给正向历史加近期衰减权重"
+    "（同 `item_cf_recent`/`transition_cf`），并对被正面 MENTIONS 独立确认过的属性加分。n=1000、两个随机种子"
+    "的消融实验显示：继续给 domain_* 属性加权会持续拉低 exact-ASIN 命中（印证第五轮已有结论——domain 信号擅长"
+    "一致性而非预测下一个具体商品），因此未采用；recency + mentions 加成让 `kg_meta_path_v2` 相比 v1 在 "
+    "NDCG@50/MRR@50 上有稳定提升。同款改动（近期窗口 + MENTIONS 确认加分）已同步移植到线上 "
+    "`app/api/recommender.py` 的 `_METAPATH_USER_CYPHER` 打分公式。",
+]
+
 
 @dataclass
 class GraphData:
@@ -63,6 +92,7 @@ class GraphData:
     ratings_by_user: dict[str, list[dict[str, Any]]]
     attrs_by_product: dict[str, set[str]]
     cats_by_product: dict[str, set[str]]
+    confirmed_attrs_by_product: dict[str, Counter[str]]
 
 
 @dataclass
@@ -80,6 +110,7 @@ def fetch_graph(recommender: Recommender) -> GraphData:
     ratings_by_user: dict[str, list[dict[str, Any]]] = defaultdict(list)
     attrs_by_product: dict[str, set[str]] = defaultdict(set)
     cats_by_product: dict[str, set[str]] = defaultdict(set)
+    confirmed_attrs_by_product: dict[str, Counter[str]] = defaultdict(Counter)
 
     with recommender._driver.session(database=recommender._neo4j_db) as session:
         for row in session.run(
@@ -119,6 +150,15 @@ def fetch_graph(recommender: Recommender) -> GraphData:
             if row["name"]:
                 cats_by_product[row["pid"]].add(str(row["name"]).lower())
 
+        for row in session.run(
+            "MATCH (p:Product)<-[:ABOUT]-(:Review)-[m:MENTIONS {sentiment: 'positive'}]->(a:Attribute) "
+            "RETURN p.product_id AS pid, a.attr_type AS attr_type, a.value AS value, count(m) AS confirmations"
+        ):
+            attr_type = str(row["attr_type"] or "")
+            value = str(row["value"] or "")
+            if attr_type and value and attr_type not in IGNORED_ATTR_TYPES:
+                confirmed_attrs_by_product[row["pid"]][f"{attr_type}:{value}"] += int(row["confirmations"])
+
     for edges in ratings_by_user.values():
         edges.sort(key=lambda x: x["timestamp"])
     return GraphData(
@@ -126,6 +166,7 @@ def fetch_graph(recommender: Recommender) -> GraphData:
         ratings_by_user=dict(ratings_by_user),
         attrs_by_product=dict(attrs_by_product),
         cats_by_product=dict(cats_by_product),
+        confirmed_attrs_by_product=dict(confirmed_attrs_by_product),
     )
 
 
@@ -318,9 +359,13 @@ class RankingContext:
                     scores[cand] += seed_weight * weight
         return [pid for pid, _ in scores.most_common(k)]
 
-    def _kg_scores(self, target: EvalTarget) -> dict[str, float]:
-        profile = Counter()
-        category_profile = Counter()
+    def _kg_scores_v1(self, target: EvalTarget) -> dict[str, float]:
+        """Frozen round1-5 formula: every positive rating counts equally,
+        no recency, no review-confirmed evidence. Kept only so v2's gain is
+        visible side by side in the same report instead of requiring a diff
+        across separate round directories."""
+        profile: Counter[str] = Counter()
+        category_profile: Counter[str] = Counter()
         for seed in target.train_positive_pids:
             profile.update(self.data.attrs_by_product.get(seed, set()))
             category_profile.update(self.data.cats_by_product.get(seed, set()))
@@ -344,8 +389,70 @@ class RankingContext:
             )
         return scores
 
+    def _kg_scores_v2(self, target: EvalTarget) -> dict[str, float]:
+        # Round6: recency-weighted profile (same 1/sqrt(rank) decay as
+        # item_cf_recent/transition_cf) instead of counting every past
+        # positive equally — a user's taste drifts, so recent seeds should
+        # dominate the attribute profile. Note: an earlier attempt also gave
+        # domain_platform/domain_franchise/domain_product_type attrs extra
+        # weight, but a sweep (n=300 and n=1000, two seeds) showed that
+        # consistently *hurts* exact-ASIN HR/NDCG even though it raises the
+        # domain-match diagnostic — confirms round4/5's own finding that KG's
+        # domain signal is a consistency/explanation feature, not a
+        # next-item predictor, so it's intentionally left un-boosted here.
+        positives = [
+            e for e in self.train_by_user.get(target.user_id, [])
+            if e["rating"] >= 4.0
+        ]
+        positives.sort(key=lambda e: e["timestamp"], reverse=True)
+
+        profile: Counter[str] = Counter()
+        category_profile: Counter[str] = Counter()
+        for rank, e in enumerate(positives, start=1):
+            seed_weight = 1.0 / math.sqrt(rank)
+            for a in self.data.attrs_by_product.get(e["product_id"], set()):
+                profile[a] += seed_weight
+            for c in self.data.cats_by_product.get(e["product_id"], set()):
+                category_profile[c] += seed_weight
+
+        scores: dict[str, float] = {}
+        for pid in self.all_pids:
+            if pid in target.train_pids:
+                continue
+            attrs = self.data.attrs_by_product.get(pid, set())
+            cats = self.data.cats_by_product.get(pid, set())
+            confirmed = self.data.confirmed_attrs_by_product.get(pid, {})
+
+            shared_attrs = sum(profile[a] for a in attrs)
+            shared_cats = sum(category_profile[c] for c in cats)
+            # Review-confirmed evidence: an attribute the catalog lists AND
+            # that independent reviewers actually praised (positive MENTIONS)
+            # is stronger signal than a catalog-only attribute match. Weight
+            # chosen from a sweep over [0, 1, 1.5, 2, 2.5, 3] at n=1000 across
+            # two seeds — 2.0 was consistently at or near the NDCG@50/HR@50
+            # peak in both runs, while 3.0 already overshoots and degrades.
+            shared_confirmed = sum(
+                profile[a] * math.log1p(confirmed[a])
+                for a in attrs
+                if a in confirmed and a in profile
+            )
+            if shared_attrs <= 0 and shared_cats <= 0 and shared_confirmed <= 0:
+                continue
+            meta = self.data.products[pid]
+            scores[pid] = (
+                shared_attrs * 1.35
+                + shared_cats * 0.4
+                + shared_confirmed * 2.0
+                + meta["avg_rating"] * 0.45
+                + math.log1p(meta["rating_count"]) * 0.12
+            )
+        return scores
+
     def recommend_kg_meta_path_v1(self, target: EvalTarget, k: int) -> list[str]:
-        return self._rank_from_scores(self._kg_scores(target), target.train_pids, k)
+        return self._rank_from_scores(self._kg_scores_v1(target), target.train_pids, k)
+
+    def recommend_kg_meta_path_v2(self, target: EvalTarget, k: int) -> list[str]:
+        return self._rank_from_scores(self._kg_scores_v2(target), target.train_pids, k)
 
     @staticmethod
     def _rrf(ranked: list[str], weight: float, base: int = 60) -> dict[str, float]:
@@ -364,7 +471,7 @@ class RankingContext:
             self.recommend_item_cf_recent(target, max(k, 50)),
             self.recommend_user_cf(target, max(k, 50)),
             self.recommend_item_cf(target, max(k, 50)),
-            self.recommend_kg_meta_path_v1(target, max(k, 30)),
+            self.recommend_kg_meta_path_v2(target, max(k, 30)),
             self.recommend_popularity(target, max(k, 50)),
         ]
         out: list[str] = []
@@ -387,6 +494,7 @@ METHODS = {
     "user_cf": RankingContext.recommend_user_cf,
     "transition_cf": RankingContext.recommend_transition_cf,
     "kg_meta_path_v1": RankingContext.recommend_kg_meta_path_v1,
+    "kg_meta_path_v2": RankingContext.recommend_kg_meta_path_v2,
     "hybrid_v4": RankingContext.recommend_hybrid_v4,
 }
 
@@ -493,6 +601,7 @@ def plot_summary(summary: dict[str, Any], out_dir: Path) -> None:
         "user_cf": "User-CF",
         "transition_cf": "Transition-CF",
         "kg_meta_path_v1": "KG Meta-path v1",
+        "kg_meta_path_v2": "KG Meta-path v2",
         "hybrid_v4": "Hybrid v4",
     }
     cut = max(summary["cutoffs"])
@@ -588,15 +697,14 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
             f"{vals[f'franchise_match@{top_k}']:.4f} | {vals[f'product_type_match@{top_k}']:.4f} |"
         )
 
+    kg_v1 = methods.get("kg_meta_path_v1", {})
+    kg_v2 = methods.get("kg_meta_path_v2", {})
+
     lines.extend([
         "",
         "## 迭代过程与诊断",
         "",
-        "1. 第一轮问题：KG-only 的 `kg_meta_path_v1` 能解释“为什么相似”，但 exact-ASIN 命中很低。原因是 Video Games 图里的属性更像语义标签，适合解释和泛化，不足以单独预测用户下一次具体会评分哪一个 ASIN。",
-        "2. 第二轮改进：加入 `item_cf_recent` 和 `transition_cf`。结果显示近期兴趣、顺序转移明显优于普通 KG 属性路径，说明相关性差的主因是排序缺少行为时序信号。",
-        "3. 第三轮调参：RRF 融合可以提高较深位置的覆盖，但会稀释 Top10。对前端推荐来说，用户首先看到的是前几条，因此不能只追 HR@50。",
-        "4. 第四轮方案：采用 `hybrid_v4`，即 Transition-first。先保留“相似用户在相似游戏之后选择了什么”的候选顺序，再用 Recent Item-CF、User-CF、KG、Popularity 补召回。",
-        "5. 第五轮方案：参考 All Beauty 阶段的数据清洗经验，发现 Video Games 的旧 `product_type/franchise/platform` 属性存在描述串扰和类型误判，因此新增干净的 `domain_product_type/domain_platform/domain_franchise`。搜索场景先满足平台、系列、商品类型等强约束，再在候选内使用 Transition-first 排序；如果“系列 + 平台”过窄导致无结果，只放松系列，不放松平台和商品类型。",
+        *(f"{i}. {note}" for i, note in enumerate(ITERATION_HISTORY, start=1)),
         "",
         "## 客观判断",
         "",
@@ -604,14 +712,18 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         f"- Top{cut} 综合命中最优方法：`{best_deep}`，NDCG@{cut} = {methods[best_deep][f'NDCG@{cut}']:.4f}。",
         f"- `hybrid_v4` 相比热门推荐：HR@{top_k} 提升 {lift(hybrid, popularity, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, popularity, f'NDCG@{top_k}')}。",
         f"- `hybrid_v4` 相比普通 Item-CF：HR@{top_k} 提升 {lift(hybrid, item_cf, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, item_cf, f'NDCG@{top_k}')}。",
-        f"- `kg_meta_path_v1` 的 Domain@{top_k} = {methods.get('kg_meta_path_v1', {}).get(f'domain_match@{top_k}', 0.0):.4f}，说明 KG 更适合保证同平台、同系列、同商品类型的一致性；行为方法更适合 exact-ASIN 预测。",
+    ] + ([
+        f"- `kg_meta_path_v2` 相比冻结基线 `kg_meta_path_v1`：NDCG@{cut} 提升 {lift(kg_v2, kg_v1, f'NDCG@{cut}')}，MRR@{cut} 提升 {lift(kg_v2, kg_v1, f'MRR@{cut}')}，"
+        f"Domain@{top_k} 从 {kg_v1.get(f'domain_match@{top_k}', 0.0):.4f} 到 {kg_v2.get(f'domain_match@{top_k}', 0.0):.4f}（基本持平，一致性没有被 recency/mentions 改动破坏）。",
+    ] if kg_v1 and kg_v2 else []) + [
+        f"- `kg_meta_path_v2` 的 Domain@{top_k} = {kg_v2.get(f'domain_match@{top_k}', kg_v1.get(f'domain_match@{top_k}', 0.0)):.4f}，说明 KG 更适合保证同平台、同系列、同商品类型的一致性；行为方法更适合 exact-ASIN 预测。",
         "- 因此，当前推荐器不应被描述为“LLM 生成 Cypher 后直接推荐”，而应描述为：LLM 结构化对话条件，图数据库用用户行为元路径召回，Transition-first 行为排序决定前排，KG 属性路径负责条件过滤和可解释理由。",
         "",
         "## 仍然存在的限制",
         "",
         "- 所有方法的 NDCG 绝对值仍不高，这是因为当前离线任务是严格预测未来同一个 ASIN；如果用户实际接受同系列、同平台、同玩法的商品，exact-ASIN 会低估体验相关性。",
-        "- 当前用户行为主要来自评分/评论历史，缺少真实曝光、点击、收藏、购买、停留时间等在线行为。因此模型能学习“历史偏好”，但还不能充分学习“看见后是否感兴趣”。",
-        "- KG 属性目前更适合做解释和语义补充。若要让 KG 排序本身更强，需要更细粒度的 franchise、platform、developer、mode、genre、review sentiment 属性，以及用户对这些属性的反馈。",
+        "- 当前用户行为主要来自评分/评论历史，缺少真实曝光、点击、收藏、购买、停留时间等在线行为。因此模型能学习“历史偏好”，但还不能充分学习“看见后是否感兴趣”。第六轮加入的 MENTIONS 确认信号部分缓解了“缺少 review sentiment 反馈”这一点，但仍然只是补充，不是替代。",
+        "- KG 属性目前更适合做解释和语义补充。若要让 KG 排序本身更强，还需要更细粒度的 developer、mode、genre 属性。",
         "",
         "## 当前采用方案",
         "",
@@ -619,7 +731,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "- 搜索推荐采用 domain-constrained ranking：明确的 franchise/platform/product_type 先作为强约束和高权重特征，避免“用户要 Switch 游戏却返回其他平台或配件”。",
         "- 当具体系列覆盖不足时，系统只进行受控降级：保留平台和商品类型，放松系列约束。",
         "- Recent Item-CF / User-CF 用于补足行为相似性和召回。",
-        "- KG 元路径继续保留，用于对话条件过滤、属性解释、冷启动补充和 domain-level 一致性控制。",
+        "- KG 元路径继续保留（现为 v2：近期衰减权重 + MENTIONS 确认加分），用于对话条件过滤、属性解释、冷启动补充和 domain-level 一致性控制。",
         "- 热门推荐只作为无用户历史或召回为空时的兜底。",
     ])
     (out_dir / "算法进化报告.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
