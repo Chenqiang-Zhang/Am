@@ -4,12 +4,13 @@ import styles from "./SplashScreen.module.css";
 
 interface Props {
   onDone: () => void;
+  onStart?: () => void;
   minDurationMs?: number;
 }
 
 // サイトに入った瞬間に表示する、8-bit横スクロール風の起動アニメーション。
 // minDurationMs経過後にタイトルメニューを出し、ユーザーが開始を選ぶとフェードアウトする。
-export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
+export default function SplashScreen({ onDone, onStart, minDurationMs = 3200 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
 
@@ -26,7 +27,10 @@ export default function SplashScreen({ onDone, minDurationMs = 3200 }: Props) {
   }, [fadingOut, onDone]);
 
   function startGame() {
-    if (!fadingOut) setFadingOut(true);
+    if (!fadingOut) {
+      onStart?.();
+      setFadingOut(true);
+    }
   }
 
   useEffect(() => {

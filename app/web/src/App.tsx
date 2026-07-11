@@ -8,10 +8,16 @@ import SplashScreen from "./components/SplashScreen";
 // 起動アニメーションの最低表示時間だけ上に被せておく(表示が終わる頃には裏の準備も進んでいる)。
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [heroEntrance, setHeroEntrance] = useState(false);
   return (
     <LangProvider>
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-      <ChatPage />
+      {showSplash && (
+        <SplashScreen
+          onStart={() => setHeroEntrance(true)}
+          onDone={() => setShowSplash(false)}
+        />
+      )}
+      <ChatPage heroEntrance={heroEntrance} />
     </LangProvider>
   );
 }

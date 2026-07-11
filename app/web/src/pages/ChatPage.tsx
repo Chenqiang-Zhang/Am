@@ -25,7 +25,11 @@ interface Result {
 type Status = "idle" | "loading" | "error";
 
 // 対話型推薦ページ。会話で希望を聞き取り → 十分になったら推薦する。
-export default function ChatPage() {
+interface Props {
+  heroEntrance?: boolean;
+}
+
+export default function ChatPage({ heroEntrance = false }: Props) {
   const { t, lang, setLang } = useI18n();
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [options, setOptions] = useState<string[]>([]);
@@ -237,7 +241,7 @@ export default function ChatPage() {
       </header>
 
       <section className={styles.conversation}>
-        {conversation.length === 0 && <HeroIllustration />}
+        {conversation.length === 0 && <HeroIllustration entering={heroEntrance} />}
         <ChatBubble role="assistant" content={t.greeting} />
         {conversation.map((m, i) => (
           <ChatBubble key={i} role={m.role} content={m.content} />

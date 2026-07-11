@@ -5,6 +5,11 @@
   animation: fadeIn 0.5s ease both;
 }
 
+/* タイトル画面で「はじめる」を選んだ瞬間、ゲーム機が大きく現れて定位置へ収まる。 */
+.enter {
+  animation: heroZoomOut 0.78s cubic-bezier(0.18, 0.82, 0.28, 1) both;
+}
+
 .svg {
   width: 160px;
   height: 112px;
@@ -35,6 +40,12 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes heroZoomOut {
+  0% { opacity: 0.12; transform: scale(2.15) translateY(9px); filter: brightness(1.35); }
+  58% { opacity: 1; transform: scale(0.94) translateY(-2px); filter: brightness(1.08); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: brightness(1); }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.14; }
   50%      { opacity: 0.28; }
@@ -43,4 +54,15 @@
 @keyframes float {
   0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
   50%      { transform: translateY(-4px) scale(1.12); opacity: 0.75; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap,
+  .enter,
+  .glow,
+  .sparkleA,
+  .sparkleB,
+  .sparkleC {
+    animation: none;
+  }
 }
