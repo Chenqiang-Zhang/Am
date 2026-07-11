@@ -1064,7 +1064,7 @@ LIMIT $limit
             ],
             response_format={"type": "json_object"},
             temperature=0,
-            max_tokens=1500,
+            max_tokens=3000,
         )
         return _parse_llm_json(resp.choices[0].message.content or "{}")
 
