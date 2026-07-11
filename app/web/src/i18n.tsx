@@ -42,16 +42,16 @@ interface Dict {
 }
 
 const ja: Dict = {
-  appTitle: "商品コンシェルジュ",
-  appSubtitle: "会話しながら、あなたに合う商品をご提案します。",
-  greeting: "こんにちは！どんな商品をお探しですか？",
+  appTitle: "ゲームコンシェルジュ",
+  appSubtitle: "会話しながら、あなたにぴったりのゲームをご提案します。",
+  greeting: "こんにちは！どんなゲームをお探しですか？",
   devView: "開発者ビュー",
   generalMode: "一般モード（非個人化）",
   clearHistory: "履歴をクリア",
   clearHistoryConfirm: "このユーザーの閲覧履歴・検索履歴を削除します（評価履歴は削除されません）。よろしいですか？",
   clearHistoryDone: "履歴をクリアしました",
   clearHistoryFailed: "履歴のクリアに失敗しました",
-  inputPlaceholder: "メッセージを入力（例：乾燥肌向けの保湿クリーム）",
+  inputPlaceholder: "メッセージを入力（例：友達と協力プレイできるアクションゲーム）",
   send: "送信",
   omakase: "おまかせで探す",
   reset: "最初から",
@@ -75,16 +75,16 @@ const ja: Dict = {
 };
 
 const en: Dict = {
-  appTitle: "Product Concierge",
-  appSubtitle: "We'll suggest products for you through a short chat.",
-  greeting: "Hi! What kind of product are you looking for?",
+  appTitle: "Game Concierge",
+  appSubtitle: "We'll suggest games for you through a short chat.",
+  greeting: "Hi! What kind of game are you looking for?",
   devView: "Developer view",
   generalMode: "General mode (no personalization)",
   clearHistory: "Clear history",
   clearHistoryConfirm: "This deletes this user's viewed/search history (rating history is not deleted). Continue?",
   clearHistoryDone: "History cleared",
   clearHistoryFailed: "Failed to clear history",
-  inputPlaceholder: "Type a message (e.g. moisturizer for dry skin)",
+  inputPlaceholder: "Type a message (e.g. co-op action game to play with friends)",
   send: "Send",
   omakase: "Surprise me",
   reset: "Start over",

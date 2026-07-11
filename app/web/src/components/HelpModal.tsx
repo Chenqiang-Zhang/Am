@@ -10,12 +10,12 @@ const STEPS_JA = [
   {
     icon: "💬",
     title: "欲しいものを話しかける",
-    body: "「保湿クリームが欲しい」「プレゼントに使えるコスメ」など、自然な言葉で入力してください。",
+    body: "「協力プレイできるアクションゲームが欲しい」「プレゼントに使えるゲーム」など、自然な言葉で入力してください。",
   },
   {
     icon: "🤖",
     title: "AIが好みを深掘りする",
-    body: "価格帯・用途・成分などをさらに質問します。ボタンから選ぶか、テキストで答えてください。",
+    body: "ジャンル・プレイ人数・価格帯などをさらに質問します。ボタンから選ぶか、テキストで答えてください。",
   },
   {
     icon: "✨",
@@ -33,12 +33,12 @@ const STEPS_EN = [
   {
     icon: "💬",
     title: "Describe what you want",
-    body: 'Type in natural language — e.g. "a good moisturizer" or "a gift-worthy skincare set".',
+    body: 'Type in natural language — e.g. "a co-op action game" or "a gift-worthy game".',
   },
   {
     icon: "🤖",
     title: "AI asks follow-up questions",
-    body: "It may ask about price range, purpose, or ingredients. Pick from the buttons or type your own answer.",
+    body: "It may ask about genre, player count, or price range. Pick from the buttons or type your own answer.",
   },
   {
     icon: "✨",
@@ -53,14 +53,10 @@ const STEPS_EN = [
 ];
 
 const TIPS_JA = [
-  "「おまかせ」ボタンで条件なしにランダム推薦もできます",
-  "価格が未登録の商品は「売り切れ・現在購入不可」として表示され、表示フィルタで切り替えられます",
   "レビューはデータセットに取り込んだ件数のみ表示されます",
 ];
 
 const TIPS_EN = [
-  'Use the "Surprise me" button to get recommendations without any constraints',
-  "Products without a dataset price are marked sold out / currently unavailable and can be filtered",
   "Reviews shown are limited to what was imported into our dataset",
 ];
 

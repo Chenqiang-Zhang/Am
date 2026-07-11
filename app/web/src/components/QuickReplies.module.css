@@ -59,9 +59,14 @@
   border-radius: 999px;
   border: 1px solid var(--color-primary);
   background: var(--color-surface);
+  color: var(--color-text);
   font-size: 13px;
   outline: none;
   min-width: 180px;
+}
+
+.otherInput::placeholder {
+  color: var(--color-text-muted);
 }
 
 .otherInput:focus {
@@ -79,5 +84,5 @@
 }
 
 .otherSend:not(:disabled):hover {
-  background: #6a2f3c;
+  background: var(--color-primary-hover);
 }

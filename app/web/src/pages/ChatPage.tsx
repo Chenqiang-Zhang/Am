@@ -3,6 +3,7 @@ import { chat, clearHistory, recommendHome, warmHomeCache, ApiError } from "../a
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
+import HeroIllustration from "../components/HeroIllustration";
 import QuickReplies from "../components/QuickReplies";
 import PreferenceSummary from "../components/PreferenceSummary";
 import IntentPanel from "../components/IntentPanel";
@@ -222,6 +223,7 @@ export default function ChatPage() {
       </header>
 
       <section className={styles.conversation}>
+        {conversation.length === 0 && <HeroIllustration />}
         <ChatBubble role="assistant" content={t.greeting} />
         {conversation.map((m, i) => (
           <ChatBubble key={i} role={m.role} content={m.content} />
@@ -249,14 +251,6 @@ export default function ChatPage() {
         />
         <button className={styles.send} type="submit" disabled={loading || !input.trim()}>
           {t.send}
-        </button>
-        <button
-          className={styles.omakase}
-          type="button"
-          onClick={() => send(lang === "ja" ? "特にこだわりはありません。おまかせで。" : "No particular preference. Surprise me.")}
-          disabled={loading}
-        >
-          {t.omakase}
         </button>
         {conversation.length > 0 && (
           <button className={styles.reset} type="button" onClick={reset} disabled={loading}>

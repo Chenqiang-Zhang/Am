@@ -862,7 +862,7 @@ RETURN r.title AS title,
        toFloat(r.rating) AS rating,
        toInteger(r.helpful_vote) AS helpful_vote,
        r.verified AS verified_purchase
-ORDER BY r.helpful_vote DESC, r.rating DESC
+ORDER BY r.helpful_vote DESC, r.rating DESC, r.review_id ASC
 LIMIT $limit
 """
         use_ja = _normalize_lang(lang) == "ja"

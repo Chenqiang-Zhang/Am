@@ -1,0 +1,299 @@
+.overlay {
+  --splash-duration: 3200ms;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  gap: clamp(16px, 2.5vh, 28px);
+  color: #f7f4ff;
+  background:
+    radial-gradient(circle at 50% 58%, rgb(87 44 189 / 0.25), transparent 38%),
+    linear-gradient(180deg, #08051a 0%, #110929 58%, #080512 100%);
+  opacity: 1;
+  transition: opacity 0.5s ease, filter 0.5s ease;
+  isolation: isolate;
+}
+
+.fadeOut {
+  opacity: 0;
+  filter: brightness(1.45);
+  pointer-events: none;
+}
+
+.pixelGrid {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: 0.16;
+  background-image:
+    linear-gradient(rgb(124 92 255 / 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(124 92 255 / 0.16) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, transparent, #000 26%, #000 76%, transparent);
+}
+
+.stars {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.stars i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #65f4ff;
+  box-shadow: 0 0 12px rgb(101 244 255 / 0.8);
+  animation: starBlink 0.8s steps(2, end) infinite;
+}
+
+.stars i:nth-child(1) { left: 11%; top: 18%; }
+.stars i:nth-child(2) { left: 24%; top: 32%; animation-delay: 0.2s; }
+.stars i:nth-child(3) { right: 18%; top: 21%; animation-delay: 0.4s; }
+.stars i:nth-child(4) { right: 8%; top: 45%; animation-delay: 0.1s; }
+.stars i:nth-child(5) { left: 8%; top: 62%; animation-delay: 0.5s; }
+.stars i:nth-child(6) { right: 31%; top: 69%; animation-delay: 0.3s; }
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-align: center;
+  text-shadow: 4px 4px 0 #2d155d;
+  animation: brandDrop 0.45s steps(5, end) both;
+}
+
+.brand strong {
+  font-size: clamp(22px, 4vw, 42px);
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.eyebrow {
+  color: #65f4ff;
+  font-size: clamp(9px, 1.4vw, 12px);
+  letter-spacing: 0.22em;
+  text-shadow: 2px 2px 0 #143b64;
+}
+
+.scene {
+  position: relative;
+  width: 100%;
+  height: clamp(172px, 27vh, 246px);
+}
+
+.runnerTravel {
+  position: absolute;
+  left: 0;
+  bottom: 27px;
+  width: clamp(112px, 16vw, 156px);
+  z-index: 2;
+  animation: runAcross var(--splash-duration) linear both;
+  filter:
+    drop-shadow(4px 0 0 #65f4ff)
+    drop-shadow(-4px 0 0 #65f4ff)
+    drop-shadow(0 4px 0 #65f4ff)
+    drop-shadow(0 -4px 0 #65f4ff)
+    drop-shadow(8px 8px 0 #321561);
+}
+
+.runnerTravel::before,
+.runnerTravel::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 7px;
+  height: 7px;
+  left: 5px;
+  bottom: 3px;
+  background: #a36cff;
+  box-shadow: -13px 5px 0 #65f4ff, -28px -2px 0 #6034b9;
+  animation: dust 0.45s steps(3, end) infinite;
+}
+
+.runnerTravel::after {
+  left: -18px;
+  bottom: 18px;
+  animation-delay: 0.22s;
+  opacity: 0.55;
+}
+
+.runner {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  /* 「壁人間」のような黒一色の8-bitシルエット。元画像のalphaだけを利用する。 */
+  filter: brightness(0) saturate(0);
+  animation: runBob 0.22s steps(2, end) infinite;
+}
+
+.ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  height: 8px;
+  background: #7c5cff;
+  box-shadow:
+    0 8px 0 #3b1d78,
+    0 16px 0 rgb(34 17 72 / 0.85),
+    0 0 24px rgb(101 244 255 / 0.28);
+}
+
+.ground::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 46px, #65f4ff 46px 58px);
+  animation: groundScroll 0.38s steps(3, end) infinite;
+}
+
+.speedLines i {
+  position: absolute;
+  right: -18vw;
+  height: 4px;
+  width: clamp(80px, 16vw, 210px);
+  background: linear-gradient(90deg, transparent, rgb(101 244 255 / 0.7));
+  animation: streak 0.75s linear infinite;
+}
+
+.speedLines i:nth-child(1) { top: 18%; animation-delay: -0.2s; }
+.speedLines i:nth-child(2) { top: 40%; width: 11vw; animation-delay: -0.55s; }
+.speedLines i:nth-child(3) { top: 61%; width: 22vw; animation-delay: -0.35s; }
+.speedLines i:nth-child(4) { top: 76%; width: 8vw; animation-delay: -0.68s; }
+
+.loading {
+  width: min(360px, 76vw);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.loadingRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+  color: #d9ceff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.dots {
+  display: inline-block;
+  width: 3ch;
+  overflow: hidden;
+  animation: loadingDots 0.8s steps(4, end) infinite;
+}
+
+.barTrack {
+  height: 10px;
+  padding: 2px;
+  border: 2px solid #6040aa;
+  background: #100724;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 rgb(0 0 0 / 0.3);
+}
+
+.barFill {
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, #7c5cff 0 14px, #65f4ff 14px 20px);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: loadProgress var(--splash-duration) steps(14, end) both;
+}
+
+@keyframes brandDrop {
+  from { opacity: 0; transform: translateY(-18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes runAcross {
+  0% { transform: translateX(-180px); }
+  12% { transform: translateX(3vw); }
+  82% { transform: translateX(calc(100vw - 12vw - 156px)); }
+  100% { transform: translateX(calc(100vw + 40px)); }
+}
+
+@keyframes runBob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes dust {
+  0% { opacity: 0; transform: translate(8px, -2px) scale(0.5); }
+  50% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-24px, 8px) scale(1.15); }
+}
+
+@keyframes groundScroll {
+  to { transform: translateX(-58px); }
+}
+
+@keyframes streak {
+  from { transform: translateX(0); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translateX(-125vw); opacity: 0; }
+}
+
+@keyframes starBlink {
+  50% { opacity: 0.2; transform: scale(0.5); }
+}
+
+@keyframes loadingDots {
+  from { width: 0; }
+  to { width: 3ch; }
+}
+
+@keyframes loadProgress {
+  0% { transform: scaleX(0); }
+  12% { transform: scaleX(0.08); }
+  55% { transform: scaleX(0.62); }
+  82% { transform: scaleX(0.84); }
+  100% { transform: scaleX(1); }
+}
+
+@media (max-width: 520px) {
+  .runnerTravel {
+    width: 112px;
+  }
+
+  .scene {
+    height: 176px;
+  }
+
+  @keyframes runAcross {
+    0% { transform: translateX(-140px); }
+    12% { transform: translateX(3vw); }
+    82% { transform: translateX(calc(100vw - 128px)); }
+    100% { transform: translateX(calc(100vw + 20px)); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runnerTravel {
+    left: 50%;
+    transform: translateX(-50%);
+    animation: none;
+  }
+
+  .runner,
+  .runnerTravel::before,
+  .runnerTravel::after,
+  .ground::after,
+  .speedLines i,
+  .stars i,
+  .dots {
+    animation: none;
+  }
+
+  .barFill {
+    animation-duration: 700ms;
+  }
+}

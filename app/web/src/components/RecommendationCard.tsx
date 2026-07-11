@@ -28,9 +28,8 @@ interface Props {
 
 // 1 商品の説明カード。既定（ユーザーモード）はやさしい表示、devMode で機械的な根拠データ。
 export default function RecommendationCard({ rec, rank, devMode, userId, searchId }: Props) {
-  const { t, lang } = useI18n();
+  const { lang } = useI18n();
   const jpyRate = useUsdToJpy();
-  const available = rec.price != null;
   return (
     <article className={styles.card} style={{ animationDelay: `${(rank - 1) * 70}ms` }}>
       <ProductImage src={rec.image_url} alt={rec.title} />
@@ -49,9 +48,6 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
 
         <div className={styles.meta}>
           <RatingStars rating={rec.avg_rating} count={rec.rating_count} />
-          <span className={available ? styles.availabilityOk : styles.availabilityUnavailable}>
-            {available ? t.availableLabel : t.unavailableLabel}
-          </span>
           <span className={rec.price != null ? styles.price : styles.priceUnknown}>
             {rec.price != null
               ? formatPrice(rec.price, lang, jpyRate)
@@ -67,7 +63,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           userId={userId}
           searchId={searchId}
         />
-        <a
+        {/* <a
           className={styles.amazonLink}
           href={`https://www.amazon.com/dp/${rec.product_id}`}
           target="_blank"
@@ -77,7 +73,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           }}
         >
           {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}
-        </a>
+        </a> */}
       </div>
     </article>
   );
@@ -89,9 +85,13 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
     return (
       <div className={styles.thumbPlaceholder} aria-hidden="true">
         <svg className={styles.thumbIcon} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-          <circle cx="12" cy="13" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M8 6l1.5-2h5L16 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path
+            d="M7 9c-2.5 0-4.3 2-3.9 4.4l.6 3.4c.3 1.6 2.1 2.4 3.5 1.5l.7-.4a3.5 3.5 0 0 1 3.3 0l.2.1a3.5 3.5 0 0 0 3.3 0l.2-.1a3.5 3.5 0 0 1 3.3 0l.7.4c1.4.9 3.2.1 3.5-1.5l.6-3.4C23.3 11 21.5 9 19 9z"
+            stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
+          />
+          <path d="M8.5 12.5v3M7 14h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <circle cx="16" cy="12" r="0.9" fill="currentColor"/>
+          <circle cx="18.2" cy="14.2" r="0.9" fill="currentColor"/>
         </svg>
       </div>
     );
@@ -111,7 +111,6 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
 function UserExplanation({ rec }: { rec: Recommendation }) {
   const { lang } = useI18n();
   const tags = friendlyTags(rec, lang);
-  const explanation = rec.explanation;
 
   return (
     <div className={styles.user}>
@@ -124,7 +123,6 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
           ))}
         </div>
       )}
-      {explanation && <p className={styles.localizedReason}>{explanation}</p>}
     </div>
   );
 }

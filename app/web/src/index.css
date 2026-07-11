@@ -1,35 +1,38 @@
 /* グローバルスタイル：最小限のリセット＋デザイントークン。
-   方向性 = プレミアム/エディトリアル（暖色オフホワイト・セリフ見出し・ワイン系アクセント・余白大）。
-   個々の見た目は各コンポーネントの *.module.css に置く。 */
+   方向性 = ゲームストア風（ダーク基調・ヴァイオレット×シアンのアクセント・
+   角丸の大きいカード）。個々の見た目は各コンポーネントの *.module.css に置く。 */
 
 :root {
   /* カラートークン */
-  --color-bg: #f2ebe0;          /* 暖かみのあるオフホワイト（紙のような地） */
-  --color-surface: #fffef9;     /* 暖色の白（カード面） */
-  --color-border: #e0d5c0;      /* ヘアラインの境界 */
-  --color-text: #1a1410;        /* 暖色の黒に近い文字 */
-  --color-text-muted: #8c8073;  /* 暖色のグレー */
-  --color-primary: #6e2838;     /* 深いワイン（アクセント） */
-  --color-primary-weak: #f0e6e4;/* 淡いワインの面 */
-  --color-accent: #6e2838;
-  --color-gold: #b5964a;        /* ゴールドアクセント */
-  --color-gold-light: #f5edd8;  /* 淡いゴールド面 */
-  --color-warning-bg: #fbf3e8;
-  --color-warning-border: #ecd6b8;
-  --color-warning-text: #8a5a2b;
-  --color-danger-bg: #fcefec;
-  --color-danger-border: #f0cfc6;
-  --color-danger-text: #a23b2c;
-  --color-star: #b5964a;        /* ゴールドと統一 */
+  --color-bg: #0b0d14;            /* ほぼ黒、わずかに青みのある背景 */
+  --color-surface: #151822;       /* カード面 */
+  --color-surface-2: #1d212e;     /* ホバー・二次面 */
+  --color-border: #2a2f40;        /* ヘアラインの境界 */
+  --color-text: #eef1f8;          /* 明るいテキスト */
+  --color-text-muted: #8b90a8;    /* 淡いグレー */
+  --color-primary: #8b5cf6;       /* ヴァイオレット（アクセント） */
+  --color-primary-hover: #a78bfa;
+  --color-primary-weak: rgba(139, 92, 246, 0.16);
+  --color-accent: #22d3ee;        /* シアン（スコア・ハイライト用） */
+  --color-gold: #fbbf24;          /* アンバー（星評価・CTA） */
+  --color-gold-light: rgba(251, 191, 36, 0.14);
+  --color-warning-bg: rgba(251, 146, 60, 0.14);
+  --color-warning-border: rgba(251, 146, 60, 0.4);
+  --color-warning-text: #fdba74;
+  --color-danger-bg: rgba(248, 113, 113, 0.14);
+  --color-danger-border: rgba(248, 113, 113, 0.4);
+  --color-danger-text: #fca5a5;
+  --color-star: #fbbf24;
 
   /* スコア内訳バー（開発者ビュー用） */
-  --color-bar: #6e2838;
-  --color-bar-track: #ece4d7;
+  --color-bar: var(--color-accent);
+  --color-bar-track: #262b3a;
 
-  --radius: 2px;                /* ラグジュアリー＝シャープな角丸 */
-  --radius-sm: 2px;
-  --radius-lg: 4px;
-  --shadow-card: 0 2px 8px rgba(100, 60, 30, 0.07), 0 1px 2px rgba(100, 60, 30, 0.04);
+  --radius: 10px;               /* ゲームストアらしい大きめの角丸 */
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 0 1px rgba(139, 92, 246, 0.3), 0 10px 32px rgba(139, 92, 246, 0.22);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -38,8 +41,6 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --font-serif: Georgia, "Times New Roman", "Hiragino Mincho ProN",
-    "Yu Mincho", "YuMincho", serif;
   --font-sans: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
 

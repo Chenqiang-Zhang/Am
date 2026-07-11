@@ -14,7 +14,7 @@
 }
 
 .empty {
-  color: #d6dbe1;
+  color: var(--color-border);
   display: block;
 }
 

@@ -4,7 +4,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-top: 2px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: var(--space-5);
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
@@ -17,11 +17,10 @@
 }
 
 .card:hover {
-  box-shadow: 0 8px 28px rgba(100, 60, 30, 0.1), 0 2px 6px rgba(100, 60, 30, 0.05);
+  box-shadow: var(--shadow-glow);
   transform: translateY(-3px);
-  border-top-color: var(--color-gold);
   border-color: var(--color-border);
-  border-top-color: var(--color-gold);
+  border-top-color: var(--color-primary);
 }
 
 /* 商品画像 */
@@ -30,14 +29,14 @@
   flex: 0 0 auto;
   width: 120px;
   height: 120px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  background: #fff;
+  background: #05060a;
   object-fit: contain;
 }
 
 .thumbPlaceholder {
-  background: #f7f2ea;
+  background: var(--color-surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,7 +45,7 @@
 .thumbIcon {
   width: 34px;
   height: 34px;
-  color: #cdc3b4;
+  color: var(--color-text-muted);
 }
 
 .body {
@@ -92,7 +91,7 @@
   flex: 0 0 auto;
   font-size: 18px;
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -120,6 +119,7 @@
   min-height: 24px;
   padding: 3px 9px;
   border: 1px solid;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;

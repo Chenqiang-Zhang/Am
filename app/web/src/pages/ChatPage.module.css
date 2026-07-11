@@ -22,8 +22,8 @@
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  height: 1px;
-  background: linear-gradient(to right, transparent, var(--color-gold), transparent);
+  height: 2px;
+  background: linear-gradient(to right, transparent, var(--color-primary), var(--color-accent), transparent);
 }
 
 .headerText {
@@ -55,10 +55,10 @@
 
 .title {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 34px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   color: var(--color-text);
 }
 
@@ -93,7 +93,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-2);
 }
 
 .headerText {
@@ -142,7 +143,7 @@
 }
 
 .langActive {
-  background: var(--color-text);
+  background: var(--color-primary);
   color: #fff;
 }
 
@@ -180,7 +181,12 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
+  color: var(--color-text);
   outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
 }
 
 .input:focus {
@@ -192,16 +198,16 @@
   padding: var(--space-3) var(--space-5);
   border: none;
   border-radius: var(--radius);
-  background: var(--color-text);
+  background: var(--color-primary);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.06em;
   white-space: nowrap;
   transition: background 0.2s;
 }
 
 .send:not(:disabled):hover {
-  background: var(--color-primary);
+  background: var(--color-primary-hover);
 }
 
 .omakase,

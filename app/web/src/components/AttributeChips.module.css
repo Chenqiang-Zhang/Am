@@ -10,13 +10,13 @@
   gap: 6px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.4);
   font-size: 13px;
 }
 
 .type {
-  color: #047857;
+  color: #4ade80;
   font-weight: 600;
 }
 
