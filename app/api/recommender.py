@@ -126,6 +126,14 @@ _RULES = """\
                           value_ja: a.value_ja})  — use [] when no attrs
   (always include value_ja alongside value — Python picks whichever fits the requested language)
 - When canonical_type/canonical_value exist, prefer them for normalized facet matching.
+- Platform names (Switch, PS4, Xbox...) usually appear inside p.title (e.g.
+  "Super Mario Odyssey - Nintendo Switch") — filter platform via
+  toLower(p.title) CONTAINS 'switch' in addition to (or instead of) Attribute matching.
+- Genre-like conditions (adventure, RPG, ...) are SPARSE as Attributes. Prefer matching
+  genre keywords against review MENTIONS values or toLower(p.description), and fold them
+  into `score` as a boost rather than a hard WHERE, so a missing tag doesn't zero the results.
+- Product type (game vs console vs accessory) is best filtered via Category:
+  MATCH (p)-[:BELONGS_TO]->(c:Category) WHERE toLower(c.name) CONTAINS 'games'
 - `MENTIONS` from reviews are soft evidence only; do not use them as the sole hard filter
   unless the user explicitly asks for review-based evidence.
 
@@ -167,6 +175,7 @@ _TITLE_GENERIC_TERMS = {
     "switch", "nintendo", "playstation", "xbox", "steam", "console", "pc",
     "ゲーム", "ゲーミング", "欲しい", "ほしい", "探して", "お願い", "いる",
     "アクション", "アドベンチャー", "パズル", "その他", "特にこだわりなし",
+    "友達", "友だち", "一緒", "みんな", "家族", "子供", "子ども", "プレゼント",
 }
 
 _TITLE_ALIASES = {
@@ -308,6 +317,40 @@ _TITLE_MATCH_BOOST = 6.0
 _POPULARITY_RATING_WEIGHT = 0.45
 _POPULARITY_COUNT_WEIGHT = 0.18
 
+# product_kind属性はグラフ内で453件しか無くハードフィルタに使えないため、
+# 商品種別は全商品が持つCategoryノード(BELONGS_TO)から判定する。
+# キーは_FACET_ALIAS_MAPS["product_kind"]のcanonical値、値はカテゴリ名に含まれるキーワード。
+_CATEGORY_KIND_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "game": ("games", "downloadable content"),
+    "console": ("consoles", "systems"),
+    "controller": ("controllers", "gamepads", "joysticks", "remotes"),
+    "accessory": (
+        "accessories", "headsets", "cases", "storage", "memory", "kits",
+        "chargers", "cables", "batteries", "stands", "skins", "faceplates",
+    ),
+    "gift_card": ("currency", "gift cards", "subscription"),
+}
+
+# タイトル/カテゴリ名から推定したプラットフォームをmatched_attrsに出す際の表示名
+_PLATFORM_DISPLAY: dict[str, str] = {
+    "switch": "Nintendo Switch",
+    "playstation_5": "PlayStation 5",
+    "playstation_4": "PlayStation 4",
+    "xbox_series_x": "Xbox Series X|S",
+    "xbox_one": "Xbox One",
+    "pc": "PC",
+    "wii_u": "Wii U",
+    "nintendo_3ds": "Nintendo 3DS",
+    "nintendo_ds": "Nintendo DS",
+}
+
+# 属性としては疎(genre実質~150商品)だが、レビューMENTIONS(全商品平均124値)や
+# 説明文には豊富に現れるファセット。これらはMENTIONS/descriptionも証拠として使う。
+_SOFT_EVIDENCE_FACETS: tuple[str, ...] = (
+    "genre", "gameplay_style", "multiplayer_type", "play_mode",
+    "story", "graphics", "difficulty",
+)
+
 
 def _normalize_search_text(text: str) -> str:
     return re.sub(r"[\s\-_]+", " ", text.lower()).strip()
@@ -315,6 +358,78 @@ def _normalize_search_text(text: str) -> str:
 
 def _phrase_hits(text: str, phrases: tuple[str, ...]) -> bool:
     return any(phrase in text for phrase in phrases)
+
+
+def _text_has_token(text: str, phrase: str) -> bool:
+    """英数字フレーズは単語境界つきで探す（"ds"が"cards"に誤ヒットするのを防ぐ）。
+    日本語などの非ASCIIフレーズは単語境界が定義できないため部分一致で探す。"""
+    if re.fullmatch(r"[a-z0-9 .+_|-]+", phrase):
+        return re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", text) is not None
+    return phrase in text
+
+
+def _soft_facet_aliases() -> list[str]:
+    """MENTIONS値の事前フィルタに使うASCIIエイリアス一覧（_SOFT_EVIDENCE_FACETS分）。"""
+    aliases: set[str] = set()
+    for facet_type in _SOFT_EVIDENCE_FACETS:
+        for canonical_value, phrases in _FACET_ALIAS_MAPS.get(facet_type, {}).items():
+            aliases.add(_normalize_search_text(canonical_value.replace("_", " ")))
+            for phrase in phrases:
+                normalized = _normalize_search_text(phrase)
+                if re.fullmatch(r"[a-z0-9 .+_|-]+", normalized):
+                    aliases.add(normalized)
+    return sorted(a for a in aliases if a)
+
+
+def _kinds_from_categories(categories: list[str]) -> set[str]:
+    kinds: set[str] = set()
+    for name in categories:
+        normalized = _normalize_search_text(str(name))
+        for kind, keywords in _CATEGORY_KIND_KEYWORDS.items():
+            if any(_text_has_token(normalized, kw) for kw in keywords):
+                kinds.add(kind)
+    return kinds
+
+
+def _facet_alias_set(facet_type: str, facet_values: list[str]) -> set[str]:
+    """要求されたcanonical値と、そのエイリアス（正規化済み）の集合を返す。"""
+    alias_map = _FACET_ALIAS_MAPS.get(facet_type, {})
+    aliases: set[str] = set()
+    for value in facet_values:
+        aliases.add(_normalize_search_text(value.replace("_", " ")))
+        aliases.update(_normalize_search_text(a) for a in alias_map.get(value, ()))
+    return {a for a in aliases if a}
+
+
+def _all_facet_alias_terms() -> set[str]:
+    """全ファセットの語彙（正規化済み）。ここに載る語はタイトル/フランチャイズ名では
+    なくファセット条件なので、タイトル語抽出から除外する（"ホラー"や"rpg"がタイトル
+    語扱いされ、どの商品名にも無いため候補ゼロになる事故を防ぐ）。"""
+    terms: set[str] = set()
+    for alias_map in _FACET_ALIAS_MAPS.values():
+        for canonical_value, phrases in alias_map.items():
+            terms.add(_normalize_search_text(canonical_value.replace("_", " ")))
+            terms.update(_normalize_search_text(p) for p in phrases)
+    return {t for t in terms if t}
+
+
+_FACET_ALIAS_TERMS: set[str] = _all_facet_alias_terms()
+
+# 日本語チャンクは助詞で分割する前にファセット語彙そのものを除去する（"安いパズル"の
+# ように助詞なしで連結された場合でも、ジャンル・価格等の語がタイトル語に紛れないように）。
+# 長い語から先に除去する（"協力プレイ"を"協力"より先に消す）。
+_FACET_ALIAS_TERMS_JA: list[str] = sorted(
+    (t for t in _FACET_ALIAS_TERMS if not re.fullmatch(r"[a-z0-9 .+_|-]+", t)),
+    key=len,
+    reverse=True,
+)
+
+# 「〜みたいな」「〜のような」等の類似検索マーカー。これがある場合、名指しされた
+# タイトルは「その商品自体」ではなく「類似品を探す手がかり」なので、タイトル一致を
+# ハードフィルタにせず加点のみに落とす（ゼルダみたいな→ゼルダ以外も出す）。
+_SIMILARITY_MARKERS: tuple[str, ...] = (
+    "みたい", "のような", "のように", "っぽい", "similar to", "games like",
+)
 
 
 def _unique_list(items: list[Any]) -> list[Any]:
@@ -351,22 +466,35 @@ def _extract_title_terms(query: str) -> list[str]:
 
     # Split Japanese preference phrases at particles and generic request words,
     # leaving franchise/person names such as "マリオ" or "ゼルダ".
+    # まずファセット語彙（ジャンル・価格等）を除去し、次に助詞・希望動詞で分割する。
     for chunk in re.findall(r"[぀-ヿ㐀-鿿ー]+", lowered):
-        parts = re.split(
-            r"(?:ゲームが欲しい|ゲーム|が欲しい|がほしい|"
-            r"を探して|がしたい|遊べる|できる|ほしい|欲しい|おすすめ|タイトル|作品|"
-            r"の|が|を|は|で|に|と|も)",
-            chunk,
-        )
-        terms.extend(part for part in parts if len(part) >= 2)
+        for alias in _FACET_ALIAS_TERMS_JA:
+            chunk = chunk.replace(alias, " ")
+        for piece in chunk.split():
+            parts = re.split(
+                r"(?:ゲームが欲しい|ゲーム|が欲しい|がほしい|"
+                r"みたいな|みたいの|みたい|のような|のように|っぽい|"
+                r"を探して|がしたい|遊びたい|やりたい|プレイしたい|買いたい|遊べる|できる|"
+                r"ほしい|欲しい|おすすめ|タイトル|作品|"
+                r"の|が|を|は|で|に|と|も)",
+                piece,
+            )
+            terms.extend(part for part in parts if len(part) >= 2)
 
     terms = [_TITLE_ALIASES.get(term, term) for term in terms]
     unique_terms: list[str] = []
     seen: set[str] = set()
     for term in terms:
-        if len(term) >= 2 and term not in seen:
-            seen.add(term)
-            unique_terms.append(term)
+        if len(term) < 2 or term in seen:
+            continue
+        # ファセット語彙（ジャンル・プラットフォーム等）はタイトル語として扱わない
+        if _normalize_search_text(term) in _FACET_ALIAS_TERMS:
+            continue
+        # ひらがなだけの短い語（"して"等の動詞・助詞の断片）はタイトル名ではない
+        if re.fullmatch(r"[぀-ゟ]{1,3}", term):
+            continue
+        seen.add(term)
+        unique_terms.append(term)
     return unique_terms
 
 def _build_fix_prompt(lang: str) -> str:
@@ -797,6 +925,12 @@ CONVERSATION HISTORY NOTE: previous assistant messages in the history contain on
 question text shown to the user. This does NOT mean you should respond in plain text —
 you MUST ALWAYS respond with a valid JSON object.
 
+When action = "search", also fill "search_keywords": 3-8 short ENGLISH keywords that a
+product-catalog search engine could match, covering EVERY preference confirmed anywhere
+in the conversation — franchise/series/character names (in their English catalog spelling,
+e.g. "マリオ" -> "mario"), platform (e.g. "switch"), genre (e.g. "adventure"), and any
+other confirmed preference. Do not invent preferences the user never stated.
+
 Return ONLY this JSON object (no other text before or after):
 {{
   "action": "ask" | "search",
@@ -804,7 +938,8 @@ Return ONLY this JSON object (no other text before or after):
   "options": ["(if action=ask) quick-reply options"],
   "slot": "(a short snake_case name for what this question is asking about) | null",
   "filled_slots": <integer>,
-  "preference_summary": []
+  "preference_summary": [],
+  "search_keywords": ["(if action=search) English catalog keywords, otherwise []"]
 }}"""
 
 
@@ -931,7 +1066,13 @@ class Recommender:
         return (cypher, explanation, results) if results else None
 
     def _get_product_catalog(self) -> list[dict[str, Any]]:
-        """Load products and their attributes once for fast canonical reranking."""
+        """Load products, attributes, categories and review-mention evidence once
+        for fast canonical reranking.
+
+        ジャンル等のソフトファセットは属性としては疎なので、レビューMENTIONSの値
+        （_SOFT_EVIDENCE_FACETSの語彙にマッチするものだけ事前フィルタ）と説明文も
+        証拠としてキャッシュする。商品種別はCategoryノードから判定する。
+        """
         if self._product_catalog is not None:
             return self._product_catalog
 
@@ -945,8 +1086,20 @@ class Recommender:
             "}) AS attrs "
             "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, "
             "       p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, "
-            "       p.rating_count AS rating_count, attrs "
+            "       p.rating_count AS rating_count, p.description AS description, attrs "
             "ORDER BY p.product_id"
+        )
+        category_cypher = (
+            "MATCH (p:Product)-[:BELONGS_TO]->(c:Category) "
+            "RETURN p.product_id AS product_id, collect(DISTINCT c.name) AS categories"
+        )
+        # 集計(WITH)後にWHEREを置くことで、distinct値(~12万行)に対してだけ照合する
+        mention_cypher = (
+            "MATCH (p:Product)<-[:ABOUT]-(:Review)-[:MENTIONS]->(a:Attribute) "
+            "WITH p.product_id AS product_id, "
+            "     toLower(coalesce(a.canonical_value, a.value)) AS val, count(*) AS cnt "
+            "WHERE any(alias IN $aliases WHERE val CONTAINS alias) "
+            "RETURN product_id, collect([val, cnt]) AS mentions"
         )
         try:
             with self._driver.session(database=self._neo4j_db) as session:
@@ -954,8 +1107,48 @@ class Recommender:
                     row = dict(record)
                     row["attrs"] = [a for a in (row.get("attrs") or []) if isinstance(a, dict)]
                     catalog.append(row)
+                categories = {
+                    r["product_id"]: [str(c) for c in (r["categories"] or [])]
+                    for r in session.run(category_cypher)
+                }
+                mentions = {
+                    r["product_id"]: {
+                        str(pair[0]): int(pair[1])
+                        for pair in (r["mentions"] or [])
+                        if isinstance(pair, (list, tuple)) and len(pair) == 2
+                    }
+                    for r in session.run(mention_cypher, aliases=_soft_facet_aliases())
+                }
         except Exception as exc:
             print(f"[recommender] product catalog load failed: {exc}", file=sys.stderr)
+            self._product_catalog = catalog
+            return catalog
+
+        for row in catalog:
+            pid = row.get("product_id")
+            cats = categories.get(pid, [])
+            kinds = _kinds_from_categories(cats)
+            # 属性側にproduct_kind情報があればそれも種別集合へ加える
+            for attr in row["attrs"]:
+                if _normalize_search_text(
+                    str(attr.get("canonical_type") or attr.get("attr_type") or "")
+                ) != "product_kind":
+                    continue
+                raw = _normalize_search_text(str(attr.get("canonical_value") or attr.get("value") or ""))
+                for kind, aliases in _FACET_ALIAS_MAPS["product_kind"].items():
+                    if raw == kind or any(
+                        _text_has_token(raw, _normalize_search_text(a)) for a in aliases
+                    ):
+                        kinds.add(kind)
+            row["kinds"] = kinds
+            # プラットフォームはタイトル・カテゴリ名に最も濃く現れる(ゲーム1359件中1011件)
+            row["platform_text"] = _normalize_search_text(
+                f"{row.get('title') or ''} {row.get('title_ja') or ''} {' '.join(cats)}"
+            )
+            row["mention_counts"] = mentions.get(pid, {})
+            row["description_norm"] = _normalize_search_text(
+                _strip_html(row.pop("description", None)) or ""
+            )
         self._product_catalog = catalog
         return catalog
 
@@ -1014,9 +1207,16 @@ class Recommender:
                         seen_ids.add(str(pid))
 
         title_term_set = {term for term in title_terms if term not in _TITLE_GENERIC_TERMS}
-        strong_facet_types = [ft for ft in facet_signals if ft != "product_kind"]
+        # 「ゼルダみたいな」等の類似検索では、名指しタイトルはハードフィルタにせず
+        # 加点のみ（そのタイトル以外の類似候補も出すのが意図のため）
+        similarity_query = any(m in query.lower() for m in _SIMILARITY_MARKERS)
         platform_values = facet_signals.get("platform") or []
-        scored: list[tuple[float, dict[str, Any], list[dict[str, Any]]]] = []
+        product_kind_values = facet_signals.get("product_kind") or []
+        soft_facet_types = [
+            ft for ft in facet_signals if ft not in ("product_kind", "platform")
+        ]
+        # (score, product, matched_attrs, 証拠のあったfacet_type集合)
+        scored: list[tuple[float, dict[str, Any], list[dict[str, Any]], set[str]]] = []
         for product in catalog:
             product_id = str(product.get("product_id", ""))
             if product_id in seen_ids:
@@ -1029,27 +1229,33 @@ class Recommender:
                 if term and (term in title or term in title_ja)
             ]
             specific_title_terms = [term for term in matched_title_terms if term not in _TITLE_GENERIC_TERMS]
-            if title_term_set and not specific_title_terms:
+            if title_term_set and not specific_title_terms and not similarity_query:
                 # If the query clearly names a title/franchise, keep the result pool tight.
                 continue
 
             attrs = product.get("attrs") or []
             matched_attrs: list[dict[str, Any]] = []
+            evidence: set[str] = set()
             score = (
                 _to_float(product.get("avg_rating")) or 3.5
             ) * _POPULARITY_RATING_WEIGHT + math.log(((_to_int(product.get("rating_count")) or 0) + 1)) * _POPULARITY_COUNT_WEIGHT
 
-            product_kind_values = facet_signals.get("product_kind") or []
+            # 商品種別: Category由来のkinds集合で判定する。種別が判明していて
+            # 不一致なら除外、不明(カテゴリ・属性とも無し)なら除外せず残す。
             if product_kind_values:
-                kind_matches = [
-                    attr for attr in attrs
-                    if self._match_attr_to_signal(attr, "product_kind", product_kind_values)
-                ]
-                if not kind_matches:
+                kinds: set[str] = product.get("kinds") or set()
+                kind_hits = kinds & set(product_kind_values)
+                if kinds and not kind_hits:
                     continue
-                if "game" in product_kind_values:
-                    score += _FACET_WEIGHTS.get("product_kind", 4.0) * min(len(kind_matches), 2)
-                matched_attrs.extend(kind_matches[:2])
+                if kind_hits:
+                    evidence.add("product_kind")
+                    score += _FACET_WEIGHTS.get("product_kind", 4.0)
+                    matched_attrs.append({
+                        "attr_type": "product_kind",
+                        "value": sorted(kind_hits)[0],
+                        "canonical_type": "product_kind",
+                        "canonical_value": sorted(kind_hits)[0],
+                    })
 
             if specific_title_terms:
                 score += len(specific_title_terms) * _TITLE_MATCH_BOOST
@@ -1063,31 +1269,82 @@ class Recommender:
                     for term in specific_title_terms
                 )
 
-            strong_match_count = 0
-            platform_match = False
+            platform_text = product.get("platform_text") or ""
+            mention_counts: dict[str, int] = product.get("mention_counts") or {}
+            description_norm = product.get("description_norm") or ""
             for facet_type, facet_values in facet_signals.items():
+                if facet_type == "product_kind":
+                    continue  # Categoryベースで判定済み
                 weight = _FACET_WEIGHTS.get(facet_type, 1.0)
                 facet_matches = [
                     attr for attr in attrs
                     if self._match_attr_to_signal(attr, facet_type, facet_values)
                 ]
+
+                if facet_type == "platform" and not facet_matches:
+                    # プラットフォームは属性(554商品)よりタイトル・カテゴリ名に濃く
+                    # 現れる(ゲーム1359件中1011件)ため、そちらも一致源として使う
+                    for value in facet_values:
+                        aliases = _facet_alias_set("platform", [value])
+                        if any(_text_has_token(platform_text, a) for a in aliases):
+                            facet_matches.append({
+                                "attr_type": "platform",
+                                "value": _PLATFORM_DISPLAY.get(value, value),
+                                "canonical_type": "platform",
+                                "canonical_value": value,
+                            })
+
+                mention_total = 0
+                desc_hit = False
+                if facet_type in _SOFT_EVIDENCE_FACETS:
+                    # ジャンル等は属性が疎(genre実質~150商品)なので、レビュー
+                    # MENTIONSの言及回数と説明文中の語も証拠として数える
+                    aliases = _facet_alias_set(facet_type, facet_values)
+                    mention_total = sum(
+                        cnt for val, cnt in mention_counts.items()
+                        if any(_text_has_token(val, a) for a in aliases)
+                    )
+                    desc_hit = any(_text_has_token(description_norm, a) for a in aliases)
+
+                if facet_matches:
+                    score += weight * min(len(facet_matches), 3)
+                elif mention_total or desc_hit:
+                    facet_matches = [{
+                        "attr_type": facet_type,
+                        "value": facet_values[0] if facet_values else facet_type,
+                        "canonical_type": facet_type,
+                        "canonical_value": facet_values[0] if facet_values else None,
+                    }]
+                    score += weight
+                if mention_total:
+                    score += min(mention_total, 5) * 0.4
                 if not facet_matches:
                     continue
-                if facet_type == "platform":
-                    platform_match = True
-                if facet_type != "product_kind":
-                    strong_match_count += 1
-                score += weight * min(len(facet_matches), 3)
+                evidence.add(facet_type)
                 matched_attrs.extend(facet_matches[:3])
 
-            if platform_values and not platform_match:
-                continue
-            if strong_facet_types and not specific_title_terms and strong_match_count == 0:
+            if platform_values and "platform" not in evidence:
                 continue
             if not matched_attrs:
                 continue
 
-            scored.append((score, product, _unique_list(matched_attrs)))
+            scored.append((score, product, _unique_list(matched_attrs), evidence))
+
+        # 適応的ハードフィルタ: 要求されたソフトファセット(ジャンル等)に証拠のある
+        # 候補が十分(表示件数 or 3件以上)あるなら、証拠なし候補を落とす。証拠のある
+        # 候補が少ない場合はソフト加点のみに留め、候補ゼロ化を防ぐ。
+        for facet_type in soft_facet_types:
+            with_evidence = [s for s in scored if facet_type in s[3]]
+            if len(with_evidence) >= min(limit, 3):
+                scored = with_evidence
+
+        # 非ゲーム種別(コントローラー等)の要求では、種別確定の候補が1件でもあれば
+        # 種別不明の候補を落とす。カテゴリ未整備の商品はほぼゲームなので、"ゲームが
+        # 欲しい"では逆に種別不明を残す（本物のゲームを取りこぼさないため）。
+        if product_kind_values and "game" not in product_kind_values:
+            with_kind = [s for s in scored if "product_kind" in s[3]]
+            if with_kind:
+                scored = with_kind
 
         if not scored:
             return None
@@ -1130,7 +1387,7 @@ class Recommender:
             "using cached canonical_type/canonical_value reranking in Python"
         )
         results: list[Recommendation] = []
-        for score, product, matched_attrs in top:
+        for score, product, matched_attrs, _evidence in top:
             row = dict(product)
             row["score"] = score
             row["explanation"] = explanation
@@ -1139,21 +1396,27 @@ class Recommender:
         return cypher, explanation, results
 
     def recommend(
-        self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en"
+        self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en",
+        hints: list[str] | None = None,
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
+        """hints: chat()のLLMが会話全体から抽出した英語検索キーワード（フランチャイズ名・
+        プラットフォーム・ジャンル等）。決定的マッチングのシグナル抽出テキストに加える。
+        日本語の言い回しがLLM側で英語カタログ語彙に正規化されるため、エイリアス表に
+        無い表現の取りこぼしを補える。LLM呼び出し失敗時はNone（従来動作）。"""
         search_id = str(uuid.uuid4())
         fallback = False
         normalized_lang = _normalize_lang(lang)
+        signal_query = f"{query}\n{' '.join(hints)}" if hints else query
         user_ctx = self._get_user_context(user_id) if user_id else None
         # $uidが使えるのはuser_idがあり、かつ実際にRATED/属性の履歴がある場合のみ
         # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
         has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
         dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
-        canonical_search = self._rank_local_candidates(query, user_ctx, limit, normalized_lang)
+        canonical_search = self._rank_local_candidates(signal_query, user_ctx, limit, normalized_lang)
         if canonical_search:
             cypher, explanation, results = canonical_search
         else:
-            direct_title_match = self._run_title_match(query, limit, normalized_lang)
+            direct_title_match = self._run_title_match(signal_query, limit, normalized_lang)
             if direct_title_match:
                 cypher, explanation, results = direct_title_match
             else:
@@ -1306,7 +1569,15 @@ class Recommender:
         # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
         if should_search:
             query_text = " ".join(m.get("content", "") for m in all_user_msgs)
-            search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
+            # LLMが会話全体から抽出した英語キーワードを構造化ヒントとして渡す
+            # （従来は全ユーザー発言の連結文字列だけで、LLMの理解結果を捨てていた）
+            hints = [
+                k.strip() for k in (data.get("search_keywords") or [])
+                if isinstance(k, str) and k.strip()
+            ][:8]
+            search_id, intent, products, _fallback = self.recommend(
+                query_text, user_id, limit, normalized_lang, hints=hints or None
+            )
             return {
                 "action": "search",
                 "question": None,
