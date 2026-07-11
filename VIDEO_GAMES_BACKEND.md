@@ -90,24 +90,24 @@ Make sure the corresponding API key is present in `.env`.
 ## Run and Check the Backend
 
 ```bash
-uvicorn app.api.main:app --host 127.0.0.1 --port 8002
+uvicorn app.api.main:app --host 127.0.0.1 --port 8000
 ```
 
 Basic checks:
 
 ```bash
-curl -s http://127.0.0.1:8002/health
-curl -s 'http://127.0.0.1:8002/users/sample?limit=5'
-curl -s -X POST http://127.0.0.1:8002/recommend/home \
+curl -s http://127.0.0.1:8000/health
+curl -s 'http://127.0.0.1:8000/users/sample?limit=5'
+curl -s -X POST http://127.0.0.1:8000/recommend/home \
   -H 'Content-Type: application/json' \
   -d '{"limit":5,"lang":"ja"}'
-curl -s 'http://127.0.0.1:8002/products/B0C3KYVDWT/reviews?limit=2&lang=ja'
+curl -s 'http://127.0.0.1:8000/products/B0C3KYVDWT/reviews?limit=2&lang=ja'
 ```
 
 Text2Cypher search check:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8002/recommend \
+curl -s -X POST http://127.0.0.1:8000/recommend \
   -H 'Content-Type: application/json' \
   -d '{"query":"I want a Nintendo Switch game or accessory with good reviews","limit":5,"lang":"en"}'
 ```
@@ -115,3 +115,24 @@ curl -s -X POST http://127.0.0.1:8002/recommend \
 Expected behavior: the API returns Video Games products, Japanese display fields are available
 when `lang="ja"`, and Text2Cypher requests return `fallback: false` when the LLM provider is
 configured correctly.
+
+## Run the Frontend Together
+
+The React/Vite frontend lives in `app/web/` and proxies `/api/*` to
+`http://localhost:8000`, so the backend must use port `8000` for local
+end-to-end testing.
+
+```bash
+cd app/web
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open `http://localhost:5173` and verify the proxy with:
+
+```bash
+curl -s http://127.0.0.1:5173/api/health
+curl -s -X POST http://127.0.0.1:5173/api/recommend/home \
+  -H 'Content-Type: application/json' \
+  -d '{"limit":5,"lang":"ja"}'
+```
