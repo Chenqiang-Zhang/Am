@@ -12,10 +12,11 @@ Endpoints served:
 Flow (search):
   1. LLM extracts the conversation/query into structured conditions
      (product/category/attribute keywords and optional rating constraints).
-  2. Neo4j executes a fixed meta-path retrieval query:
-       User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product,
-     then filters/ranks candidates by the structured conditions, categories,
-     ratings, and popularity.
+  2. Neo4j executes fixed meta-path retrieval queries. Behavior ranking is
+     transition-first:
+       User -> recent high-rated Product <- similar User -> next high-rated Product,
+     with attribute/category meta-paths used for dialogue filtering,
+     explanation, and recall backfill.
   3. The strongest matched graph path becomes the recommendation reason.
   4. Legacy Text2Cypher remains as a fallback when the fixed meta-path query
      returns no rows; popular products are only the final fallback.
@@ -187,6 +188,21 @@ CALL (p) {
 }
 CALL (p) {
   MATCH (u:User {user_id: $uid})
+  MATCH (u)-[sr:RATED]->(seed:Product)
+  WHERE toFloat(sr.rating) >= 4
+  WITH u, seed, sr
+  ORDER BY toInteger(sr.timestamp) DESC
+  LIMIT 15
+  OPTIONAL MATCH (seed)<-[pr:RATED]-(peer:User)-[tr:RATED]->(p)
+  WHERE peer <> u
+    AND toFloat(pr.rating) >= 4
+    AND toFloat(tr.rating) >= 4
+    AND toInteger(tr.timestamp) > toInteger(pr.timestamp)
+  RETURN count(DISTINCT peer) AS transition_peer_count,
+         count(DISTINCT seed) AS transition_seed_count
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
   OPTIONAL MATCH (u)-[seen:RATED|VIEWED]->(p)
   RETURN count(seen) AS already_seen
 }
@@ -194,8 +210,10 @@ WITH p, categories,
      [a IN product_attrs WHERE a IS NOT NULL] AS product_attrs,
      [a IN rated_attrs WHERE a IS NOT NULL] AS rated_attrs,
      [a IN viewed_attrs WHERE a IS NOT NULL] AS viewed_attrs,
-     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen
-WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, already_seen
+WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count,
+     cf_peer_count, cf_seed_count, transition_peer_count, transition_seed_count, already_seen,
      [kw IN $product_keywords
       WHERE toLower(coalesce(p.title, '')) CONTAINS kw
          OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
@@ -208,25 +226,29 @@ WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_cou
            OR toLower(coalesce(a.value_ja, '')) CONTAINS kw
            OR toLower(coalesce(a.attr_type, '')) CONTAINS kw)] AS query_attrs
 WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
-     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, already_seen,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, already_seen,
      (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)) AS condition_hits,
-     (size(rated_attrs) + size(viewed_attrs) + cf_peer_count) AS behavior_hits
+     (size(rated_attrs) + size(viewed_attrs) + cf_peer_count + transition_peer_count) AS behavior_hits
 WHERE already_seen = 0
   AND ($has_query = false OR condition_hits > 0)
   AND behavior_hits > 0
 WITH p, product_kw_hits, category_kw_hits, query_attrs, rated_attrs, viewed_attrs,
-     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count, condition_hits, behavior_hits,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, condition_hits, behavior_hits,
      (
-       log(toFloat(cf_peer_count) + 1) * 2.4
-       + log(toFloat(cf_seed_count) + 1) * 0.8
+       log(toFloat(transition_peer_count) + 1) * 5.0
+       + log(toFloat(transition_seed_count) + 1) * 1.2
+       + log(toFloat(cf_peer_count) + 1) * 1.2
+       + log(toFloat(cf_seed_count) + 1) * 0.5
        +
        toFloat(size(query_attrs)) * 2.0
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
-       + toFloat(size(rated_attrs)) * 1.35
-       + toFloat(size(viewed_attrs)) * 1.0
-       + toFloat(rated_seed_count) * 0.35
-       + toFloat(viewed_seed_count) * 0.2
+       + toFloat(size(rated_attrs)) * 0.85
+       + toFloat(size(viewed_attrs)) * 0.7
+       + toFloat(rated_seed_count) * 0.2
+       + toFloat(viewed_seed_count) * 0.12
        + coalesce(toFloat(p.avg_rating), 3.5) * 0.45
        + log(toFloat(coalesce(p.rating_count, 1)) + 1) * 0.12
      ) AS score
@@ -239,6 +261,7 @@ RETURN p.product_id AS product_id,
        p.rating_count AS rating_count,
        score,
        CASE
+         WHEN transition_peer_count > 0 THEN $transition_explanation
          WHEN cf_peer_count > 0 THEN $peer_explanation
          WHEN size(rated_attrs) > 0 THEN $rated_explanation
          WHEN size(viewed_attrs) > 0 THEN $viewed_explanation
@@ -329,6 +352,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
         return {
             "top": "会話条件とユーザ履歴から、商品属性を共有する候補をグラフの元パスで推薦",
             "condition_top": "会話条件を構造化し、商品・カテゴリ・属性一致で候補を推薦",
+            "transition": "最近の好みに近い流れで次に選ばれやすい候補です",
             "peer": "好みが近いユーザにも高評価されている候補です",
             "rated": "高評価した商品と共有する属性が強い候補です",
             "viewed": "最近閲覧した商品と共有する属性がある候補です",
@@ -337,6 +361,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
     return {
         "top": "Meta-path recommendation using dialogue constraints and user-history attribute links",
         "condition_top": "Structured dialogue constraints matched against product, category, and attribute data",
+        "transition": "Often chosen next after games similar to the user's recent likes",
         "peer": "Highly rated by users with overlapping taste",
         "rated": "Shares attributes with products this user rated highly",
         "viewed": "Shares attributes with products this user recently viewed",
@@ -1430,6 +1455,7 @@ LIMIT $limit
             "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
             "min_rating": float(conditions.get("min_rating") or 0.0),
             "has_query": has_query,
+            "transition_explanation": explanations["transition"],
             "peer_explanation": explanations["peer"],
             "rated_explanation": explanations["rated"],
             "viewed_explanation": explanations["viewed"],

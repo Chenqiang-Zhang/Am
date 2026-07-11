@@ -22,10 +22,9 @@ Neo4j ナレッジグラフ
     ↓
 REST API（FastAPI）
     ├── 構造化検索               （LLM は商品・カテゴリ・属性条件を抽出し、Cypher 文字列は直接生成しない）
-    ├── 元パスランキング         （User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product を
-    │                            基本に、User -> Product <- Peer User -> Product の協調支援も加え、
-    │                            会話条件・カテゴリ一致・評価値・人気度と組み合わせて順位付けする）
-    ├── ホーム推薦               （履歴のあるユーザは同じ行動→属性の元パスを使い、履歴のないユーザは
+    ├── 元パスランキング         （User -> recent high-rated Product <- Peer User -> next Product を
+    │                            主順位にし、行動→属性、協調フィルタ、会話条件、評価値、人気度で補完する）
+    ├── ホーム推薦               （履歴のあるユーザは同じ transition-first 元パスを使い、履歴のないユーザは
     │                            LLM をスキップして人気商品を返す）
     ├── 対話チャット             （LLM が同じ稼働中の attr_type 語彙に基づき、何を尋ねるか・いつ検索する
     │                            かを自分で決定 — ジャンル非依存。Python 側は質問数のハードキャップと、
@@ -248,23 +247,28 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --sample 100
 
 # 対象となる全ユーザに対するフルの leave-one-out 評価
 python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
+
+# 横向比較・可視化・アルゴリズム進化レポート
+python3 eval/compare_recommenders.py --sample 1000 --out-dir reports/algorithm_evolution
 ```
 
 実行前にデータ健全性チェック（商品・ユーザー・レビュー数、価格/画像/評価のカバレッジ）を
-出力したうえで、RATED ベースのパーソナライゼーション（元パス推薦器経由の `recommend_home`）
-を2つのベースライン — Item-KNN（ユーザー×アイテムの評価行列に対するコサイン類似度）と
-Popularity（rating_count・avg_ratingによる静的ランキング）— と比較する。**カットオフ**とは
+出力したうえで、RATED ベースのパーソナライゼーションをベースライン — Popularity、Item-CF、
+Recent Item-CF、User-CF、Transition-CF、KG meta-path、Hybrid v4 — と比較する。
+**カットオフ**とは
 HR@K/NDCG@K の K のこと — 上位いくつの推薦を「見つけられたか」の判定に使うかを表す:
 カットオフ10なら保持しておいた商品が上位10件に入ったかを問い、カットオフ50ならその手法に
 より多くの余地を与えることになる。`--cutoffs`（デフォルト10/20/50）は、これらすべての
 カットオフについて leave-one-out の HR@K/NDCG@K を同時に算出する（最大のカットオフ件数分の
 結果を一度だけ取得し、そこから切り詰める）。各対象ユーザの直近の★4以上の評価をターゲットとして
-保持しておき、そのエッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、3手法
+保持しておき、そのエッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、各手法
 すべてがその保持しておいた商品を top K 内に再びランクインさせられるかを試す。HR@K/NDCG@K に
 加えて、サマリには手法ごとの `catalog_coverage@k`/`avg_rating@k`（最小カットオフでの値）も
 それ自体独立したメトリクスとして報告される — 単にヒット率だけでなく「同じ人気商品ばかり
 勧めていないか」も見える。結果は `eval_results.jsonl` / `eval_results.summary.json` に
-書き出される（パスは `--out` で設定可能）。
+書き出される（`compare_recommenders.py` では `summary.json`、`per_user_results.jsonl`、
+`accuracy_metrics.png`、`quality_metrics.png`、`hr_by_cutoff.png`、`算法进化报告.md` を
+`--out-dir` に保存する）。
 
 ### 6. 推薦 API を起動する
 
@@ -497,7 +501,7 @@ k を大きくするとグラフは急速に縮小する（線形カットでは
 ## 今後の展望
 
 - LLM による属性抽出のカバレッジを商品全体に拡大する
-- ユーザ間で共有される評価履歴を使った、協調フィルタリングの few-shot パスを追加する
+- 実クリック・購入・滞在時間などのオンライン行動を増やし、Transition-first ranking の重みを学習化する
 - 複数ステップのグラフ探索エンドポイント（`GET /product/{id}/related`）を追加する
 - 推薦理由に対する明示的なフィードバック（`GAVE_FEEDBACK` エッジ／サムズアップ・ダウン UI）は
   一度試みられたが撤去された — `_get_dynamic_few_shot()` の暗黙的なクリックシグナル（`SearchLog`

@@ -10,7 +10,7 @@ The recommended architecture is:
 Dialogue / search input
   -> LLM extracts structured conditions
   -> Neo4j recalls candidates through graph meta-paths
-  -> fixed ranking combines behavior, attributes, categories, rating, popularity
+  -> transition-first ranking combines behavior, attributes, categories, rating, popularity
   -> strongest graph path becomes the recommendation reason
 ```
 
@@ -70,6 +70,12 @@ User
   -> RATED seed Product
   <- RATED peer User
   -> RATED candidate Product
+
+Path C:
+User
+  -> recent high-rated seed Product
+  <- high-rated peer User
+  -> next high-rated candidate Product
 ```
 
 Dialogue conditions are used as filters and ranking signals:
@@ -83,6 +89,8 @@ candidate Product
 
 Ranking combines:
 
+- sequential transition support from similar users
+- recent item-item collaborative similarity
 - shared attributes from highly rated products
 - shared attributes from recently viewed products
 - peer users with overlapping taste
@@ -94,6 +102,7 @@ Ranking combines:
 
 The explanation is derived from the strongest path:
 
+- Often chosen next after games similar to the user's recent likes
 - Shares attributes with products this user rated highly
 - Shares attributes with products this user recently viewed
 - Highly rated by users with overlapping taste
@@ -107,6 +116,7 @@ Current minimum version:
 
 - implemented: User -> Product -> Attribute -> Product
 - implemented: User -> Product <- Peer User -> Product
+- implemented: User -> recent Product <- Peer User -> next Product
 - implemented: dialogue condition filtering by product/category/attribute terms
 - implemented: home recommendation uses the same meta-path for users with history
 - retained: legacy Text2Cypher as a fallback only
@@ -115,7 +125,7 @@ Next versions:
 
 - add Category meta-path: User -> Product -> Category -> Product
 - add review-confirmed path: Product -> Review -> MENTIONS -> Attribute -> Product
-- add learned weights from offline evaluation
+- replace hand-tuned weights with learned weights from larger offline and online feedback
 - increase VIEWED data through frontend interaction logging
 
 ## Slide 7: Demo Scenario

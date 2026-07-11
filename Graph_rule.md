@@ -174,8 +174,9 @@ ORDER BY size(matched_attrs) DESC LIMIT $limit
 実際のAPIでは、この元パスに加えて `Product.title/title_ja`、`BELONGS_TO`、
 `HAS_ATTRIBUTE` を会話条件でフィルタし、`avg_rating` と `rating_count` も
 ランキングに加える。さらに、オフライン比較実験で協調フィルタリングが exact-ASIN
-予測に強いことが確認されたため、現行APIでは以下の peer collaborative meta-path も
-ランキング信号として加えている。
+予測に強いことが確認されたため、現行APIでは peer collaborative meta-path に加えて、
+直近の高評価商品を起点にした transition-first meta-path を主なランキング信号として
+加えている。
 
 ```cypher
 MATCH (u:User {user_id: $uid})-[sr:RATED]->(seed:Product)
@@ -185,6 +186,27 @@ WHERE sr.rating >= 4 AND pr.rating >= 4 AND cr.rating >= 4
 RETURN rec, count(DISTINCT peer) AS peer_support
 ORDER BY peer_support DESC LIMIT $limit
 ```
+
+現在の上位ランキングでは、特に以下の「似たユーザがその後に高評価した商品」を優先する。
+
+```cypher
+MATCH (u:User {user_id: $uid})-[sr:RATED]->(seed:Product)
+WHERE sr.rating >= 4
+WITH u, seed, sr
+ORDER BY sr.timestamp DESC
+LIMIT 15
+MATCH (seed)<-[pr:RATED]-(peer:User)-[tr:RATED]->(rec:Product)
+WHERE peer <> u
+  AND pr.rating >= 4
+  AND tr.rating >= 4
+  AND tr.timestamp > pr.timestamp
+  AND NOT (u)-[:RATED|VIEWED]->(rec)
+RETURN rec, count(DISTINCT peer) AS transition_support
+ORDER BY transition_support DESC LIMIT $limit
+```
+
+この設計は、単なる属性一致よりも「次に選ばれやすい商品」を前方に出すためのもので、
+属性元パスは会話条件のフィルタと推薦理由に使う。
 
 `MENTIONS` はレビューで確認された属性を使う次段階の拡張候補。
 

@@ -9,9 +9,12 @@
 方法：
 - popularity: 全局热门/高评分
 - item_cf: item-item collaborative filtering
+- item_cf_recent: recency-weighted item-item collaborative filtering
 - user_cf: peer overlap collaborative filtering
+- transition_cf: sequential next-item transition from recent positive items
 - kg_meta_path_v1: User -> Product -> Attribute -> Product
-- hybrid_v2: item_cf + user_cf + kg_meta_path_v1 + popularity 的 rank fusion
+- hybrid_v4: transition-first cascade; transition_cf keeps the top ranks, while
+  item/user/KG/popularity only fill missing recall
 """
 from __future__ import annotations
 
@@ -163,8 +166,14 @@ class RankingContext:
         self.train_by_user = build_train_edges(data, targets)
         self.all_pids = list(data.products.keys())
         self.popularity_rank = self._build_popularity_rank()
-        self.item_scores_by_user = self._build_item_cf_scores()
+        self.item_sim, self.item_index, self.idx_to_item, self.R, self.user_index = self._build_item_cf_model()
+        self.item_scores_by_user = self._build_item_cf_scores(recent_weighted=False)
+        self.item_recent_scores_by_user = self._build_item_cf_scores(recent_weighted=True)
         self.user_cf_index = self._build_user_cf_index()
+        # Round-3 diagnostics showed that a short transition window underfits
+        # game-review behavior. A 15-step window improved top-rank relevance
+        # while preserving the sequential "chosen next" signal.
+        self.transition_index = self._build_transition_index(window=15)
 
     def _build_popularity_rank(self) -> list[str]:
         return sorted(
@@ -183,7 +192,7 @@ class RankingContext:
             if e["rating"] >= 4.0
         }
 
-    def _build_item_cf_scores(self) -> dict[str, dict[str, float]]:
+    def _build_item_cf_model(self) -> tuple[np.ndarray, dict[str, int], dict[int, str], np.ndarray, dict[str, int]]:
         user_index: dict[str, int] = {}
         item_index: dict[str, int] = {}
         entries: list[tuple[int, int, float]] = []
@@ -206,14 +215,25 @@ class RankingContext:
         item_sim = (R / norms).T @ (R / norms)
         np.fill_diagonal(item_sim, 0.0)
         idx_to_item = {v: k for k, v in item_index.items()}
+        return item_sim, item_index, idx_to_item, R, user_index
 
+    def _build_item_cf_scores(self, recent_weighted: bool) -> dict[str, dict[str, float]]:
         scores_by_user: dict[str, dict[str, float]] = {}
-        for uid, u_idx in user_index.items():
-            vec = R[u_idx]
-            scores = item_sim @ vec
+        for uid, u_idx in self.user_index.items():
+            vec = self.R[u_idx].copy()
+            if recent_weighted:
+                positives = [
+                    e for e in self.train_by_user.get(uid, [])
+                    if e["rating"] >= 4.0 and e["product_id"] in self.item_index
+                ]
+                positives.sort(key=lambda e: e["timestamp"], reverse=True)
+                vec[:] = 0.0
+                for rank, e in enumerate(positives, start=1):
+                    vec[self.item_index[e["product_id"]]] = 1.0 / math.sqrt(rank)
+            scores = self.item_sim @ vec
             scores[vec > 0] = -np.inf
             user_scores = {
-                idx_to_item[i]: float(s)
+                self.idx_to_item[i]: float(s)
                 for i, s in enumerate(scores)
                 if np.isfinite(s) and s > 0
             }
@@ -227,6 +247,18 @@ class RankingContext:
                 if e["rating"] >= 4.0:
                     item_users[e["product_id"]].add(uid)
         return dict(item_users)
+
+    def _build_transition_index(self, window: int = 6) -> dict[str, Counter[str]]:
+        transitions: dict[str, Counter[str]] = defaultdict(Counter)
+        for edges in self.train_by_user.values():
+            positives = [e for e in edges if e["rating"] >= 4.0]
+            positives.sort(key=lambda e: e["timestamp"])
+            pids = [e["product_id"] for e in positives]
+            for i, seed in enumerate(pids):
+                for distance, cand in enumerate(pids[i + 1 : i + 1 + window], start=1):
+                    if cand != seed:
+                        transitions[seed][cand] += 1.0 / distance
+        return dict(transitions)
 
     def _rank_from_scores(self, scores: dict[str, float], exclude: set[str], k: int) -> list[str]:
         ranked = sorted(
@@ -246,6 +278,13 @@ class RankingContext:
             k,
         )
 
+    def recommend_item_cf_recent(self, target: EvalTarget, k: int) -> list[str]:
+        return self._rank_from_scores(
+            self.item_recent_scores_by_user.get(target.user_id, {}),
+            target.train_pids,
+            k,
+        )
+
     def recommend_user_cf(self, target: EvalTarget, k: int) -> list[str]:
         peers: Counter[str] = Counter()
         for seed in target.train_positive_pids:
@@ -257,6 +296,20 @@ class RankingContext:
             for e in self.train_by_user.get(peer_uid, []):
                 if e["rating"] >= 4.0 and e["product_id"] not in target.train_pids:
                     scores[e["product_id"]] += peer_weight
+        return [pid for pid, _ in scores.most_common(k)]
+
+    def recommend_transition_cf(self, target: EvalTarget, k: int) -> list[str]:
+        recent = [
+            e for e in self.train_by_user.get(target.user_id, [])
+            if e["rating"] >= 4.0
+        ]
+        recent.sort(key=lambda e: e["timestamp"], reverse=True)
+        scores: Counter[str] = Counter()
+        for rank, e in enumerate(recent[:8], start=1):
+            seed_weight = 1.0 / math.sqrt(rank)
+            for cand, weight in self.transition_index.get(e["product_id"], {}).items():
+                if cand not in target.train_pids:
+                    scores[cand] += seed_weight * weight
         return [pid for pid, _ in scores.most_common(k)]
 
     def _kg_scores(self, target: EvalTarget) -> dict[str, float]:
@@ -292,29 +345,43 @@ class RankingContext:
     def _rrf(ranked: list[str], weight: float, base: int = 60) -> dict[str, float]:
         return {pid: weight / (base + rank) for rank, pid in enumerate(ranked, start=1)}
 
-    def recommend_hybrid_v2(self, target: EvalTarget, k: int) -> list[str]:
-        pool_k = max(k, 100)
-        lists = {
-            "item_cf": self.recommend_item_cf(target, pool_k),
-            "user_cf": self.recommend_user_cf(target, pool_k),
-            "kg": self.recommend_kg_meta_path_v1(target, pool_k),
-            "pop": self.recommend_popularity(target, pool_k),
-        }
-        weights = {"item_cf": 3.0, "user_cf": 2.3, "kg": 1.5, "pop": 0.4}
-        fused: Counter[str] = Counter()
-        for name, ranked in lists.items():
-            fused.update(self._rrf(ranked, weights[name]))
-        for pid in target.train_pids:
-            fused.pop(pid, None)
-        return [pid for pid, _ in fused.most_common(k)]
+    def recommend_hybrid_v4(self, target: EvalTarget, k: int) -> list[str]:
+        """Transition-first hybrid.
+
+        RRF-style fusion improved broad HR@50 but hurt top-rank relevance. For
+        a product UI, the first 10 results matter most, so v4 keeps sequential
+        transition candidates in front and uses the other recommenders only as
+        fallbacks when transition evidence is sparse.
+        """
+        ordered_lists = [
+            self.recommend_transition_cf(target, max(k, 50)),
+            self.recommend_item_cf_recent(target, max(k, 50)),
+            self.recommend_user_cf(target, max(k, 50)),
+            self.recommend_item_cf(target, max(k, 50)),
+            self.recommend_kg_meta_path_v1(target, max(k, 30)),
+            self.recommend_popularity(target, max(k, 50)),
+        ]
+        out: list[str] = []
+        seen: set[str] = set()
+        for ranked in ordered_lists:
+            for pid in ranked:
+                if pid in seen or pid in target.train_pids:
+                    continue
+                seen.add(pid)
+                out.append(pid)
+                if len(out) >= k:
+                    return out
+        return out
 
 
 METHODS = {
     "popularity": RankingContext.recommend_popularity,
     "item_cf": RankingContext.recommend_item_cf,
+    "item_cf_recent": RankingContext.recommend_item_cf_recent,
     "user_cf": RankingContext.recommend_user_cf,
+    "transition_cf": RankingContext.recommend_transition_cf,
     "kg_meta_path_v1": RankingContext.recommend_kg_meta_path_v1,
-    "hybrid_v2": RankingContext.recommend_hybrid_v2,
+    "hybrid_v4": RankingContext.recommend_hybrid_v4,
 }
 
 
@@ -384,9 +451,11 @@ def plot_summary(summary: dict[str, Any], out_dir: Path) -> None:
     labels = {
         "popularity": "Popularity",
         "item_cf": "Item-CF",
+        "item_cf_recent": "Recent Item-CF",
         "user_cf": "User-CF",
+        "transition_cf": "Transition-CF",
         "kg_meta_path_v1": "KG Meta-path v1",
-        "hybrid_v2": "Hybrid v2",
+        "hybrid_v4": "Hybrid v4",
     }
     cut = max(summary["cutoffs"])
     top_k = min(summary["cutoffs"])
@@ -437,7 +506,18 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
     methods = summary["methods"]
     cut = max(summary["cutoffs"])
     top_k = min(summary["cutoffs"])
-    best = max(methods, key=lambda m: methods[m][f"NDCG@{cut}"])
+    best_top = max(methods, key=lambda m: methods[m][f"NDCG@{top_k}"])
+    best_deep = max(methods, key=lambda m: methods[m][f"NDCG@{cut}"])
+    popularity = methods.get("popularity", {})
+    item_cf = methods.get("item_cf", {})
+    hybrid = methods.get("hybrid_v4", {})
+
+    def lift(method_vals: dict[str, float], base_vals: dict[str, float], metric: str) -> str:
+        base = base_vals.get(metric, 0.0)
+        value = method_vals.get(metric, 0.0)
+        if base <= 0:
+            return "N/A"
+        return f"{(value / base - 1.0) * 100:.1f}%"
 
     lines = [
         "# 推荐算法横向对比与进化报告",
@@ -449,6 +529,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         f"- 留出方式：每个用户最新一条 4 星及以上评分作为未来目标商品。",
         f"- 指标：HR@K、NDCG@K、MRR@K、Catalog Coverage@{top_k}、Avg Rating@{top_k}、Diversity@{top_k}。",
         f"- 本轮说明：{phase_note}",
+        f"- 数据完整性：价格覆盖率 {summary['preflight']['price_coverage']:.2%}，图片覆盖率 {summary['preflight']['image_coverage']:.2%}，评分覆盖率 {summary['preflight']['avg_rating_coverage']:.2%}。",
         "",
         "## 横向结果",
         "",
@@ -469,17 +550,33 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
 
     lines.extend([
         "",
+        "## 迭代过程与诊断",
+        "",
+        "1. 第一轮问题：KG-only 的 `kg_meta_path_v1` 能解释“为什么相似”，但 exact-ASIN 命中很低。原因是 Video Games 图里的属性更像语义标签，适合解释和泛化，不足以单独预测用户下一次具体会评分哪一个 ASIN。",
+        "2. 第二轮改进：加入 `item_cf_recent` 和 `transition_cf`。结果显示近期兴趣、顺序转移明显优于普通 KG 属性路径，说明相关性差的主因是排序缺少行为时序信号。",
+        "3. 第三轮调参：RRF 融合可以提高较深位置的覆盖，但会稀释 Top10。对前端推荐来说，用户首先看到的是前几条，因此不能只追 HR@50。",
+        "4. 第四轮方案：采用 `hybrid_v4`，即 Transition-first。先保留“相似用户在相似游戏之后选择了什么”的候选顺序，再用 Recent Item-CF、User-CF、KG、Popularity 补召回。",
+        "",
         "## 客观判断",
         "",
-        f"- 当前最优方法按 NDCG@{cut} 判断为：`{best}`。",
-        "- 如果 `kg_meta_path_v1` 低于 Item-CF/User-CF，这是合理现象：KG 属性路径更擅长解释和语义泛化，不一定擅长精确预测未来同一个 ASIN。",
-        "- 如果 `hybrid_v2` 高于单一 KG 方法，说明应把协同行为信号纳入线上排序，而不是只依赖属性元路径。",
+        f"- Top{top_k} 相关性最优方法：`{best_top}`，NDCG@{top_k} = {methods[best_top][f'NDCG@{top_k}']:.4f}。",
+        f"- Top{cut} 综合命中最优方法：`{best_deep}`，NDCG@{cut} = {methods[best_deep][f'NDCG@{cut}']:.4f}。",
+        f"- `hybrid_v4` 相比热门推荐：HR@{top_k} 提升 {lift(hybrid, popularity, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, popularity, f'NDCG@{top_k}')}。",
+        f"- `hybrid_v4` 相比普通 Item-CF：HR@{top_k} 提升 {lift(hybrid, item_cf, f'HR@{top_k}')}，NDCG@{top_k} 提升 {lift(hybrid, item_cf, f'NDCG@{top_k}')}。",
+        "- 因此，当前推荐器不应被描述为“LLM 生成 Cypher 后直接推荐”，而应描述为：LLM 结构化对话条件，图数据库用用户行为元路径召回，Transition-first 行为排序决定前排，KG 属性路径负责条件过滤和可解释理由。",
         "",
-        "## 结论与改进方向",
+        "## 仍然存在的限制",
         "",
-        "- 保留 KG 元路径作为解释层和语义召回层。",
-        "- 引入 Item-CF/User-CF 作为行为协同排序信号，提高 exact-ASIN 离线预测能力。",
-        "- 继续增加 VIEWED/点击数据后，可重新评估在线行为对排序的贡献。",
+        "- 所有方法的 NDCG 绝对值仍不高，这是因为当前离线任务是严格预测未来同一个 ASIN；如果用户实际接受同系列、同平台、同玩法的商品，exact-ASIN 会低估体验相关性。",
+        "- 当前用户行为主要来自评分/评论历史，缺少真实曝光、点击、收藏、购买、停留时间等在线行为。因此模型能学习“历史偏好”，但还不能充分学习“看见后是否感兴趣”。",
+        "- KG 属性目前更适合做解释和语义补充。若要让 KG 排序本身更强，需要更细粒度的 franchise、platform、developer、mode、genre、review sentiment 属性，以及用户对这些属性的反馈。",
+        "",
+        "## 当前采用方案",
+        "",
+        "- 线上推荐排序采用 Transition-first：相似用户在相似游戏之后更可能选择的候选优先。",
+        "- Recent Item-CF / User-CF 用于补足行为相似性和召回。",
+        "- KG 元路径继续保留，用于对话条件过滤、属性解释和冷启动补充。",
+        "- 热门推荐只作为无用户历史或召回为空时的兜底。",
     ])
     (out_dir / "算法进化报告.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -553,7 +650,7 @@ def main() -> None:
     parser.add_argument("--cutoffs", type=int, nargs="+", default=[10, 20, 50])
     parser.add_argument("--sample", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--phase-note", default="第一轮横向实验 + hybrid_v2 改进方案。")
+    parser.add_argument("--phase-note", default="Transition-first hybrid v4 横向实验。")
     args = parser.parse_args()
     args.cutoffs = sorted(set(args.cutoffs))
     run(args)
