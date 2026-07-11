@@ -31,8 +31,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -97,6 +99,41 @@ def chunked(items: list, size: int):
         yield items[i : i + size]
 
 
+def run_batches_parallel(
+    rows: list,
+    batch_size: int,
+    process_batch: Callable[[list], list[dict]],
+    write_rows: Callable[[list[dict]], None],
+    label: str,
+    workers: int,
+) -> int:
+    """バッチを ThreadPoolExecutor で並列に LLM 投入する共通ループ。逐次だと
+    vLLM の継続バッチングの恩恵が出ず単発 10 秒/件レベルになるため、翻訳系の
+    3 モード（titles/reviews/values）で共有する。process_batch は 1 バッチを
+    翻訳して書き込み用 dict のリストを返す純粋関数、write_rows は Neo4j 書き込み。
+    Neo4j セッションはスレッド安全でないので、書き込みだけはロックで直列化する。"""
+    batches = list(chunked(rows, batch_size))
+    total = 0
+    write_lock = threading.Lock()
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(process_batch, b): b for b in batches}
+        for fut in as_completed(futures):
+            done += 1
+            try:
+                out_rows = fut.result()
+            except Exception as exc:
+                print(f"  [{label}] batch failed, skipping: {exc}", file=sys.stderr)
+                continue
+            if out_rows:
+                with write_lock:
+                    write_rows(out_rows)
+                total += len(out_rows)
+            if done % 10 == 0 or done == len(batches):
+                print(f"  [{label}] {done:,}/{len(batches):,} batches, {total:,} rows written")
+    return total
+
+
 def translate_batch(client: Any, model: str, items: list[dict[str, str]], retries: int) -> dict[str, str]:
     user_content = json.dumps({"titles": items}, ensure_ascii=False)
     messages = [
@@ -136,25 +173,22 @@ def write_translations(driver: Any, database: str | None, rows: list[dict[str, s
 
 def run_titles_ja(
     driver: Any, database: str | None, client: Any, model: str,
-    batch_size: int, limit: int | None, retries: int,
+    batch_size: int, limit: int | None, retries: int, workers: int = 16,
 ) -> None:
     print("Fetching untranslated products...")
     rows = fetch_untranslated(driver, database, limit)
     print(f"  {len(rows):,} products need translation")
 
-    total = 0
-    for batch in chunked(rows, batch_size):
+    def process(batch: list) -> list[dict]:
         items = [{"product_id": r["product_id"], "title": r["title"]} for r in batch]
-        try:
-            translated = translate_batch(client, model, items, retries)
-        except Exception as exc:
-            print(f"  batch failed, skipping: {exc}", file=sys.stderr)
-            continue
-        write_rows = [{"product_id": pid, "title_ja": t} for pid, t in translated.items()]
-        if write_rows:
-            write_translations(driver, database, write_rows)
-            total += len(write_rows)
-        print(f"  translated: {total:,}/{len(rows):,}")
+        translated = translate_batch(client, model, items, retries)
+        return [{"product_id": pid, "title_ja": t} for pid, t in translated.items()]
+
+    total = run_batches_parallel(
+        rows, batch_size, process,
+        lambda wr: write_translations(driver, database, wr),
+        "titles-ja", workers,
+    )
     print(f"Done. {total:,} products translated to title_ja.")
 
 
@@ -177,7 +211,9 @@ def translate_reviews_batch(
         {"role": "system", "content": TRANSLATE_REVIEWS_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-    data, _usage = chat_json_call(client, model, messages, max_output_tokens=3000, retries=retries)
+    # Keep enough input context for long reviews on both 8k and 4k vLLM
+    # servers. Three to five reviews fit comfortably in this output budget.
+    data, _usage = chat_json_call(client, model, messages, max_output_tokens=1800, retries=retries)
     return {
         str(t.get("review_id", "")): {
             "title_ja": str(t.get("title_ja", "")).strip(),
@@ -188,9 +224,47 @@ def translate_reviews_batch(
     }
 
 
-def fetch_untranslated_reviews(driver: Any, database: str | None, limit: int | None) -> list[dict[str, str]]:
-    """未翻訳（text_ja IS NULL）のレビューを、helpful_vote降順（＝get_reviews()で表示
-    されやすい順）で返す。予算を絞る場合は--reviews-limitと組み合わせる。"""
+def fetch_untranslated_reviews(
+    driver: Any, database: str | None, limit: int | None, per_product: int | None = 5,
+    shard_index: int = 0, shard_count: int = 1,
+) -> list[dict[str, str]]:
+    """未翻訳（text_ja IS NULL）のレビューを翻訳対象として返す。
+
+    per_product が指定されているときは「各商品ごとに helpful_vote 降順で上位
+    per_product 件」だけを対象にする。これは get_reviews()（UIが商品詳細で表示する
+    レビュー: (Review)-[:ABOUT]->(Product) を helpful_vote DESC, rating DESC で上位5件）と
+    同じ絞り込みで、UIに実際に出るレビューを過不足なくカバーするため。
+    グローバルな helpful_vote 上位 N 件（旧実装）だと、人気商品にレビューが偏り、
+    helpful_vote が低い商品の「表示される上位5件」が翻訳から漏れていた。
+
+    per_product が None のときは従来どおり全未翻訳レビューを helpful_vote 降順で返す
+    （limit と併用可）。"""
+    if per_product is not None:
+        query = (
+            "MATCH (p:Product)<-[:ABOUT]-(r:Review) "
+            "WHERE id(p) % $shard_count = $shard_index "
+            "AND r.text IS NOT NULL "
+            "AND size(coalesce(r.text, '')) > 10 "
+            "WITH p, r ORDER BY r.helpful_vote DESC, r.rating DESC, r.review_id ASC "
+            "WITH p, collect(r)[0..$per_product] AS top "
+            "UNWIND top AS r "
+            "WITH DISTINCT r "
+            "WHERE r.text_ja IS NULL "
+            "RETURN r.review_id AS review_id, r.title AS title, r.text AS text"
+        )
+        if limit is not None:
+            query += " LIMIT $limit"
+        with driver.session(database=database) as session:
+            params = {
+                "per_product": per_product,
+                "shard_index": shard_index,
+                "shard_count": shard_count,
+            }
+            if limit is not None:
+                params["limit"] = limit
+            res = session.run(query, **params)
+            return [{"review_id": r["review_id"], "title": r["title"] or "", "text": r["text"]} for r in res]
+
     query = (
         "MATCH (r:Review) "
         "WHERE r.text_ja IS NULL AND r.text IS NOT NULL AND r.text <> '' "
@@ -216,28 +290,41 @@ def write_review_translations(driver: Any, database: str | None, rows: list[dict
 
 def run_reviews_ja(
     driver: Any, database: str | None, client: Any, model: str,
-    batch_size: int, limit: int | None, retries: int,
+    batch_size: int, limit: int | None, retries: int, workers: int = 16,
+    per_product: int | None = 5,
+    shard_index: int = 0, shard_count: int = 1,
 ) -> None:
-    print("Fetching untranslated reviews (helpful_vote DESC)...")
-    rows = fetch_untranslated_reviews(driver, database, limit)
+    if per_product is not None:
+        print(f"Fetching untranslated reviews (per-product top {per_product}, matches UI get_reviews)...")
+    else:
+        print("Fetching untranslated reviews (global helpful_vote DESC)...")
+    rows = fetch_untranslated_reviews(
+        driver, database, limit, per_product, shard_index, shard_count,
+    )
     print(f"  {len(rows):,} reviews need translation")
 
-    total = 0
-    for batch in chunked(rows, batch_size):
-        items = [{"review_id": r["review_id"], "title": r["title"], "text": r["text"]} for r in batch]
-        try:
-            translated = translate_reviews_batch(client, model, items, retries)
-        except Exception as exc:
-            print(f"  batch failed, skipping: {exc}", file=sys.stderr)
-            continue
-        write_rows = [
+    def process(batch: list) -> list[dict]:
+        items = [
+            {
+                "review_id": r["review_id"],
+                "title": r["title"],
+                # Keep the Japanese field suitable for the UI while bounding
+                # prompt size. The original English text remains untouched.
+                "text": r["text"][:500] + ("…" if len(r["text"]) > 500 else ""),
+            }
+            for r in batch
+        ]
+        translated = translate_reviews_batch(client, model, items, retries)
+        return [
             {"review_id": rid, "title_ja": t["title_ja"], "text_ja": t["text_ja"]}
             for rid, t in translated.items()
         ]
-        if write_rows:
-            write_review_translations(driver, database, write_rows)
-            total += len(write_rows)
-        print(f"  translated: {total:,}/{len(rows):,}")
+
+    total = run_batches_parallel(
+        rows, batch_size, process,
+        lambda wr: write_review_translations(driver, database, wr),
+        "reviews-ja", workers,
+    )
     print(f"Done. {total:,} reviews translated to title_ja/text_ja.")
 
 
@@ -269,10 +356,16 @@ def translate_values_batch(
 
 
 def fetch_untranslated_values(driver: Any, database: str | None, limit: int | None) -> list[dict[str, str]]:
+    """未翻訳の属性値を、グラフ内での被参照数（HAS_ATTRIBUTE + MENTIONS の合計）が
+    多い順に返す。--values-limit で予算を絞ったとき、実際にUIで表示されやすい
+    頻出属性から優先的に翻訳されるようにする（属性値は13万件超あり全件翻訳は非現実的）。"""
     query = (
         "MATCH (a:Attribute) "
         "WHERE a.value_ja IS NULL AND a.value IS NOT NULL AND a.value <> '' "
-        "RETURN a.attribute_id AS attribute_id, a.attr_type AS attr_type, a.value AS value"
+        "OPTIONAL MATCH (a)<-[rel]-() "
+        "WITH a, count(rel) AS deg "
+        "RETURN a.attribute_id AS attribute_id, a.attr_type AS attr_type, a.value AS value "
+        "ORDER BY deg DESC"
     )
     if limit is not None:
         query += " LIMIT $limit"
@@ -293,25 +386,22 @@ def write_value_translations(driver: Any, database: str | None, rows: list[dict[
 
 def run_values_ja(
     driver: Any, database: str | None, client: Any, model: str,
-    batch_size: int, limit: int | None, retries: int,
+    batch_size: int, limit: int | None, retries: int, workers: int = 16,
 ) -> None:
     print("Fetching untranslated attribute values...")
     rows = fetch_untranslated_values(driver, database, limit)
     print(f"  {len(rows):,} attribute values need translation")
 
-    total = 0
-    for batch in chunked(rows, batch_size):
+    def process(batch: list) -> list[dict]:
         items = [{"attribute_id": r["attribute_id"], "attr_type": r["attr_type"], "value": r["value"]} for r in batch]
-        try:
-            translated = translate_values_batch(client, model, items, retries)
-        except Exception as exc:
-            print(f"  batch failed, skipping: {exc}", file=sys.stderr)
-            continue
-        write_rows = [{"attribute_id": aid, "value_ja": v} for aid, v in translated.items()]
-        if write_rows:
-            write_value_translations(driver, database, write_rows)
-            total += len(write_rows)
-        print(f"  translated: {total:,}/{len(rows):,}")
+        translated = translate_values_batch(client, model, items, retries)
+        return [{"attribute_id": aid, "value_ja": v} for aid, v in translated.items()]
+
+    total = run_batches_parallel(
+        rows, batch_size, process,
+        lambda wr: write_value_translations(driver, database, wr),
+        "values-ja", workers,
+    )
     print(f"Done. {total:,} attribute values translated to value_ja.")
 
 
@@ -331,10 +421,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--titles-batch-size", type=int, default=20)
     parser.add_argument("--titles-limit", type=int, default=-1, help="[--titles-ja] -1 = translate all untranslated products")
     parser.add_argument("--reviews-batch-size", type=int, default=10, help="[--reviews-ja] smaller default than titles since review text is longer")
-    parser.add_argument("--reviews-limit", type=int, default=-1, help="[--reviews-ja] -1 = translate all untranslated reviews; set a budget cap otherwise")
+    parser.add_argument("--reviews-limit", type=int, default=-1, help="[--reviews-ja] -1 = no global cap; set a budget cap otherwise")
+    parser.add_argument("--reviews-per-product", type=int, default=5, help="[--reviews-ja] translate each product's top-N reviews by helpful_vote (matches UI get_reviews). 0 = global helpful_vote order instead")
+    parser.add_argument("--reviews-shard-index", type=int, default=0, help="[--reviews-ja] zero-based Product shard index")
+    parser.add_argument("--reviews-shard-count", type=int, default=1, help="[--reviews-ja] number of disjoint Product shards")
     parser.add_argument("--values-batch-size", type=int, default=30, help="[--values-ja] larger default since attribute values are short")
     parser.add_argument("--values-limit", type=int, default=-1, help="[--values-ja] -1 = translate all untranslated attribute values")
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--workers", type=int, default=16, help="[--titles-ja/--reviews-ja/--values-ja] parallel LLM request workers")
     parser.add_argument("--uri", default=None)
     parser.add_argument("--user", default=None)
     parser.add_argument("--password", default=None)
@@ -344,6 +438,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.reviews_shard_count < 1 or not 0 <= args.reviews_shard_index < args.reviews_shard_count:
+        parser_error = "--reviews-shard-index must be in [0, --reviews-shard-count)"
+        raise SystemExit(parser_error)
     if not args.images and not args.titles_ja and not args.reviews_ja and not args.values_ja:
         print("Nothing to do: pass --images and/or --titles-ja and/or --reviews-ja and/or --values-ja.", file=sys.stderr)
         sys.exit(2)
@@ -382,17 +479,22 @@ def main() -> None:
         if args.titles_ja:
             titles_limit = None if args.titles_limit < 0 else args.titles_limit
             print("\n[titles-ja]")
-            run_titles_ja(driver, database, client, model, args.titles_batch_size, titles_limit, args.retries)
+            run_titles_ja(driver, database, client, model, args.titles_batch_size, titles_limit, args.retries, args.workers)
 
         if args.reviews_ja:
             reviews_limit = None if args.reviews_limit < 0 else args.reviews_limit
+            per_product = None if args.reviews_per_product <= 0 else args.reviews_per_product
             print("\n[reviews-ja]")
-            run_reviews_ja(driver, database, client, model, args.reviews_batch_size, reviews_limit, args.retries)
+            run_reviews_ja(
+                driver, database, client, model,
+                args.reviews_batch_size, reviews_limit, args.retries, args.workers,
+                per_product, args.reviews_shard_index, args.reviews_shard_count,
+            )
 
         if args.values_ja:
             values_limit = None if args.values_limit < 0 else args.values_limit
             print("\n[values-ja]")
-            run_values_ja(driver, database, client, model, args.values_batch_size, values_limit, args.retries)
+            run_values_ja(driver, database, client, model, args.values_batch_size, values_limit, args.retries, args.workers)
     finally:
         driver.close()
 

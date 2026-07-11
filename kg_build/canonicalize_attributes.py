@@ -61,9 +61,54 @@ def collect_counts(product_attrs_path: Path, review_mentions_path: Path) -> dict
 
 # ── LLM helpers ────────────────────────────────────────────────────────────────
 
-def call_llm(client: Any, model: str, system: str, user: str) -> dict[str, Any]:
+ATTR_TYPE_MAP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "map": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        }
+    },
+    "required": ["map"],
+}
+
+VALUE_MAP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "maps": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+            },
+        }
+    },
+    "required": ["maps"],
+}
+
+
+def call_llm(
+    client: Any,
+    model: str,
+    system: str,
+    user: str,
+    max_output_tokens: int = 3500,
+    *,
+    response_schema: dict[str, Any] | None = None,
+    schema_name: str = "canonicalization",
+) -> dict[str, Any]:
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    parsed, _usage = chat_json_call(client, model, messages, max_output_tokens=2000)
+    parsed, _usage = chat_json_call(
+        client,
+        model,
+        messages,
+        max_output_tokens=max_output_tokens,
+        retries=2,
+        response_schema=response_schema,
+        schema_name=schema_name,
+    )
     return parsed
 
 
@@ -94,7 +139,13 @@ Return valid JSON only: {{"maps": {{"attr_type_name": {{"raw_value": "canonical_
 """
 
 
-def build_attr_type_map(client: Any, model: str, genre: str, counts: dict[str, dict[str, int]]) -> dict[str, str]:
+def build_attr_type_map(
+    client: Any, model: str, genre: str, counts: dict[str, dict[str, int]], batch_size: int = 30
+) -> dict[str, str]:
+    """attr_type一覧をLLMに1回で渡すと、種類数が多いジャンルではプロンプトが
+    コンテキスト長を超える（元は単発呼び出しだった）。batch_sizeごとに分割して
+    複数回呼び出し、結果をマージする。1バッチ内でしか同義語判定はできないが、
+    build_value_map（値の正規化）も同じ方式でバッチ化されており、それに合わせる。"""
     totals = sorted(
         ({"attr_type": t, "count": sum(vc.values())} for t, vc in counts.items()),
         key=lambda x: -x["count"],
@@ -102,14 +153,38 @@ def build_attr_type_map(client: Any, model: str, genre: str, counts: dict[str, d
     if len(totals) <= 1:
         return {}
     system = ATTR_TYPE_SYSTEM_PROMPT.format(genre=genre)
-    user = json.dumps({"attr_types": totals}, ensure_ascii=False)
-    data = call_llm(client, model, system, user)
-    raw_map = data.get("map", {}) if isinstance(data, dict) else {}
     valid_targets = set(counts.keys())
-    return {
-        str(k): str(v) for k, v in raw_map.items()
-        if str(k) != str(v) and str(k) in valid_targets
-    }
+    frequencies = {t: sum(values.values()) for t, values in counts.items()}
+    merged_map: dict[str, str] = {}
+    for batch in chunked(totals, batch_size):
+        user = json.dumps({"attr_types": batch}, ensure_ascii=False)
+        try:
+            data = call_llm(
+                client,
+                model,
+                system,
+                user,
+                response_schema=ATTR_TYPE_MAP_SCHEMA,
+                schema_name="attr_type_map",
+            )
+        except Exception as exc:
+            print(f"  attr_type canonicalization batch failed, skipping: {exc}", file=sys.stderr)
+            continue
+        raw_map = data.get("map", {}) if isinstance(data, dict) else {}
+        for k, v in raw_map.items():
+            source, target = str(k), str(v)
+            # Only accept existing names and direct every merge toward a strict
+            # total order (frequency, then name). This prevents invented targets
+            # and reciprocal/cyclic mappings even if the model proposes them.
+            if (
+                source != target
+                and source in valid_targets
+                and target in valid_targets
+                and (frequencies[target], target) > (frequencies[source], source)
+            ):
+                merged_map[source] = target
+        print(f"  processed {len(batch)} attr_types")
+    return merged_map
 
 
 def apply_attr_type_map(counts: dict[str, dict[str, int]], attr_type_map: dict[str, str]) -> dict[str, dict[str, int]]:
@@ -128,21 +203,54 @@ def chunked(items: list, size: int):
 
 
 def build_value_map(
-    client: Any, model: str, counts: dict[str, dict[str, int]], batch_size: int, min_distinct: int
+    client: Any, model: str, counts: dict[str, dict[str, int]], batch_size: int, min_distinct: int,
+    max_values_per_type: int = 60, max_values_per_batch: int = 200,
 ) -> dict[str, dict[str, str]]:
+    # 1 attr_type が数千の値を持つと、attr_type を batch_size 個束ねただけでは
+    # プロンプトがコンテキスト長を超える。そこで (1) 各 attr_type は頻出上位
+    # max_values_per_type 件だけを正規化対象にし、(2) バッチは「含まれる値の総数」が
+    # max_values_per_batch を超えないように詰める。正規化は表記揺れ吸収が目的なので、
+    # 低頻度のロングテール値まで完全網羅する必要はない。
     candidates = [
-        {"attr_type": t, "values": [{"value": v, "count": c} for v, c in sorted(vc.items(), key=lambda x: -x[1])]}
+        {
+            "attr_type": t,
+            "values": [
+                {"value": v, "count": c}
+                for v, c in sorted(vc.items(), key=lambda x: -x[1])[:max_values_per_type]
+            ],
+        }
         for t, vc in counts.items()
         if len(vc) >= min_distinct
     ]
     if not candidates:
         return {}
 
+    # 値総数ベースで動的にバッチを作る（attr_type 数上限 batch_size も併用）
+    batches: list[list[dict]] = []
+    cur: list[dict] = []
+    cur_values = 0
+    for cand in candidates:
+        n = len(cand["values"])
+        if cur and (cur_values + n > max_values_per_batch or len(cur) >= batch_size):
+            batches.append(cur)
+            cur, cur_values = [], 0
+        cur.append(cand)
+        cur_values += n
+    if cur:
+        batches.append(cur)
+
     value_map: dict[str, dict[str, str]] = {}
-    for batch in chunked(candidates, batch_size):
+    for batch in batches:
         user = json.dumps({"attr_types": batch}, ensure_ascii=False)
         try:
-            data = call_llm(client, model, VALUE_SYSTEM_PROMPT, user)
+            data = call_llm(
+                client,
+                model,
+                VALUE_SYSTEM_PROMPT,
+                user,
+                response_schema=VALUE_MAP_SCHEMA,
+                schema_name="value_map",
+            )
         except Exception as exc:
             print(f"  value canonicalization batch failed, skipping: {exc}", file=sys.stderr)
             continue
