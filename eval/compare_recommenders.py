@@ -91,6 +91,17 @@ ITERATION_HISTORY = [
     "生产端 `recommender.py` 的 transition/cf 信号是基于图的 peer-based 计数（谁在评分完 seed 之后又评分了 "
     "candidate），和这里预先计算好的 item-item 转移矩阵 + 排名衰减不是同一套算法，因此这轮的衰减指数没有"
     "直接对应的 Cypher 写法可搬；只把结构上真正对应的近期窗口从 `LIMIT 15` 调到 `LIMIT 20` 搬了过去。",
+    "第八轮：exact-ASIN 的 HR/NDCG 一直不高，不是算法差，是留出协议本身极严格——同系列的其他商品再合理也是"
+    "0 分。这轮加了 SoftHR@K/SoftNDCG@K：给 rel=1.0 精确命中、rel=0.6 同 franchise（否则 0）的分级相关性"
+    "算标准 DCG，但 IDCG 固定取 1.0（最好情况即精确命中排第一），而不是用候选池里全部 franchise 同类算出"
+    "真实上界——因为这里每个用户只留出了一个真实发生的未来动作，不是「多个同等相关文档」的检索场景，"
+    "如果把每个 franchise 同类都当成必须凑齐的理想排名，分母会被同类数量拉高，反而让已经精确命中的用户"
+    "算出比严格版更低的分数，跟「放宽标准」的初衷相反。固定 IDCG=1.0 保证 SoftNDCG@K 必然 >= 严格版 "
+    "NDCG@K（等于是严格版基础上再叠加同系列命中的部分加分）。最初还试过给「同 platform 且同 "
+    "product_type」记 0.3 分，但抽查发现这一档每个目标平均能匹配几十到两百多个商品（单是 PS4 游戏就有"
+    "上百个），区分度太低，因此去掉了，只保留信息量更大的 franchise 分档（77% 的目标没有同系列商品，"
+    "其余通常 4-70 个）。严格版 HR/NDCG/MRR 保留在报告里，定位是「下限压力测试」；SoftNDCG 定位是「用户"
+    "体验相关性」的更真实估计，两者并列展示，不用宽松版取代严格版。",
 ]
 
 
@@ -571,6 +582,34 @@ def domain_match_for_list(target_pid: str, recs: list[str], data: GraphData, pre
     return matches / len(recs)
 
 
+# Graded relevance for "soft" NDCG/HR: strict exact-ASIN HR/NDCG treats every
+# non-exact recommendation as equally wrong, even a same-franchise substitute
+# a user would likely have been happy with too (see round4/5/7's "仍然存在的
+# 限制" notes). This turns that into a graded-relevance judgment instead of an
+# invented ad-hoc score: standard NDCG already supports relevance in [0, 1],
+# we're just no longer collapsing it to binary.
+#
+# An earlier version also credited "same platform + same product_type" at
+# 0.3, but a sanity check showed that tier matches 20-241 other products per
+# target (a platform like PS4 alone has hundreds of games) — with IDCG built
+# from the full candidate pool, that made the ideal ranking (and therefore
+# the denominator) dominated by a nearly-arbitrary broad category rather than
+# genuine "close" substitutes, and it was dropped. Franchise siblings are
+# far scarcer (0 for ~77% of targets, else typically 4-70), which is a much
+# tighter and more meaningful substitute definition.
+REL_EXACT = 1.0
+REL_FRANCHISE = 0.6
+
+
+def relevance(pid: str, target_pid: str, data: GraphData) -> float:
+    if pid == target_pid:
+        return REL_EXACT
+    franchise_prefix = DOMAIN_PREFIXES["franchise"]
+    if domain_values(target_pid, data, franchise_prefix) & domain_values(pid, data, franchise_prefix):
+        return REL_FRANCHISE
+    return 0.0
+
+
 def summarize(records: list[dict[str, Any]], data: GraphData, cutoffs: list[int]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "n_users": len(records),
@@ -608,6 +647,28 @@ def summarize(records: list[dict[str, Any]], data: GraphData, cutoffs: list[int]
             method_summary[f"HR@{c}"] = round(sum(1 for rk in ranks if rk is not None and rk <= c) / len(ranks), 4)
             method_summary[f"NDCG@{c}"] = round(sum(ndcg(rk) if rk is not None and rk <= c else 0.0 for rk in ranks) / len(ranks), 4)
             method_summary[f"MRR@{c}"] = round(sum(mrr(rk, c) for rk in ranks) / len(ranks), 4)
+
+            # IDCG is fixed at 1.0 (best case: exact match at rank 1) rather
+            # than built from every franchise sibling in the catalog. This
+            # eval holds out exactly one real future action per user, not a
+            # multi-relevant-document IR query, so treating every sibling as
+            # an equally-required "ideal" hit would inflate the denominator
+            # for targets with many siblings and make SoftNDCG *lower* than
+            # strict NDCG for users the method already got exactly right —
+            # the opposite of what a relaxed metric should do. This way
+            # SoftNDCG@k is guaranteed >= NDCG@k: it's strict NDCG plus
+            # partial credit for franchise-sibling hits, never less.
+            soft_hits = 0
+            soft_ndcgs: list[float] = []
+            for record in records:
+                rec_list = record["recommendations"][method][:c]
+                target_pid = record["target_product_id"]
+                rels = [relevance(pid, target_pid, data) for pid in rec_list]
+                soft_ndcgs.append(sum(r / math.log2(i + 2) for i, r in enumerate(rels)))
+                if any(r > 0 for r in rels):
+                    soft_hits += 1
+            method_summary[f"SoftHR@{c}"] = round(soft_hits / len(records), 4)
+            method_summary[f"SoftNDCG@{c}"] = round(float(np.mean(soft_ndcgs)), 4) if soft_ndcgs else 0.0
         summary["methods"][method] = method_summary
     return summary
 
@@ -694,7 +755,8 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         f"- 评估用户数：{summary['n_users']}",
         f"- 商品数：{summary['n_products']}",
         f"- 留出方式：每个用户最新一条 4 星及以上评分作为未来目标商品。",
-        f"- 指标：HR@K、NDCG@K、MRR@K、Catalog Coverage@{top_k}、Domain Match@{top_k}、Diversity@{top_k}。",
+        f"- 指标：HR@K、NDCG@K、MRR@K、Catalog Coverage@{top_k}、Domain Match@{top_k}、Diversity@{top_k}、"
+        f"SoftHR@K/SoftNDCG@K（同系列也算部分命中的宽松版，见下方说明）。",
         f"- 本轮说明：{phase_note}",
         f"- 数据完整性：价格覆盖率 {summary['preflight']['price_coverage']:.2%}，图片覆盖率 {summary['preflight']['image_coverage']:.2%}，评分覆盖率 {summary['preflight']['avg_rating_coverage']:.2%}。",
         "",
@@ -706,6 +768,8 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "",
         f"![hr](hr_by_cutoff.png)",
         "",
+        "严格 exact-ASIN 指标（要求命中留出的那一个具体商品）：",
+        "",
         "| 方法 | HR@{} | NDCG@{} | MRR@{} | Coverage@{} | Domain@{} | Platform@{} | Franchise@{} | Type@{} |".format(cut, cut, cut, top_k, top_k, top_k, top_k, top_k),
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
@@ -715,6 +779,20 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
             f"{vals[f'MRR@{cut}']:.4f} | {vals[f'coverage@{top_k}']:.4f} | "
             f"{vals[f'domain_match@{top_k}']:.4f} | {vals[f'platform_match@{top_k}']:.4f} | "
             f"{vals[f'franchise_match@{top_k}']:.4f} | {vals[f'product_type_match@{top_k}']:.4f} |"
+        )
+
+    lines.extend([
+        "",
+        f"宽松命中指标（rel=1.0 精确命中 / rel={REL_FRANCHISE} 同 franchise，否则 0；"
+        f"NDCG 按标准的分级相关性定义计算，不是另造的分数）：",
+        "",
+        f"| 方法 | SoftHR@{top_k} | SoftNDCG@{top_k} | SoftHR@{cut} | SoftNDCG@{cut} |",
+        "|---|---:|---:|---:|---:|",
+    ])
+    for method, vals in methods.items():
+        lines.append(
+            f"| {method} | {vals[f'SoftHR@{top_k}']:.4f} | {vals[f'SoftNDCG@{top_k}']:.4f} | "
+            f"{vals[f'SoftHR@{cut}']:.4f} | {vals[f'SoftNDCG@{cut}']:.4f} |"
         )
 
     kg_v1 = methods.get("kg_meta_path_v1", {})
@@ -741,7 +819,7 @@ def write_report(summary: dict[str, Any], out_dir: Path, phase_note: str) -> Non
         "",
         "## 仍然存在的限制",
         "",
-        "- 所有方法的 NDCG 绝对值仍不高，这是因为当前离线任务是严格预测未来同一个 ASIN；如果用户实际接受同系列、同平台、同玩法的商品，exact-ASIN 会低估体验相关性。",
+        f"- 严格 exact-ASIN 的 NDCG 绝对值仍不高，这是因为当前离线任务是严格预测未来同一个 ASIN；如果用户实际接受同系列、同平台、同玩法的商品，exact-ASIN 会低估体验相关性。第八轮加入的 SoftNDCG@{cut} 部分缓解了这一点——`hybrid_v4` 从严格版 {hybrid.get(f'NDCG@{cut}', 0.0):.4f} 变成宽松版 {hybrid.get(f'SoftNDCG@{cut}', 0.0):.4f}，但这只是换了一把更宽松的尺子，不代表模型本身在这轮变准了。",
         "- 当前用户行为主要来自评分/评论历史，缺少真实曝光、点击、收藏、购买、停留时间等在线行为。因此模型能学习“历史偏好”，但还不能充分学习“看见后是否感兴趣”。第六轮加入的 MENTIONS 确认信号部分缓解了“缺少 review sentiment 反馈”这一点，但仍然只是补充，不是替代。",
         "- KG 属性目前更适合做解释和语义补充。若要让 KG 排序本身更强，还需要更细粒度的 developer、mode、genre 属性。",
         "",

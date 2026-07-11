@@ -30,13 +30,24 @@ interface Props {
 export default function RecommendationCard({ rec, rank, devMode, userId, searchId }: Props) {
   const { lang } = useI18n();
   const jpyRate = useUsdToJpy();
+  const [viewed, setViewed] = useState(false);
+
+  // 画像/タイトルのクリック = 商品への関心シグナル。以前は Amazon 外部リンクの
+  // クリックで記録していたが、そのリンク自体が無効化されて死んだトリガーに
+  // なっていたため、外部遷移なしでカード内クリックから記録する方式に変更。
+  function markViewed() {
+    if (viewed) return;
+    setViewed(true);
+    logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
+  }
+
   return (
     <article className={styles.card} style={{ animationDelay: `${(rank - 1) * 70}ms` }}>
-      <ProductImage src={rec.image_url} alt={rec.title} />
+      <ProductImage src={rec.image_url} alt={rec.title} onClick={markViewed} />
       <div className={styles.body}>
         <div className={styles.head}>
           {devMode && <span className={styles.rank}>#{rank}</span>}
-          <h3 className={styles.title} title={rec.title}>
+          <h3 className={styles.title} title={rec.title} onClick={markViewed}>
             {rec.display_title || rec.title}
           </h3>
           {devMode && (
@@ -63,27 +74,16 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
           userId={userId}
           searchId={searchId}
         />
-        {/* <a
-          className={styles.amazonLink}
-          href={`https://www.amazon.com/dp/${rec.product_id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => {
-            logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
-          }}
-        >
-          {lang === "ja" ? "Amazon.com で見る →" : "View on Amazon.com →"}
-        </a> */}
       </div>
     </article>
   );
 }
 
-function ProductImage({ src, alt }: { src: string | null; alt: string }) {
+function ProductImage({ src, alt, onClick }: { src: string | null; alt: string; onClick: () => void }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <div className={styles.thumbPlaceholder} aria-hidden="true">
+      <div className={styles.thumbPlaceholder} aria-hidden="true" onClick={onClick}>
         <svg className={styles.thumbIcon} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M7 9c-2.5 0-4.3 2-3.9 4.4l.6 3.4c.3 1.6 2.1 2.4 3.5 1.5l.7-.4a3.5 3.5 0 0 1 3.3 0l.2.1a3.5 3.5 0 0 0 3.3 0l.2-.1a3.5 3.5 0 0 1 3.3 0l.7.4c1.4.9 3.2.1 3.5-1.5l.6-3.4C23.3 11 21.5 9 19 9z"
@@ -103,6 +103,7 @@ function ProductImage({ src, alt }: { src: string | null; alt: string }) {
       alt={alt}
       loading="lazy"
       onError={() => setFailed(true)}
+      onClick={onClick}
     />
   );
 }
