@@ -19,6 +19,7 @@ interface Result {
   preference_summary: string[];
   intent: SearchIntent | null;
   searchId: string | null;
+  fallback: boolean;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -64,6 +65,7 @@ export default function ChatPage() {
           preference_summary: [],
           intent: r.intent,
           searchId: r.search_id,
+          fallback: r.fallback,
         });
       } catch (e) {
         if (cancelled) return;
@@ -119,6 +121,7 @@ export default function ChatPage() {
           preference_summary: r.preference_summary,
           intent: r.intent,
           searchId: r.search_id,
+          fallback: r.fallback,
         });
       }
       setStatus("idle");
@@ -283,6 +286,7 @@ export default function ChatPage() {
             devMode={devMode}
             userId={effectiveUserId}
             searchId={result.searchId}
+            fallback={result.fallback}
           />
           {conversation.length > 0 && (
             <div className={styles.restartBanner}>

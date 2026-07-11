@@ -1697,7 +1697,7 @@ class Recommender:
                 k.strip() for k in (data.get("search_keywords") or [])
                 if isinstance(k, str) and k.strip()
             ][:8]
-            search_id, intent, products, _fallback = self.recommend(
+            search_id, intent, products, fallback = self.recommend(
                 query_text, user_id, limit, normalized_lang, hints=hints or None
             )
             return {
@@ -1708,6 +1708,7 @@ class Recommender:
                 "intent": intent,
                 "recommendations": products,
                 "search_id": search_id,
+                "fallback": fallback,
             }
 
         if must_ask_clarifying_question:
@@ -1740,6 +1741,7 @@ class Recommender:
             "intent": None,
             "recommendations": [],
             "search_id": None,
+            "fallback": False,
         }
 
     def _get_attr_vocab_text(self) -> str:

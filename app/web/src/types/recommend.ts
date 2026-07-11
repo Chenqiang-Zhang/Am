@@ -98,6 +98,7 @@ export interface ChatResponse {
   intent: SearchIntent | null;
   recommendations: Recommendation[];
   search_id: string | null;
+  fallback: boolean;
 }
 
 // ===== 行動ログ =====

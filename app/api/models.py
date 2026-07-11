@@ -87,6 +87,7 @@ class ChatResponse(BaseModel):
     intent: SearchIntent | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
     search_id: str | None = None  # action="search"のとき、VIEWEDと紐付けるためのSearchLog ID
+    fallback: bool = False  # 条件検索が0件で人気商品へフォールバックしたか
 
 
 # ===== レビュー取得 =====

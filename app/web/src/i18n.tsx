@@ -30,6 +30,7 @@ interface Dict {
   otherPlaceholder: string;
   yourPreferences: string;
   recommendationReasons: string;
+  fallbackNotice: string;
   empty: string;
   resultFilter: string;
   filterAvailable: string;
@@ -67,6 +68,7 @@ const ja: Dict = {
   otherPlaceholder: "自由に入力…",
   yourPreferences: "あなたの希望",
   recommendationReasons: "おすすめの理由",
+  fallbackNotice: "条件に十分一致する商品が見つからなかったため、人気のゲームも表示しています。",
   empty: "条件に一致する商品が見つかりませんでした。言葉を変えて、もう一度お試しください。",
   resultFilter: "表示",
   filterAvailable: "購入可能",
@@ -104,6 +106,7 @@ const en: Dict = {
   otherPlaceholder: "Type here…",
   yourPreferences: "Your preferences",
   recommendationReasons: "Why it fits",
+  fallbackNotice: "We couldn't find a close enough match, so we're also showing popular games.",
   empty: "No matching products found. Try rephrasing your request.",
   resultFilter: "View",
   filterAvailable: "Available",
