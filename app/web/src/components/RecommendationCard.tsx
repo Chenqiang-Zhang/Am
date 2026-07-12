@@ -133,6 +133,7 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
           ))}
         </div>
       )}
+      <ReasonSummary rec={rec} lang={lang} />
     </div>
   );
 }
@@ -147,8 +148,29 @@ function DevExplanation({ rec }: { rec: Recommendation }) {
       <Section label={t.matchedAttributes}>
         <AttributeChips attributes={rec.matched_attrs} />
       </Section>
+      <Section label="Reason metrics">
+        <ReasonSummary rec={rec} lang="en" />
+      </Section>
     </div>
   );
+}
+
+function ReasonSummary({ rec, lang }: { rec: Recommendation; lang: Lang }) {
+  const metrics = rec.reason_metrics;
+  const items: string[] = [];
+  if (metrics.condition_matches > 0) {
+    items.push(lang === "ja" ? `条件一致 ${metrics.condition_matches}` : `${metrics.condition_matches} condition matches`);
+  }
+  if (metrics.transition_peers > 0) {
+    items.push(lang === "ja" ? `行動遷移 ${metrics.transition_peers}` : `${metrics.transition_peers} transition peers`);
+  } else if (metrics.collaborative_peers > 0) {
+    items.push(lang === "ja" ? `類似ユーザー ${metrics.collaborative_peers}` : `${metrics.collaborative_peers} similar users`);
+  }
+  if (metrics.review_confirmations > 0) {
+    items.push(lang === "ja" ? `レビュー裏付け ${metrics.review_confirmations}` : `${metrics.review_confirmations} review confirmations`);
+  }
+  if (items.length === 0) return null;
+  return <span className={styles.reasonMetrics}>{items.join(" · ")}</span>;
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {

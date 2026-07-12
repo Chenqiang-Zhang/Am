@@ -18,8 +18,8 @@ Flow (search):
      with attribute/category meta-paths used for dialogue filtering,
      explanation, and recall backfill.
   3. The strongest matched graph path becomes the recommendation reason.
-  4. Legacy Text2Cypher remains as a fallback when the fixed meta-path query
-     returns no rows; popular products are only the final fallback.
+  4. A strict no-match result is returned when dialogue constraints cannot be
+     satisfied. Popular products are used only for empty/home fallback flows.
 
 Flow (home):
   1. Build user context
@@ -55,7 +55,7 @@ from typing import Any
 import yaml
 from neo4j import GraphDatabase
 
-from .models import MatchedAttr, Recommendation, SearchIntent
+from .models import MatchedAttr, ReasonMetrics, Recommendation, SearchIntent
 
 # ── graph schema ───────────────────────────────────────────────────────────────
 
@@ -138,10 +138,13 @@ _FALLBACK_CYPHER = (
     "WITH p, "
     "  coalesce(p.avg_rating, 3.5) * 0.5 "
     "  + log(toFloat(p.rating_count) + 1) * 0.2 AS score, "
-    "  [] AS matched_attrs "
-    "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.image_url AS image_url, p.price AS price, "
+    "  [] AS matched_attrs, "
+    "  {condition_matches: 0, behavior_matches: 0, transition_peers: 0, "
+    "   collaborative_peers: 0, shared_rated_attributes: 0, "
+    "   shared_viewed_attributes: 0, review_confirmations: 0} AS reason_metrics "
+    "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.description_ja AS description_ja, p.image_url AS image_url, p.price AS price, "
     "  p.avg_rating AS avg_rating, p.rating_count AS rating_count, score, "
-    "  $explanation AS explanation, matched_attrs "
+    "  $explanation AS explanation, matched_attrs, reason_metrics "
     "ORDER BY score DESC LIMIT $limit"
 )
 
@@ -155,6 +158,7 @@ MATCH (p:Product)
 WHERE p.avg_rating IS NOT NULL
   AND p.rating_count IS NOT NULL
   AND toFloat(p.avg_rating) >= $min_rating
+  AND (size($candidate_product_ids) = 0 OR p.product_id IN $candidate_product_ids)
 CALL (p) {
   OPTIONAL MATCH (p)-[:BELONGS_TO]->(c:Category)
   RETURN collect(DISTINCT c.name) AS categories
@@ -288,7 +292,8 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
      product_type_attrs, required_condition_hits, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
-     transition_peer_count, transition_seed_count, condition_hits, behavior_hits,
+     transition_peer_count, transition_seed_count, confirmed_rated_mentions,
+     condition_hits, behavior_hits,
      (
        log(toFloat(transition_peer_count) + 1) * 5.0
        + log(toFloat(transition_seed_count) + 1) * 1.2
@@ -316,11 +321,19 @@ RETURN p.product_id AS product_id,
        p.title AS title,
        p.title_ja AS title_ja,
        p.description AS description,
+       p.description_ja AS description_ja,
        p.image_url AS image_url,
        p.price AS price,
        p.avg_rating AS avg_rating,
        p.rating_count AS rating_count,
        score,
+       {condition_matches: condition_hits,
+        behavior_matches: behavior_hits,
+        transition_peers: transition_peer_count,
+        collaborative_peers: cf_peer_count,
+        shared_rated_attributes: size(rated_attrs),
+        shared_viewed_attributes: size(viewed_attrs),
+        review_confirmations: confirmed_rated_mentions} AS reason_metrics,
        CASE
          WHEN transition_peer_count > 0 THEN $transition_explanation
          WHEN cf_peer_count > 0 THEN $peer_explanation
@@ -432,11 +445,20 @@ RETURN p.product_id AS product_id,
        p.title AS title,
        p.title_ja AS title_ja,
        p.description AS description,
+       p.description_ja AS description_ja,
        p.image_url AS image_url,
        p.price AS price,
        p.avg_rating AS avg_rating,
        p.rating_count AS rating_count,
        score,
+       {condition_matches: size(query_attrs) + size(product_kw_hits) + size(category_kw_hits)
+                            + size(franchise_attrs) + size(platform_attrs) + size(product_type_attrs),
+        behavior_matches: 0,
+        transition_peers: 0,
+        collaborative_peers: 0,
+        shared_rated_attributes: 0,
+        shared_viewed_attributes: 0,
+        review_confirmations: 0} AS reason_metrics,
        $condition_explanation AS explanation,
        'dialogue_only' AS recommendation_source,
        [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs)[0..8]
@@ -483,6 +505,12 @@ _FRANCHISE_ATTR_TYPES = [
 
 _PRODUCT_TYPE_ATTR_TYPES = [
     "domain_product_type",
+]
+
+_DOMAIN_ATTR_TYPES = [
+    *_PLATFORM_ATTR_TYPES,
+    *_FRANCHISE_ATTR_TYPES,
+    *_PRODUCT_TYPE_ATTR_TYPES,
 ]
 
 _CHAT_PROFILE_ATTR_TYPES = [
@@ -715,6 +743,24 @@ def _fallback_condition_terms(query: str) -> dict[str, Any]:
         "attribute_keywords": _keyword_list(attr_terms or terms, max_items=12),
         "min_rating": min_rating,
     }
+
+
+def _format_applied_conditions(conditions: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    for key, label in (
+        ("platform_keywords", "platform"),
+        ("franchise_keywords", "franchise"),
+        ("product_type_keywords", "product_type"),
+        ("product_keywords", "product"),
+        ("category_keywords", "category"),
+        ("attribute_keywords", "attribute"),
+    ):
+        values = conditions.get(key) or []
+        if values:
+            labels.append(f"{label}: {', '.join(str(v) for v in values[:3])}")
+    if conditions.get("min_rating"):
+        labels.append(f"min_rating: {conditions['min_rating']}")
+    return labels
 
 def _build_fix_prompt(lang: str) -> str:
     target = "Japanese" if lang == "ja" else "English"
@@ -1098,17 +1144,36 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
                 MatchedAttr(attr_type=str(m["attr_type"]), value=display_value)
             )
     title_ja = record.get("title_ja") or None
+    description = record.get("description")
+    description_ja = record.get("description_ja")
+    display_description = description_ja if (lang == "ja" and description_ja) else description
+    raw_metrics = record.get("reason_metrics") or {}
+    if not isinstance(raw_metrics, dict):
+        raw_metrics = {}
+    metric_names = (
+        "condition_matches",
+        "behavior_matches",
+        "transition_peers",
+        "collaborative_peers",
+        "shared_rated_attributes",
+        "shared_viewed_attributes",
+        "review_confirmations",
+    )
+    reason_metrics = ReasonMetrics(
+        **{name: _to_int(raw_metrics.get(name)) or 0 for name in metric_names}
+    )
     return Recommendation(
         product_id=str(record.get("product_id", "")),
         title=str(record.get("title", "")),
         display_title=title_ja if (lang == "ja" and title_ja) else None,
-        description=_strip_html(record.get("description")) or None,
+        description=_strip_html(display_description) or None,
         image_url=record.get("image_url") or None,
         price=_to_float(record.get("price")),
         avg_rating=_to_float(record.get("avg_rating")),
         rating_count=_to_int(record.get("rating_count")),
         score=float(record.get("score") or 0.0),
         matched_attrs=matched_attrs,
+        reason_metrics=reason_metrics,
         explanation=str(record.get("explanation", "")),
         recommendation_source=str(record.get("recommendation_source") or "popular"),
     )
@@ -1244,6 +1309,74 @@ class Recommender:
 
     # ── public API ──────────────────────────────────────────────────────────────
 
+    def graph_readiness(self) -> dict[str, Any]:
+        """Check the graph capabilities required by the current v3 recommender.
+
+        This is deliberately capability-based rather than trusting a local file
+        name: a stale Neo4j volume must be observable before it reaches a demo.
+        """
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                node_counts = {
+                    str(r["label"] or "unlabeled"): int(r["count"])
+                    for r in session.run(
+                        "MATCH (n) RETURN labels(n)[0] AS label, count(n) AS count"
+                    )
+                }
+                domain_coverage = {kind: 0 for kind in _DOMAIN_ATTR_TYPES}
+                for record in session.run(
+                    "MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute) "
+                    "WHERE a.attr_type IN $domain_types "
+                    "RETURN a.attr_type AS attr_type, count(DISTINCT p) AS products",
+                    domain_types=_DOMAIN_ATTR_TYPES,
+                ):
+                    domain_coverage[str(record["attr_type"])] = int(record["products"])
+                product_row = session.run(
+                    "MATCH (p:Product) "
+                    "RETURN count(p) AS total, "
+                    "count(CASE WHEN coalesce(p.description_ja, '') <> '' THEN 1 END) AS ja_count"
+                ).single()
+                review_row = session.run(
+                    "MATCH (r:Review) "
+                    "RETURN count(r) AS total, "
+                    "count(CASE WHEN coalesce(r.text_ja, '') <> '' THEN 1 END) AS ja_count"
+                ).single()
+        except Exception as exc:
+            return {
+                "status": "degraded",
+                "graph_profile": "unavailable",
+                "node_counts": {},
+                "domain_coverage": {},
+                "japanese_description_coverage": 0.0,
+                "japanese_review_coverage": 0.0,
+                "issues": [f"Neo4j connection or schema check failed: {exc.__class__.__name__}"],
+            }
+
+        product_total = int(product_row["total"] or 0) if product_row else 0
+        product_ja = int(product_row["ja_count"] or 0) if product_row else 0
+        review_total = int(review_row["total"] or 0) if review_row else 0
+        review_ja = int(review_row["ja_count"] or 0) if review_row else 0
+        description_coverage = product_ja / product_total if product_total else 0.0
+        review_coverage = review_ja / review_total if review_total else 0.0
+        issues: list[str] = []
+        if product_total == 0:
+            issues.append("No Product nodes found")
+        if description_coverage < 0.9:
+            issues.append("Japanese product description coverage is below 90%")
+        missing_domains = [kind for kind, count in domain_coverage.items() if count == 0]
+        if missing_domains:
+            issues.append(f"Missing normalized domain attributes: {', '.join(missing_domains)}")
+        ready = not issues
+        return {
+            "status": "ready" if ready else "degraded",
+            "graph_profile": "video_games_v3_compatible" if ready else "unknown_or_legacy",
+            "node_counts": node_counts,
+            "domain_coverage": domain_coverage,
+            "japanese_description_coverage": round(description_coverage, 4),
+            "japanese_review_coverage": round(review_coverage, 4),
+            "issues": issues,
+        }
+
     def recommend(
         self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en"
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
@@ -1255,11 +1388,11 @@ class Recommender:
         # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
         has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("viewed") or user_ctx.get("preferred_attrs")))
 
-        cypher, explanation, results = self._run_metapath_recommendation(
+        cypher, explanation, results, diagnostics = self._run_metapath_recommendation(
             query, user_id if has_uid else None, limit, normalized_lang
         )
         if results:
-            intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
+            intent = SearchIntent(cypher=cypher, cypher_explanation=explanation, **diagnostics)
             if user_id:
                 self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
             return search_id, intent, results, fallback
@@ -1268,33 +1401,23 @@ class Recommender:
         # popularity-only list.  Returning no results is preferable to claiming
         # that an unrelated game satisfies the user's stated dialogue needs.
         if query.strip():
-            intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
+            intent = SearchIntent(cypher=cypher, cypher_explanation=explanation, **diagnostics)
             if user_id:
                 self.log_search(user_id, search_id, query, cypher, explanation, [])
             return search_id, intent, [], False
 
-        dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
-        system_prompt = _build_search_prompt(
-            self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+        # Empty queries are not semantic searches. Keep their behavior explicit
+        # rather than routing them through the obsolete free-form Text2Cypher path.
+        cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
+        results = self._run_popular(limit, normalized_lang)
+        fallback = True
+        intent = SearchIntent(
+            cypher=cypher,
+            cypher_explanation=explanation,
+            condition_source="none",
+            retrieval_status="fallback_popular",
+            no_result_reason=None,
         )
-        try:
-            params: dict[str, Any] = {"limit": limit}
-            if has_uid:
-                params["uid"] = user_id
-            cypher, explanation, results = self._generate_cypher_and_execute(
-                system_prompt, query, limit, params, has_uid, normalized_lang
-            )
-        except Exception as exc:
-            print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
-            cypher, explanation, results = "", "", []
-        # _generate_cypher_and_execute()は構文エラー・0件ヒットのどちらも内部でリトライ
-        # した上で、それでも結果が得られない場合にだけ ("", "", []) を返す。
-        # ここではその「リトライを使い切っても駄目だった」場合にだけフォールバックする。
-        if not results:
-            cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
-            results = self._run_popular(limit, normalized_lang)
-            fallback = True
-        intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
         if user_id:
             self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
@@ -1316,7 +1439,7 @@ class Recommender:
 
         user_ctx = self._get_user_context(user_id)
         try:
-            cypher, explanation, results = self._run_metapath_recommendation(
+            cypher, explanation, results, _diagnostics = self._run_metapath_recommendation(
                 "", user_id, limit, lang
             )
         except Exception as exc:
@@ -1358,13 +1481,25 @@ class Recommender:
         if generated:
             cypher, explanation, results = generated
             fallback = False
+            intent = SearchIntent(
+                cypher=cypher,
+                cypher_explanation=explanation,
+                condition_source="none",
+                retrieval_status="matched",
+            )
         else:
             # has_history=Falseなら想定内（個人化する材料が無いだけ）、
             # has_history=Trueなのに生成に失敗した場合だけ本当のフォールバック扱いにする。
             cypher, explanation = _FALLBACK_CYPHER, _popular_explanation(normalized_lang)
             results = self._run_popular(limit, normalized_lang)
             fallback = has_history
-        intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
+            intent = SearchIntent(
+                cypher=cypher,
+                cypher_explanation=explanation,
+                condition_source="none",
+                retrieval_status="fallback_popular",
+                no_result_reason=("No personalized graph candidates were available" if has_history else None),
+            )
         if user_id:
             self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
@@ -1447,20 +1582,42 @@ class Recommender:
         }
 
     def _get_attr_vocab_text(self) -> str:
-        """グラフに実在するattr_typeの語彙をプロンプト用テキストにして返す（初回のみNeo4jに問い合わせてキャッシュ）。"""
+        """Build a prompt vocabulary while always retaining normalized domain types.
+
+        The v3 domain attributes are intentionally shared nodes (for example only
+        13 platform values), so a naive top-frequency query would hide them from
+        the LLM despite their high product coverage.
+        """
         if self._attr_vocab_text is not None:
             return self._attr_vocab_text
         vocab: list[dict[str, Any]] = []
         try:
             with self._driver.session(database=self._neo4j_db) as session:
-                res = session.run(
+                domain_res = session.run(
+                    "MATCH (a:Attribute) WHERE a.attr_type IN $domain_types "
+                    "RETURN a.attr_type AS attr_type, "
+                    "       collect(DISTINCT a.value)[0..20] AS examples, "
+                    "       count(*) AS freq "
+                    "ORDER BY attr_type",
+                    domain_types=_DOMAIN_ATTR_TYPES,
+                )
+                general_res = session.run(
                     "MATCH (a:Attribute) "
+                    "WHERE NOT a.attr_type IN $domain_types "
                     "RETURN a.attr_type AS attr_type, "
                     "       collect(DISTINCT a.value)[0..6] AS examples, "
                     "       count(*) AS freq "
-                    "ORDER BY freq DESC LIMIT 20"
+                    "ORDER BY freq DESC LIMIT 20",
+                    domain_types=_DOMAIN_ATTR_TYPES,
                 )
-                vocab = [{"attr_type": r["attr_type"], "examples": r["examples"]} for r in res]
+                vocab = [
+                    {"attr_type": r["attr_type"], "examples": r["examples"]}
+                    for r in domain_res
+                ]
+                vocab.extend(
+                    {"attr_type": r["attr_type"], "examples": r["examples"]}
+                    for r in general_res
+                )
         except Exception as exc:
             print(f"[recommender] attr vocabulary lookup failed: {exc}", file=sys.stderr)
         self._attr_vocab_text = _format_attr_vocab(vocab)
@@ -1504,10 +1661,31 @@ LIMIT $limit
                 r = dict(record)
                 text_ja = r.pop("text_ja", None)
                 title_ja = r.pop("title_ja", None)
-                r["text"] = text_ja if (use_ja and text_ja) else _strip_html(r.get("text"))
+                translated = bool(use_ja and text_ja)
+                r["text"] = text_ja if translated else _strip_html(r.get("text"))
                 r["title"] = title_ja if (use_ja and title_ja) else _strip_html(r.get("title"))
+                r["translated"] = translated
+                r["display_language"] = "ja" if translated else "en"
                 rows.append(r)
             return rows
+
+    def get_description(self, product_id: str, lang: str = "en") -> dict[str, Any] | None:
+        """Return the same language-selected description used by recommendation cards."""
+        with self._driver.session(database=self._neo4j_db) as session:
+            record = session.run(
+                "MATCH (p:Product {product_id: $product_id}) "
+                "RETURN p.description AS description, p.description_ja AS description_ja",
+                product_id=product_id,
+            ).single()
+        if record is None:
+            return None
+        raw_description = record.get("description")
+        raw_description_ja = record.get("description_ja")
+        use_ja = _normalize_lang(lang) == "ja"
+        return {
+            "description": _strip_html(raw_description_ja if use_ja and raw_description_ja else raw_description) or None,
+            "translated": bool(use_ja and raw_description_ja),
+        }
 
     _MAX_VIEWED: int = 20
     _MAX_SEARCHES: int = 30
@@ -1714,7 +1892,9 @@ LIMIT $limit
                 "franchise_keywords": [],
                 "product_type_keywords": [],
                 "min_rating": None,
+                "condition_source": "none",
             }
+        condition_source = "llm"
         try:
             data = self._call_llm(
                 _build_condition_prompt(self._genre, self._get_attr_vocab_text(), lang),
@@ -1723,6 +1903,9 @@ LIMIT $limit
         except Exception as exc:
             print(f"[recommender] condition extraction failed, using fallback terms: {exc}", file=sys.stderr)
             data = {}
+            condition_source = "heuristic_fallback"
+        if not data:
+            condition_source = "heuristic_fallback"
 
         product_keywords = _keyword_list(data.get("product_keywords")) or fallback["product_keywords"]
         category_keywords = _keyword_list(data.get("category_keywords")) or fallback["category_keywords"]
@@ -1766,6 +1949,7 @@ LIMIT $limit
             "franchise_keywords": franchise_keywords,
             "product_type_keywords": product_type_keywords,
             "min_rating": min_rating,
+            "condition_source": condition_source,
         }
 
     def _run_metapath_recommendation(
@@ -1774,7 +1958,7 @@ LIMIT $limit
         user_id: str | None,
         limit: int,
         lang: str,
-    ) -> tuple[str, str, list[Recommendation]]:
+    ) -> tuple[str, str, list[Recommendation], dict[str, Any]]:
         normalized_lang = _normalize_lang(lang)
         conditions = self._extract_conditions(query, normalized_lang)
         has_query = bool(
@@ -1786,11 +1970,17 @@ LIMIT $limit
             or conditions["product_type_keywords"]
         )
         if not user_id and not has_query:
-            return "", "", []
+            return "", "", [], {
+                "applied_conditions": [],
+                "condition_source": "none",
+                "retrieval_status": "no_match",
+                "no_result_reason": "No dialogue conditions or user history were supplied",
+            }
 
         explanations = _metapath_explanations(normalized_lang)
         params: dict[str, Any] = {
             "limit": limit,
+            "candidate_product_ids": [],
             "product_keywords": conditions["product_keywords"],
             "category_keywords": conditions["category_keywords"],
             "attribute_keywords": conditions["attribute_keywords"],
@@ -1819,15 +2009,45 @@ LIMIT $limit
         else:
             cypher = _METAPATH_CONDITION_CYPHER
 
+        candidate_count = 0
+        if user_id and has_query:
+            # Stage 1: keep only the strongest dialogue/domain matches. Stage 2
+            # below applies the costly user-behavior meta-path to this pool.
+            candidate_params = dict(params)
+            candidate_params.pop("uid", None)
+            candidate_params["limit"] = max(50, limit)
+            candidate_rows = self._execute_and_map(
+                _METAPATH_CONDITION_CYPHER, candidate_params, normalized_lang
+            )
+            candidate_ids = [row.product_id for row in candidate_rows]
+            candidate_count = len(candidate_ids)
+            if candidate_ids:
+                params["candidate_product_ids"] = candidate_ids
+
         results = self._execute_and_map(cypher, params, normalized_lang)
+        relaxed = False
+        used_condition_only = False
         if not results and has_query and params["franchise_required"]:
             relaxed_params = dict(params)
             relaxed_params["franchise_required"] = False
             # Keep platform/product-type constraints, but allow a nearby game
             # when a very specific franchise query has no catalog coverage.
+            if user_id:
+                relaxed_candidate_params = dict(relaxed_params)
+                relaxed_candidate_params.pop("uid", None)
+                relaxed_candidate_params["candidate_product_ids"] = []
+                relaxed_candidate_params["limit"] = max(50, limit)
+                relaxed_candidates = self._execute_and_map(
+                    _METAPATH_CONDITION_CYPHER, relaxed_candidate_params, normalized_lang
+                )
+                relaxed_ids = [row.product_id for row in relaxed_candidates]
+                if relaxed_ids:
+                    relaxed_params["candidate_product_ids"] = relaxed_ids
+                    candidate_count = len(relaxed_ids)
             results = self._execute_and_map(cypher, relaxed_params, normalized_lang)
             if results:
                 params = relaxed_params
+                relaxed = True
 
         if not results and has_query and user_id:
             # For explicit searches, relevance to the query is more important
@@ -1838,8 +2058,24 @@ LIMIT $limit
             condition_params.pop("uid", None)
             cypher = _METAPATH_CONDITION_CYPHER
             results = self._execute_and_map(cypher, condition_params, normalized_lang)
+            used_condition_only = bool(results)
         top_explanation = explanations["top"] if user_id else explanations["condition_top"]
-        return cypher, top_explanation, results
+        if results:
+            status = "matched_after_relaxation" if (relaxed or used_condition_only) else "matched"
+            no_result_reason = None
+        elif conditions["condition_source"] == "heuristic_fallback":
+            status = "no_match"
+            no_result_reason = "Condition extraction used heuristic fallback and found no catalog match"
+        else:
+            status = "no_match"
+            no_result_reason = "No catalog item satisfied all dialogue constraints"
+        return cypher, top_explanation, results, {
+            "applied_conditions": _format_applied_conditions(conditions),
+            "condition_source": conditions["condition_source"],
+            "retrieval_status": status,
+            "no_result_reason": no_result_reason,
+            "candidate_count": candidate_count,
+        }
 
     # ── Cypher generation with retry-on-error / retry-on-empty ──────────────────
 

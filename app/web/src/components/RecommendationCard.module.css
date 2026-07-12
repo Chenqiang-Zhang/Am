@@ -182,6 +182,12 @@
   gap: var(--space-2);
 }
 
+.reasonMetrics {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .userTag {
   padding: 3px 11px;
   border-radius: 999px;

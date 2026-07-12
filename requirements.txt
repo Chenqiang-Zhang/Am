@@ -7,3 +7,4 @@ google-genai
 neo4j
 fastapi
 uvicorn[standard]
+pytest
