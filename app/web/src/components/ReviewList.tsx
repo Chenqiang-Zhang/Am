@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ReviewItem } from "../types/recommend";
+import type { ReviewItem, ReviewsResponse } from "../types/recommend";
 import { useI18n } from "../i18n";
 import { fetchReviews, logView } from "../api/client";
 import RatingStars from "./RatingStars";
@@ -18,6 +18,7 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
   const { lang, t } = useI18n();
   const [status, setStatus] = useState<Status>("idle");
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [reviewMeta, setReviewMeta] = useState<Pick<ReviewsResponse, "translated_count" | "fallback_count"> | null>(null);
   const [open, setOpen] = useState(true);
 
   async function load() {
@@ -31,6 +32,7 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
     try {
       const data = await fetchReviews(productId, 5, lang);
       setReviews(data.reviews);
+      setReviewMeta({ translated_count: data.translated_count, fallback_count: data.fallback_count });
       setStatus("done");
     } catch {
       setStatus("error");
@@ -88,6 +90,13 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
           {lang === "ja" ? "閉じる" : "Close"} <span aria-hidden="true">×</span>
         </button>
       </div>
+      {lang === "ja" && reviewMeta && reviewMeta.fallback_count > 0 && (
+        <p className={styles.languageNote}>
+          {reviewMeta.translated_count > 0
+            ? `${reviewMeta.fallback_count}件は日本語訳が未登録のため英語原文を表示しています`
+            : "日本語訳が未登録のため英語原文を表示しています"}
+        </p>
+      )}
       {reviews.length === 0 ? (
         <p className={styles.empty}>
           {ratingNumber && ratingNumber > 0
@@ -129,6 +138,9 @@ function ReviewRow({ review, lang }: { review: ReviewItem; lang: string }) {
           <span className={styles.verified}>
             {lang === "ja" ? "購入済み" : "Verified"}
           </span>
+        )}
+        {lang === "ja" && !review.translated && (
+          <span className={styles.originalLanguage}>English original</span>
         )}
         {(review.helpful_vote ?? 0) > 0 && (
           <span className={styles.helpful}>

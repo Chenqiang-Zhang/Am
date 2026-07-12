@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from .models import (
     ChatRequest,
@@ -12,6 +13,7 @@ from .models import (
     DescriptionResponse,
     FeedbackRequest,
     FeedbackResponse,
+    GraphReadinessResponse,
     HomeRecommendRequest,
     RecommendRequest,
     RecommendResponse,
@@ -41,6 +43,17 @@ app = FastAPI(title="KG Recommender API", version="0.2.0", lifespan=lifespan)
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/ready", response_model=GraphReadinessResponse)
+async def ready() -> GraphReadinessResponse:
+    """Readiness check for the currently connected Neo4j graph, not just the API process."""
+    if _recommender is None:
+        raise HTTPException(status_code=503, detail="Recommender not initialized")
+    report = await asyncio.to_thread(_recommender.graph_readiness)
+    if report["status"] != "ready":
+        raise HTTPException(status_code=503, detail=report)
+    return GraphReadinessResponse(**report)
 
 
 @app.post("/recommend", response_model=RecommendResponse)
@@ -106,7 +119,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 
 @app.get("/users/sample", response_model=SampleUsersResponse)
-async def sample_users(limit: int = 10) -> SampleUsersResponse:
+async def sample_users(limit: int = Query(default=10, ge=1, le=50)) -> SampleUsersResponse:
     """デモ用: 評価履歴を持つ実ユーザーを何件か返す（テストユーザー選択に使用）。"""
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
@@ -115,16 +128,27 @@ async def sample_users(limit: int = 10) -> SampleUsersResponse:
 
 
 @app.get("/products/{product_id}/reviews", response_model=ReviewsResponse)
-async def get_reviews(product_id: str, limit: int = 5, lang: str = "en") -> ReviewsResponse:
+async def get_reviews(
+    product_id: str,
+    limit: int = Query(default=5, ge=1, le=20),
+    lang: Literal["ja", "en"] = "en",
+) -> ReviewsResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
     rows = await asyncio.to_thread(_recommender.get_reviews, product_id, limit, lang)
     reviews = [ReviewItem(**r) for r in rows]
-    return ReviewsResponse(product_id=product_id, reviews=reviews)
+    translated_count = sum(1 for review in reviews if review.translated)
+    return ReviewsResponse(
+        product_id=product_id,
+        reviews=reviews,
+        requested_language=lang,
+        translated_count=translated_count,
+        fallback_count=len(reviews) - translated_count if lang == "ja" else 0,
+    )
 
 
 @app.get("/products/{product_id}/description", response_model=DescriptionResponse)
-async def get_description(product_id: str, lang: str = "en") -> DescriptionResponse:
+async def get_description(product_id: str, lang: Literal["ja", "en"] = "en") -> DescriptionResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
     row = await asyncio.to_thread(_recommender.get_description, product_id, lang)
@@ -142,8 +166,9 @@ async def recommendation_feedback(product_id: str, req: FeedbackRequest) -> Feed
         saved = await asyncio.to_thread(
             _recommender.save_feedback, product_id, req.user_id, req.search_id, req.helpful, req.lang
         )
-    except Exception:
+    except Exception as exc:
         # DB障害の詳細をクライアントへ露出せず、失敗を明示する。
+        print(f"[api] recommendation feedback failed: {exc}")
         raise HTTPException(status_code=503, detail="Could not save feedback")
     if not saved:
         raise HTTPException(status_code=404, detail="Product not found")

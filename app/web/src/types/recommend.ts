@@ -24,6 +24,11 @@ export interface HomeRecommendRequest {
 export interface SearchIntent {
   cypher: string;
   cypher_explanation: string;
+  applied_conditions: string[];
+  condition_source: "llm" | "heuristic_fallback" | "none";
+  retrieval_status: "matched" | "matched_after_relaxation" | "no_match" | "fallback_popular";
+  no_result_reason: string | null;
+  candidate_count: number;
 }
 
 /** 推薦根拠となった、商品に一致した構造化属性 1 件 */
@@ -44,8 +49,19 @@ export interface Recommendation {
   rating_count: number | null;
   score: number;
   matched_attrs: MatchedAttr[];
+  reason_metrics: ReasonMetrics;
   explanation: string;
   recommendation_source: "dialogue_only" | "dialogue_personalized" | "behavior_only" | "popular";
+}
+
+export interface ReasonMetrics {
+  condition_matches: number;
+  behavior_matches: number;
+  transition_peers: number;
+  collaborative_peers: number;
+  shared_rated_attributes: number;
+  shared_viewed_attributes: number;
+  review_confirmations: number;
 }
 
 /** POST /recommend のレスポンス */
@@ -71,11 +87,16 @@ export interface ReviewItem {
   rating: number | null;
   helpful_vote: number | null;
   verified_purchase: boolean | null;
+  translated: boolean;
+  display_language: "ja" | "en";
 }
 
 export interface ReviewsResponse {
   product_id: string;
   reviews: ReviewItem[];
+  requested_language: "ja" | "en";
+  translated_count: number;
+  fallback_count: number;
 }
 
 // ===== 商品説明文 =====
