@@ -170,6 +170,509 @@ def _popular_explanation(lang: str) -> str:
     return "評価の高い人気商品" if lang == "ja" else "Popular highly-rated products"
 
 
+_METAPATH_USER_CYPHER = """\
+MATCH (p:Product)
+WHERE p.avg_rating IS NOT NULL
+  AND p.rating_count IS NOT NULL
+  AND toFloat(p.avg_rating) >= $min_rating
+CALL (p) {
+  OPTIONAL MATCH (p)-[:BELONGS_TO]->(c:Category)
+  RETURN collect(DISTINCT c.name) AS categories
+}
+CALL (p) {
+  OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute)
+  RETURN collect(DISTINCT a) AS product_attrs
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
+  MATCH (u)-[r:RATED]->(rated_seed:Product)
+  WHERE toFloat(r.rating) >= 4
+  WITH rated_seed
+  ORDER BY toInteger(r.timestamp) DESC
+  LIMIT 15
+  OPTIONAL MATCH (rated_seed)-[:HAS_ATTRIBUTE]->(ra:Attribute)<-[:HAS_ATTRIBUTE]-(p)
+  WHERE NOT ra.attr_type IN $ignored_behavior_attr_types
+  WITH p, collect(DISTINCT ra) AS rated_attrs, count(DISTINCT rated_seed) AS rated_seed_count
+  OPTIONAL MATCH (p)<-[:ABOUT]-(rev:Review)-[:MENTIONS {sentiment: 'positive'}]->(ma:Attribute)
+  WHERE ma IN rated_attrs
+  RETURN rated_attrs, rated_seed_count, count(DISTINCT rev) AS confirmed_rated_mentions
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
+  OPTIONAL MATCH (u)-[:VIEWED]->(viewed_seed:Product)-[:HAS_ATTRIBUTE]->(va:Attribute)<-[:HAS_ATTRIBUTE]-(p)
+  WHERE NOT va.attr_type IN $ignored_behavior_attr_types
+  RETURN collect(DISTINCT va) AS viewed_attrs, count(DISTINCT viewed_seed) AS viewed_seed_count
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
+  OPTIONAL MATCH (u)-[sr:RATED]->(seed:Product)<-[pr:RATED]-(peer:User)-[cr:RATED]->(p)
+  WHERE toFloat(sr.rating) >= 4
+    AND toFloat(pr.rating) >= 4
+    AND toFloat(cr.rating) >= 4
+    AND peer <> u
+  RETURN count(DISTINCT peer) AS cf_peer_count,
+         count(DISTINCT seed) AS cf_seed_count
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
+  MATCH (u)-[sr:RATED]->(seed:Product)
+  WHERE toFloat(sr.rating) >= 4
+  WITH u, seed, sr
+  ORDER BY toInteger(sr.timestamp) DESC
+  LIMIT 20
+  OPTIONAL MATCH (seed)<-[pr:RATED]-(peer:User)-[tr:RATED]->(p)
+  WHERE peer <> u
+    AND toFloat(pr.rating) >= 4
+    AND toFloat(tr.rating) >= 4
+    AND toInteger(tr.timestamp) > toInteger(pr.timestamp)
+  RETURN count(DISTINCT peer) AS transition_peer_count,
+         count(DISTINCT seed) AS transition_seed_count
+}
+CALL (p) {
+  MATCH (u:User {user_id: $uid})
+  OPTIONAL MATCH (u)-[seen:RATED|VIEWED]->(p)
+  RETURN count(seen) AS already_seen
+}
+WITH p, categories,
+     [a IN product_attrs WHERE a IS NOT NULL] AS product_attrs,
+     [a IN rated_attrs WHERE a IS NOT NULL] AS rated_attrs,
+     [a IN viewed_attrs WHERE a IS NOT NULL] AS viewed_attrs,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, already_seen, confirmed_rated_mentions
+WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_count,
+     cf_peer_count, cf_seed_count, transition_peer_count, transition_seed_count, already_seen,
+     confirmed_rated_mentions,
+     [kw IN $product_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_kw_hits,
+     [kw IN $category_keywords
+      WHERE any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS category_kw_hits,
+     [a IN product_attrs
+      WHERE any(kw IN $attribute_keywords
+        WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.attr_type, '')), '_', ' ') CONTAINS kw)] AS query_attrs,
+     [kw IN $platform_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS platform_text_hits,
+     [kw IN $franchise_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS franchise_text_hits,
+     [kw IN $product_type_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_type_text_hits,
+     [a IN product_attrs
+      WHERE a.attr_type IN $platform_attr_types
+        AND any(kw IN $platform_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS platform_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $franchise_attr_types
+        AND any(kw IN $franchise_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS franchise_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $product_type_attr_types
+        AND any(kw IN $product_type_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs, rated_attrs, viewed_attrs,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, already_seen, confirmed_rated_mentions,
+     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
+      + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
+      + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits,
+     (size(rated_attrs) + size(viewed_attrs) + cf_peer_count + transition_peer_count) AS behavior_hits
+WHERE already_seen = 0
+  AND ($has_query = false OR condition_hits > 0)
+  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
+  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
+  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+  AND behavior_hits > 0
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs, rated_attrs, viewed_attrs,
+     rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
+     transition_peer_count, transition_seed_count, condition_hits, behavior_hits,
+     (
+       log(toFloat(transition_peer_count) + 1) * 5.0
+       + log(toFloat(transition_seed_count) + 1) * 1.2
+       + log(toFloat(cf_peer_count) + 1) * 1.2
+       + log(toFloat(cf_seed_count) + 1) * 0.5
+       +
+       toFloat(size(query_attrs)) * 2.0
+       + toFloat(size(product_kw_hits)) * 1.5
+       + toFloat(size(category_kw_hits)) * 1.0
+       + toFloat(size(franchise_text_hits)) * 14.0
+       + toFloat(size(platform_text_hits)) * 12.0
+       + toFloat(size(product_type_text_hits)) * 8.0
+       + toFloat(size(franchise_attrs)) * 5.0
+       + toFloat(size(platform_attrs)) * 4.0
+       + toFloat(size(product_type_attrs)) * 2.5
+       + toFloat(size(rated_attrs)) * 0.85
+       + toFloat(size(viewed_attrs)) * 0.7
+       + toFloat(rated_seed_count) * 0.2
+       + toFloat(viewed_seed_count) * 0.12
+       + log(toFloat(confirmed_rated_mentions) + 1) * 1.2
+       + coalesce(toFloat(p.avg_rating), 3.5) * 0.45
+       + log(toFloat(coalesce(p.rating_count, 1)) + 1) * 0.12
+     ) AS score
+RETURN p.product_id AS product_id,
+       p.title AS title,
+       p.title_ja AS title_ja,
+       p.image_url AS image_url,
+       p.price AS price,
+       p.avg_rating AS avg_rating,
+       p.rating_count AS rating_count,
+       score,
+       CASE
+         WHEN transition_peer_count > 0 THEN $transition_explanation
+         WHEN cf_peer_count > 0 THEN $peer_explanation
+         WHEN size(rated_attrs) > 0 THEN $rated_explanation
+         WHEN size(viewed_attrs) > 0 THEN $viewed_explanation
+       ELSE $condition_explanation
+       END AS explanation,
+       [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs + rated_attrs + viewed_attrs)[0..8]
+        WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
+ORDER BY score DESC LIMIT $limit
+"""
+
+
+_METAPATH_CONDITION_CYPHER = """\
+MATCH (p:Product)
+WHERE p.avg_rating IS NOT NULL
+  AND p.rating_count IS NOT NULL
+  AND toFloat(p.avg_rating) >= $min_rating
+CALL (p) {
+  OPTIONAL MATCH (p)-[:BELONGS_TO]->(c:Category)
+  RETURN collect(DISTINCT c.name) AS categories
+}
+CALL (p) {
+  OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute)
+  RETURN collect(DISTINCT a) AS product_attrs
+}
+WITH p, categories,
+     [a IN product_attrs WHERE a IS NOT NULL] AS product_attrs
+WITH p, categories, product_attrs,
+     [kw IN $product_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_kw_hits,
+     [kw IN $category_keywords
+      WHERE any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS category_kw_hits,
+     [a IN product_attrs
+      WHERE any(kw IN $attribute_keywords
+        WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           OR replace(toLower(coalesce(a.attr_type, '')), '_', ' ') CONTAINS kw)] AS query_attrs,
+     [kw IN $platform_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS platform_text_hits,
+     [kw IN $franchise_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS franchise_text_hits,
+     [kw IN $product_type_keywords
+      WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+         OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+         OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)] AS product_type_text_hits,
+     [a IN product_attrs
+      WHERE a.attr_type IN $platform_attr_types
+        AND any(kw IN $platform_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS platform_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $franchise_attr_types
+        AND any(kw IN $franchise_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS franchise_attrs,
+     [a IN product_attrs
+      WHERE a.attr_type IN $product_type_attr_types
+        AND any(kw IN $product_type_keywords
+          WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
+     product_type_attrs,
+     (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
+      + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
+      + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits
+WHERE condition_hits > 0
+  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
+  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
+  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
+     franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs, product_type_attrs,
+     (
+       toFloat(size(query_attrs)) * 2.0
+       + toFloat(size(product_kw_hits)) * 1.5
+       + toFloat(size(category_kw_hits)) * 1.0
+       + toFloat(size(franchise_text_hits)) * 14.0
+       + toFloat(size(platform_text_hits)) * 12.0
+       + toFloat(size(product_type_text_hits)) * 8.0
+       + toFloat(size(franchise_attrs)) * 5.0
+       + toFloat(size(platform_attrs)) * 4.0
+       + toFloat(size(product_type_attrs)) * 2.5
+       + coalesce(toFloat(p.avg_rating), 3.5) * 0.45
+       + log(toFloat(coalesce(p.rating_count, 1)) + 1) * 0.12
+     ) AS score
+RETURN p.product_id AS product_id,
+       p.title AS title,
+       p.title_ja AS title_ja,
+       p.image_url AS image_url,
+       p.price AS price,
+       p.avg_rating AS avg_rating,
+       p.rating_count AS rating_count,
+       score,
+       $condition_explanation AS explanation,
+       [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs)[0..8]
+        WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
+ORDER BY score DESC LIMIT $limit
+"""
+
+
+_CONDITION_STOPWORDS = {
+    "a", "an", "and", "are", "for", "from", "game", "games", "good", "high",
+    "i", "in", "is", "me", "of", "or", "product", "recommend", "reviews",
+    "the", "to", "want", "with",
+}
+
+_IGNORED_BEHAVIOR_ATTR_TYPES = [
+    "batteries",
+    "color",
+    "customer_reviews",
+    "date_first_available",
+    "item_weight",
+    "language",
+    "package_dimensions",
+    "pricing",
+    "release_date",
+    "return_policy",
+    "terms_of_use",
+]
+
+_PLATFORM_ATTR_TYPES = [
+    "domain_platform",
+]
+
+_FRANCHISE_ATTR_TYPES = [
+    "domain_franchise",
+]
+
+_PRODUCT_TYPE_ATTR_TYPES = [
+    "domain_product_type",
+]
+
+_DOMAIN_ALIASES: dict[str, dict[str, list[str]]] = {
+    "platform": {
+        "nintendo_switch": ["nintendo switch", "switch", "nintendo_switch", "スイッチ"],
+        "ps5": ["playstation 5", "ps5", "ps 5"],
+        "ps4": ["playstation 4", "ps4", "ps 4"],
+        "ps3": ["playstation 3", "ps3", "ps 3"],
+        "playstation_vita": ["playstation vita", "ps vita", "vita"],
+        "xbox_series_x": ["xbox series x", "xbox series s", "series x", "series s"],
+        "xbox_one": ["xbox one"],
+        "xbox_360": ["xbox 360", "360"],
+        "wii_u": ["wii u", "wiiu"],
+        "wii": ["nintendo wii", "wii"],
+        "nintendo_3ds": ["nintendo 3ds", "3ds"],
+        "nintendo_ds": ["nintendo ds", "ds"],
+        "pc": ["pc", "windows", "steam", "computer"],
+    },
+    "franchise": {
+        "mario": ["mario", "super mario", "マリオ"],
+        "zelda": ["zelda", "legend of zelda", "ゼルダ"],
+        "pokemon": ["pokemon", "pokémon", "ポケモン"],
+        "sonic": ["sonic", "ソニック"],
+        "minecraft": ["minecraft", "マインクラフト"],
+        "call_of_duty": ["call of duty", "cod"],
+        "final_fantasy": ["final fantasy", "ff"],
+        "spider_man": ["spider-man", "spider man", "spiderman"],
+        "grand_theft_auto": ["grand theft auto", "gta"],
+        "red_dead": ["red dead redemption", "red dead"],
+        "assassins_creed": ["assassin's creed", "assassins creed"],
+        "lego": ["lego"],
+        "star_wars": ["star wars"],
+        "madden": ["madden"],
+        "nba_2k": ["nba 2k", "2k"],
+        "fifa": ["fifa"],
+        "mlb_the_show": ["mlb the show", "baseball"],
+        "animal_crossing": ["animal crossing", "どうぶつの森"],
+        "kirby": ["kirby", "カービィ"],
+        "splatoon": ["splatoon", "スプラトゥーン"],
+    },
+    "product_type": {
+        "video_game": ["game", "games", "video game", "software", "ゲーム"],
+        "controller": ["controller", "gamepad", "joy-con", "joy con", "dualshock", "dualsense"],
+        "headset": ["headset", "headphone", "gaming headset"],
+        "console": ["console", "system", "本体"],
+        "storage": ["memory card", "microsd", "micro sd", "sd card", "storage"],
+        "accessory": ["accessory", "case", "charger", "cable", "stand", "protector", "skin"],
+    },
+}
+
+
+def _metapath_explanations(lang: str) -> dict[str, str]:
+    if lang == "ja":
+        return {
+            "top": "会話条件とユーザ履歴から、商品属性を共有する候補をグラフの元パスで推薦",
+            "condition_top": "会話条件を構造化し、商品・カテゴリ・属性一致で候補を推薦",
+            "transition": "最近の好みに近い流れで次に選ばれやすい候補です",
+            "peer": "好みが近いユーザにも高評価されている候補です",
+            "rated": "高評価した商品と共有する属性が強い候補です",
+            "viewed": "最近閲覧した商品と共有する属性がある候補です",
+            "condition": "会話で指定された条件に一致する候補です",
+        }
+    return {
+        "top": "Meta-path recommendation using dialogue constraints and user-history attribute links",
+        "condition_top": "Structured dialogue constraints matched against product, category, and attribute data",
+        "transition": "Often chosen next after games similar to the user's recent likes",
+        "peer": "Highly rated by users with overlapping taste",
+        "rated": "Shares attributes with products this user rated highly",
+        "viewed": "Shares attributes with products this user recently viewed",
+        "condition": "Matches the structured dialogue constraints",
+    }
+
+
+def _build_condition_prompt(genre: str, attr_vocab_text: str, lang: str) -> str:
+    target = "Japanese" if lang == "ja" else "English"
+    vocab = attr_vocab_text or "(no attribute vocabulary available)"
+    return f"""\
+Extract structured recommendation conditions for a {genre} catalog.
+The output is NOT a database query. Neo4j will perform retrieval with fixed
+meta-path Cypher, so only extract compact conditions that can be used as filters.
+
+Use the catalog vocabulary below when possible:
+{vocab}
+
+Guidelines:
+- product_keywords: concrete product, franchise, platform, device, or title words
+  such as "mario", "nintendo switch", "playstation", "controller".
+- category_keywords: broad catalog/category words such as "games", "accessories",
+  "consoles".
+- attribute_keywords: desired properties or gameplay terms such as "family",
+  "multiplayer", "party", "sports", "baseball", "rpg", "co-op".
+- platform_keywords: normalized device/platform terms such as "nintendo switch",
+  "ps5", "ps4", "xbox one", "pc".
+- franchise_keywords: named series/IP terms such as "mario", "zelda", "pokemon",
+  "minecraft", "call of duty".
+- product_type_keywords: product class terms such as "video game", "controller",
+  "headset", "console", "storage", "accessory".
+- Translate user intent into English keywords when that is likely to match the
+  catalog, but keep useful Japanese terms too when the user wrote Japanese.
+- min_rating is null unless the user explicitly asks for high-rated/well-reviewed
+  products; then use 4.0.
+- Return JSON only. User-facing wording is not needed, but if you include any text,
+  use {target}.
+
+Schema:
+{{
+  "product_keywords": [],
+  "category_keywords": [],
+  "attribute_keywords": [],
+  "platform_keywords": [],
+  "franchise_keywords": [],
+  "product_type_keywords": [],
+  "min_rating": null
+}}
+"""
+
+
+def _keyword_list(value: Any, max_items: int = 10) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    cleaned: list[str] = []
+    for item in value:
+        term = str(item or "").strip().lower()
+        term = re.sub(r"\s+", " ", term)
+        term = term.strip(" \t\n\r\"'.,;:!?()[]{}")
+        if not term or term in _CONDITION_STOPWORDS:
+            continue
+        if len(term) < 2 and not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", term):
+            continue
+        if term not in cleaned:
+            cleaned.append(term)
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def _domain_constraints_from_terms(terms: list[str]) -> dict[str, list[str]]:
+    text = " ".join(str(t or "").lower().replace("_", " ") for t in terms)
+    constraints: dict[str, list[str]] = {
+        "platform_keywords": [],
+        "franchise_keywords": [],
+        "product_type_keywords": [],
+    }
+
+    def add_unique(key: str, values: list[str]) -> None:
+        for value in values:
+            value = value.strip().lower().replace("_", " ")
+            if value and value not in constraints[key]:
+                constraints[key].append(value)
+
+    for group, aliases in _DOMAIN_ALIASES.items():
+        out_key = f"{group}_keywords"
+        for canonical, variants in aliases.items():
+            if any(v in text for v in variants):
+                add_unique(out_key, [canonical, canonical.replace("_", " "), *variants])
+
+    # If the user asks for a game, prefer game software over accessories. Do not
+    # force this when the query explicitly names accessory or hardware terms.
+    accessory_terms = {"controller", "headset", "console", "storage", "accessory"}
+    if constraints["product_type_keywords"]:
+        has_accessory_intent = any(
+            term in text for term in ("controller", "headset", "console", "memory", "microsd", "accessory", "case")
+        )
+        if not has_accessory_intent and any(x in text for x in ("game", "games", "video game", "ゲーム")):
+            add_unique("product_type_keywords", ["video_game", "video game", "games"])
+        elif has_accessory_intent:
+            constraints["product_type_keywords"] = [
+                v for v in constraints["product_type_keywords"]
+                if not (v in {"video game", "video_game", "games", "game"} and any(t in text for t in accessory_terms))
+            ]
+
+    return constraints
+
+
+def _fallback_condition_terms(query: str) -> dict[str, Any]:
+    raw_terms = re.findall(r"[A-Za-z0-9][A-Za-z0-9_+.-]*|[\u3040-\u30ff\u3400-\u9fff]+", query.lower())
+    terms = _keyword_list(raw_terms, max_items=12)
+    joined = " ".join(terms)
+    product_terms = list(terms)
+    category_terms: list[str] = []
+    attr_terms: list[str] = []
+
+    if "switch" in joined:
+        product_terms.extend(["nintendo switch", "nintendo_switch"])
+    if "mario" in joined or "マリオ" in joined:
+        product_terms.extend(["mario", "マリオ"])
+    if "game" in joined or "ゲーム" in joined:
+        category_terms.extend(["games", "video game"])
+    if any(x in joined for x in ("family", "kid", "party", "家族", "子供")):
+        attr_terms.extend(["family", "kids", "party", "multiplayer", "local_multiplayer"])
+    if "baseball" in joined or "野球" in joined:
+        attr_terms.extend(["baseball", "sports"])
+    if any(x in joined for x in ("good review", "high rated", "人気", "高評価", "レビュー")):
+        min_rating: float | None = 4.0
+    else:
+        min_rating = None
+
+    return {
+        "product_keywords": _keyword_list(product_terms, max_items=12),
+        "category_keywords": _keyword_list(category_terms, max_items=8),
+        "attribute_keywords": _keyword_list(attr_terms or terms, max_items=12),
+        "min_rating": min_rating,
+    }
+
+
 _TITLE_GENERIC_TERMS = {
     "game", "games", "gaming", "want", "wanted", "looking", "play", "please",
     "for", "the", "a", "an", "to", "of", "my", "with", "something",
@@ -1497,40 +2000,58 @@ class Recommender:
         self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en",
         hints: list[str] | None = None,
     ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
-        """hints: chat()のLLMが会話全体から抽出した英語検索キーワード（フランチャイズ名・
-        プラットフォーム・ジャンル等）。決定的マッチングのシグナル抽出テキストに加える。
-        日本語の言い回しがLLM側で英語カタログ語彙に正規化されるため、エイリアス表に
-        無い表現の取りこぼしを補える。LLM呼び出し失敗時はNone（従来動作）。"""
+        """検索・推薦のメインフロー。優先順:
+        ① 元パス(メタパス)検索 — LLMは条件の構造化のみ行い、固定のグラフメタパス
+           (属性共有・ピアCF・遷移CF)が候補生成と個人化を担う（メイン手法）
+        ② 決定的ファセット層 — ジャンル等、属性が疎で①の条件一致が空振りする
+           クエリをMENTIONS/説明文の証拠でカバーするフォールバック
+        ③ Text2Cypher — 語彙外の複雑な条件のみLLMがCypherを生成する最終手段
+        ④ 人気商品 — 全滅時
+
+        hints: chat()のLLMが会話全体から抽出した英語検索キーワード（フランチャイズ名・
+        プラットフォーム・ジャンル等）。①②のシグナル抽出テキストに加える。"""
         search_id = str(uuid.uuid4())
         fallback = False
         normalized_lang = _normalize_lang(lang)
         signal_query = f"{query}\n{' '.join(hints)}" if hints else query
         user_ctx = self._get_user_context(user_id) if user_id else None
-        # $uidが使えるのはuser_idがあり、かつ実際にRATED/属性の履歴がある場合のみ
+        # $uidが使えるのはuser_idがあり、かつ実際に履歴がある場合のみ
         # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
-        has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
-        dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
-        canonical_search = self._rank_local_candidates(signal_query, user_ctx, limit, normalized_lang)
-        if canonical_search:
-            cypher, explanation, results = canonical_search
-        else:
-            direct_title_match = self._run_title_match(signal_query, limit, normalized_lang)
-            if direct_title_match:
-                cypher, explanation, results = direct_title_match
+        has_uid = bool(user_ctx and (
+            user_ctx.get("rated") or user_ctx.get("viewed") or user_ctx.get("preferred_attrs")
+        ))
+
+        # ① 元パス検索（メイン手法）
+        cypher, explanation, results = self._run_metapath_recommendation(
+            signal_query, user_id if has_uid else None, limit, normalized_lang
+        )
+
+        # ② 決定的ファセット層（①が空のときのみ）
+        if not results:
+            canonical_search = self._rank_local_candidates(signal_query, user_ctx, limit, normalized_lang)
+            if canonical_search:
+                cypher, explanation, results = canonical_search
             else:
-                system_prompt = _build_search_prompt(
-                    self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+                direct_title_match = self._run_title_match(signal_query, limit, normalized_lang)
+                if direct_title_match:
+                    cypher, explanation, results = direct_title_match
+
+        # ③ Text2Cypher（①②とも空のときのみ）
+        if not results:
+            dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
+            system_prompt = _build_search_prompt(
+                self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+            )
+            try:
+                params: dict[str, Any] = {"limit": limit}
+                if has_uid:
+                    params["uid"] = user_id
+                cypher, explanation, results = self._generate_cypher_and_execute(
+                    system_prompt, query, limit, params, has_uid, normalized_lang
                 )
-                try:
-                    params: dict[str, Any] = {"limit": limit}
-                    if has_uid:
-                        params["uid"] = user_id
-                    cypher, explanation, results = self._generate_cypher_and_execute(
-                        system_prompt, query, limit, params, has_uid, normalized_lang
-                    )
-                except Exception as exc:
-                    print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
-                    cypher, explanation, results = "", "", []
+            except Exception as exc:
+                print(f"[recommender] recommend failed, using fallback: {exc}", file=sys.stderr)
+                cypher, explanation, results = "", "", []
         # _generate_cypher_and_execute()は構文エラー・0件ヒットのどちらも内部でリトライ
         # した上で、それでも結果が得られない場合にだけ ("", "", []) を返す。
         # ここではその「リトライを使い切っても駄目だった」場合にだけフォールバックする。
@@ -1575,18 +2096,14 @@ class Recommender:
             if cached and (time.time() - cached["cached_at"]) < self._HOME_CACHE_TTL_SECONDS:
                 return cached["cypher"], cached["explanation"], cached["results"]
 
-            user_ctx = self._get_user_context(user_id)
-            dynamic_few_shot = self._get_dynamic_few_shot(user_id)
+            # ホームも検索と同じ元パス(メタパス)で生成する（クエリ空 = 履歴のみが
+            # シグナル）。LLM生成Cypherより安定・高速で、オフライン評価済みの手法。
             try:
-                system_prompt = _build_home_prompt(
-                    self._genre, user_ctx, self._get_attr_vocab_text(), lang, dynamic_few_shot
-                )
-                user_msg = "Generate personalized home-page product recommendations based on user history."
-                cypher, explanation, results = self._generate_cypher_and_execute(
-                    system_prompt, user_msg, limit, {"limit": limit, "uid": user_id}, True, lang
+                cypher, explanation, results = self._run_metapath_recommendation(
+                    "", user_id, limit, lang
                 )
             except Exception as exc:
-                print(f"[recommender] home generation failed: {exc}", file=sys.stderr)
+                print(f"[recommender] home meta-path generation failed: {exc}", file=sys.stderr)
                 return None
             if not results:
                 return None
@@ -1606,7 +2123,7 @@ class Recommender:
             return  # 非個人化モード（user_id無し）はキャッシュ対象がないため何もしない
         normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id)
-        has_history = bool(user_ctx.get("rated") or user_ctx.get("preferred_attrs"))
+        has_history = bool(user_ctx.get("rated") or user_ctx.get("viewed") or user_ctx.get("preferred_attrs"))
         if not has_history:
             return  # 履歴が無いユーザーは人気商品フォールバックの高速パスで十分、キャッシュ不要
         self._get_or_generate_home(user_id, limit, normalized_lang)
@@ -1619,7 +2136,7 @@ class Recommender:
         # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ。
         # user_id自体が無い（非個人化モード）場合も同様にhas_history=Falseとして扱う。
         user_ctx = self._get_user_context(user_id) if user_id else None
-        has_history = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
+        has_history = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("viewed") or user_ctx.get("preferred_attrs")))
         generated = self._get_or_generate_home(user_id, limit, normalized_lang) if has_history and user_id else None
         if generated:
             cypher, explanation, results = generated
@@ -2163,7 +2680,150 @@ RETURN count(DISTINCT f) AS saved
     _UID_REF = re.compile(r"\$uid\b")
     _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
 
-    def _validate_cypher(self, cypher: str, limit: int, has_uid: bool = False) -> None:
+    def _extract_conditions(self, query: str, lang: str) -> dict[str, Any]:
+        fallback = _fallback_condition_terms(query)
+        if not query.strip():
+            return {
+                "product_keywords": [],
+                "category_keywords": [],
+                "attribute_keywords": [],
+                "platform_keywords": [],
+                "franchise_keywords": [],
+                "product_type_keywords": [],
+                "min_rating": None,
+            }
+        try:
+            data = self._call_llm(
+                _build_condition_prompt(self._genre, self._get_attr_vocab_text(), lang),
+                query,
+            )
+        except Exception as exc:
+            print(f"[recommender] condition extraction failed, using fallback terms: {exc}", file=sys.stderr)
+            data = {}
+
+        product_keywords = _keyword_list(data.get("product_keywords")) or fallback["product_keywords"]
+        category_keywords = _keyword_list(data.get("category_keywords")) or fallback["category_keywords"]
+        attribute_keywords = _keyword_list(data.get("attribute_keywords")) or fallback["attribute_keywords"]
+        platform_keywords = _keyword_list(data.get("platform_keywords"))
+        franchise_keywords = _keyword_list(data.get("franchise_keywords"))
+        product_type_keywords = _keyword_list(data.get("product_type_keywords"))
+        try:
+            min_rating = data.get("min_rating", fallback.get("min_rating"))
+            min_rating = float(min_rating) if min_rating not in (None, "") else fallback.get("min_rating")
+        except (TypeError, ValueError):
+            min_rating = fallback.get("min_rating")
+
+        # Keep the common Video_Games demo terms robust even when the LLM returns
+        # Japanese-only labels or omits obvious catalog keywords.
+        expanded_query = " ".join([query, *product_keywords, *attribute_keywords])
+        expanded = _fallback_condition_terms(expanded_query)
+        domain = _domain_constraints_from_terms(
+            [expanded_query, *platform_keywords, *franchise_keywords, *product_type_keywords]
+        )
+        product_keywords = _keyword_list([*product_keywords, *expanded["product_keywords"]], max_items=12)
+        category_keywords = _keyword_list([*category_keywords, *expanded["category_keywords"]], max_items=8)
+        attribute_keywords = _keyword_list([*attribute_keywords, *expanded["attribute_keywords"]], max_items=12)
+        platform_keywords = _keyword_list(
+            [*platform_keywords, *domain["platform_keywords"]], max_items=12
+        )
+        franchise_keywords = _keyword_list(
+            [*franchise_keywords, *domain["franchise_keywords"]], max_items=12
+        )
+        product_type_keywords = _keyword_list(
+            [*product_type_keywords, *domain["product_type_keywords"]], max_items=12
+        )
+        if min_rating is None:
+            min_rating = expanded.get("min_rating")
+
+        return {
+            "product_keywords": product_keywords,
+            "category_keywords": category_keywords,
+            "attribute_keywords": attribute_keywords,
+            "platform_keywords": platform_keywords,
+            "franchise_keywords": franchise_keywords,
+            "product_type_keywords": product_type_keywords,
+            "min_rating": min_rating,
+        }
+
+    def _run_metapath_recommendation(
+        self,
+        query: str,
+        user_id: str | None,
+        limit: int,
+        lang: str,
+    ) -> tuple[str, str, list[Recommendation]]:
+        normalized_lang = _normalize_lang(lang)
+        conditions = self._extract_conditions(query, normalized_lang)
+        has_query = bool(
+            conditions["product_keywords"]
+            or conditions["category_keywords"]
+            or conditions["attribute_keywords"]
+            or conditions["platform_keywords"]
+            or conditions["franchise_keywords"]
+            or conditions["product_type_keywords"]
+        )
+        if not user_id and not has_query:
+            return "", "", []
+
+        explanations = _metapath_explanations(normalized_lang)
+        params: dict[str, Any] = {
+            "limit": limit,
+            "product_keywords": conditions["product_keywords"],
+            "category_keywords": conditions["category_keywords"],
+            "attribute_keywords": conditions["attribute_keywords"],
+            "platform_keywords": conditions["platform_keywords"],
+            "franchise_keywords": conditions["franchise_keywords"],
+            "product_type_keywords": conditions["product_type_keywords"],
+            "platform_attr_types": _PLATFORM_ATTR_TYPES,
+            "franchise_attr_types": _FRANCHISE_ATTR_TYPES,
+            "product_type_attr_types": _PRODUCT_TYPE_ATTR_TYPES,
+            "platform_required": bool(conditions["platform_keywords"]),
+            "franchise_required": bool(conditions["franchise_keywords"]),
+            "product_type_required": bool(conditions["product_type_keywords"]),
+            "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
+            "min_rating": float(conditions.get("min_rating") or 0.0),
+            "has_query": has_query,
+            "transition_explanation": explanations["transition"],
+            "peer_explanation": explanations["peer"],
+            "rated_explanation": explanations["rated"],
+            "viewed_explanation": explanations["viewed"],
+            "condition_explanation": explanations["condition"],
+        }
+        if user_id:
+            params["uid"] = user_id
+            cypher = _METAPATH_USER_CYPHER
+        else:
+            cypher = _METAPATH_CONDITION_CYPHER
+
+        results = self._execute_and_map(cypher, params, normalized_lang)
+        if not results and has_query and params["franchise_required"]:
+            relaxed_params = dict(params)
+            relaxed_params["franchise_required"] = False
+            # Keep platform/product-type constraints, but allow a nearby game
+            # when a very specific franchise query has no catalog coverage.
+            results = self._execute_and_map(cypher, relaxed_params, normalized_lang)
+            if results:
+                params = relaxed_params
+
+        if not results and has_query and user_id:
+            # For explicit searches, relevance to the query is more important
+            # than forcing a behavior path. If the personalized meta-path is too
+            # narrow, fall back to the condition-only query before legacy
+            # Text2Cypher.
+            condition_params = dict(params)
+            condition_params.pop("uid", None)
+            cypher = _METAPATH_CONDITION_CYPHER
+            results = self._execute_and_map(cypher, condition_params, normalized_lang)
+        top_explanation = explanations["top"] if user_id else explanations["condition_top"]
+        return cypher, top_explanation, results
+
+    def _validate_cypher(
+        self,
+        cypher: str,
+        limit: int,
+        has_uid: bool = False,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if not cypher:
             raise ValueError("Empty Cypher query")
         if self._HARDCODED_USER_ID.search(cypher):
@@ -2178,8 +2838,9 @@ RETURN count(DISTINCT f) AS saved
                 "$uid will not be bound. Rewrite the query without $uid or any pattern "
                 "that requires a specific User node."
             )
+        explain_params = {"limit": limit, **(params or {})}
         with self._driver.session(database=self._neo4j_db) as session:
-            session.run(f"EXPLAIN {cypher}", limit=limit).consume()
+            session.run(f"EXPLAIN {cypher}", **explain_params).consume()
 
     # ── query execution ──────────────────────────────────────────────────────────
 

@@ -1,0 +1,90 @@
+{
+  "n_users": 300,
+  "n_products": 1728,
+  "cutoffs": [
+    10,
+    20,
+    50
+  ],
+  "methods": {
+    "popularity": {
+      "coverage@10": 0.0069,
+      "avg_rating@10": 4.7011,
+      "diversity@10": 0.9214,
+      "HR@10": 0.0367,
+      "NDCG@10": 0.0161,
+      "MRR@10": 0.0099,
+      "HR@20": 0.0567,
+      "NDCG@20": 0.0211,
+      "MRR@20": 0.0112,
+      "HR@50": 0.0967,
+      "NDCG@50": 0.029,
+      "MRR@50": 0.0125
+    },
+    "item_cf": {
+      "coverage@10": 0.4097,
+      "avg_rating@10": 4.4676,
+      "diversity@10": 0.8291,
+      "HR@10": 0.1,
+      "NDCG@10": 0.0484,
+      "MRR@10": 0.033,
+      "HR@20": 0.17,
+      "NDCG@20": 0.0668,
+      "MRR@20": 0.0384,
+      "HR@50": 0.2867,
+      "NDCG@50": 0.0897,
+      "MRR@50": 0.042
+    },
+    "user_cf": {
+      "coverage@10": 0.1198,
+      "avg_rating@10": 4.4991,
+      "diversity@10": 0.8417,
+      "HR@10": 0.0733,
+      "NDCG@10": 0.0386,
+      "MRR@10": 0.0283,
+      "HR@20": 0.1333,
+      "NDCG@20": 0.0537,
+      "MRR@20": 0.0323,
+      "HR@50": 0.2533,
+      "NDCG@50": 0.0779,
+      "MRR@50": 0.0364
+    },
+    "kg_meta_path_v1": {
+      "coverage@10": 0.2853,
+      "avg_rating@10": 4.5133,
+      "diversity@10": 0.8108,
+      "HR@10": 0.02,
+      "NDCG@10": 0.0096,
+      "MRR@10": 0.0065,
+      "HR@20": 0.04,
+      "NDCG@20": 0.0143,
+      "MRR@20": 0.0077,
+      "HR@50": 0.0833,
+      "NDCG@50": 0.0229,
+      "MRR@50": 0.009
+    },
+    "hybrid_v2": {
+      "coverage@10": 0.2454,
+      "avg_rating@10": 4.5085,
+      "diversity@10": 0.8358,
+      "HR@10": 0.1067,
+      "NDCG@10": 0.0488,
+      "MRR@10": 0.0316,
+      "HR@20": 0.17,
+      "NDCG@20": 0.0645,
+      "MRR@20": 0.0357,
+      "HR@50": 0.2667,
+      "NDCG@50": 0.0838,
+      "MRR@50": 0.0389
+    }
+  },
+  "preflight": {
+    "products": 1728,
+    "users_with_ratings": 2917,
+    "eligible_users": 2910,
+    "evaluated_users": 300,
+    "price_coverage": 1.0,
+    "image_coverage": 1.0,
+    "avg_rating_coverage": 1.0
+  }
+}
