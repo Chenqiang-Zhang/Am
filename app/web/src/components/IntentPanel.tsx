@@ -7,7 +7,7 @@ interface Props {
 }
 
 // 「システムがクエリをどう解釈したか」を見せるパネル（開発者ビュー）。
-// Text2Cypher: LLM の一文説明を主役にし、実行された生Cypherは折りたたみで補足する。
+// 元パス検索: 一文説明を主役にし、実行されたCypherは折りたたみで補足する。
 export default function IntentPanel({ intent }: Props) {
   const { t } = useI18n();
 

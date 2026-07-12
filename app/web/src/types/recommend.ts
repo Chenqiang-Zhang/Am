@@ -20,7 +20,7 @@ export interface HomeRecommendRequest {
   lang?: "ja" | "en";
 }
 
-/** クエリの「システムによる解釈」（Text2Cypher: LLMが生成したCypherとその一文説明） */
+/** クエリの「システムによる解釈」（構造化条件/元パス検索、またはfallback時のCypherと説明） */
 export interface SearchIntent {
   cypher: string;
   cypher_explanation: string;
@@ -37,6 +37,7 @@ export interface Recommendation {
   product_id: string;
   title: string;
   display_title: string | null;
+  description: string | null;
   image_url: string | null;
   price: number | null;
   avg_rating: number | null;
@@ -44,6 +45,7 @@ export interface Recommendation {
   score: number;
   matched_attrs: MatchedAttr[];
   explanation: string;
+  recommendation_source: "dialogue_only" | "dialogue_personalized" | "behavior_only" | "popular";
 }
 
 /** POST /recommend のレスポンス */

@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [日本語](README.md) | **中文**
 
-一个基于 Amazon Reviews'23 数据集构建的实验性商品推荐系统。类型/品类可通过 `config.yaml` 配置（当前为 `Video_Games`，下文所有默认值/示例均基于该类型）——schema、pipeline 脚本和 Cypher 查询都与具体类型无关（genre-agnostic）。系统将评论数据和商品元数据转换为 Neo4j 知识图谱，然后暴露一个 REST API，由 LLM 直接针对该图谱编写并执行 Cypher 查询——因此每一条推荐理由都是真实、可检查的图路径，而不是黑箱。
+一个基于 Amazon Reviews'23 数据集构建的实验性商品推荐系统。类型/品类可通过 `config.yaml` 配置（当前为 `Video_Games`，下文所有默认值/示例均基于该类型）——schema 和 pipeline 脚本与具体类型无关（genre-agnostic）。系统将评论数据和商品元数据转换为 Neo4j 知识图谱，然后暴露一个 REST API：LLM 负责把对话/搜索输入结构化为条件，Neo4j 负责执行固定的元路径召回与排序。因此推荐理由来自可检查的图路径，而不是纯黑箱生成文本。
 
 ## 架构
 
@@ -21,20 +21,16 @@ Neo4j 知识图谱
     ↓ backfill_display_fields.py --images --titles-ja（可选——补充 Product.image_url / Product.title_ja）
     ↓
 REST API（FastAPI）
-    ├── Text2Cypher 搜索         （LLM 针对每个请求编写并执行一条 Cypher 查询；图 schema 和
-    │                            attr_type 词表都从当前图谱实时读取，因此 prompt 会自适应
-    │                            实际加载的类型/目录——没有硬编码的品类；一旦生成/执行失败
-    │                            或查询合法地返回零行，则回退到热门商品查询）
-    ├── 个性化                   （用户评分/属性历史 + 过去成功的查询作为 few-shot 示例；
-    │                            只有当某个 user_id 拥有真实的 RATED/属性历史时，$uid 才会被绑定）
-    ├── 首页推荐                 （基于行为，没有查询文本；对于没有历史记录的用户完全跳过 LLM，
-    │                            直接回退到热门商品查询、不产生任何额外延迟——并将每个
-    │                            已个性化用户生成的查询缓存在内存中，以便标签页被隐藏/关闭时
-    │                            触发的后台"预热"调用能让下次打开页面时瞬间完成）
+    ├── 结构化搜索               （LLM 只抽取商品/类别/属性条件，不直接生成数据库查询）
+    ├── 元路径排序               （User -> RATED/VIEWED Product -> HAS_ATTRIBUTE -> candidate Product，
+    │                            并加入 User -> Product <- Peer User -> Product 协同支持，
+    │                            再结合对话条件、类别匹配、评分和热度进行排序）
+    ├── 首页推荐                 （有历史的用户使用同一条行为→属性元路径；无历史用户跳过 LLM，
+    │                            直接返回热门商品）
     ├── 对话式聊天               （LLM 基于同一份实时 attr_type 词表，自行决定该问什么、何时开始搜索
     │                            ——与类型无关；Python 仅强制限制提问次数上限，并在 LLM 调用本身
     │                            失败时提供兜底方案）
-    └── 评论查询与浏览日志记录（全部写入 Neo4j）
+    └── 评论查询、浏览日志记录与旧 Text2Cypher 兜底（全部与 Neo4j 交互）
 ```
 
 ## 图谱 Schema
@@ -102,7 +98,7 @@ REST API（FastAPI）
 ├── app/                   # 正在运行的应用（后端 + 前端）
 │   ├── api/                       # 推荐 REST API
 │   │   ├── main.py                # FastAPI 应用/路由
-│   │   ├── recommender.py         # Text2Cypher 生成、聊天、个性化、评论
+│   │   ├── recommender.py         # 结构化搜索、元路径排序、聊天、个性化、评论
 │   │   └── models.py              # Pydantic 请求/响应模型
 │   └── web/                       # React + TypeScript 对话式 UI
 ```
@@ -127,7 +123,7 @@ cp .env.example .env
 - `NEO4J_URI` / `NEO4J_PASSWORD`（Neo4j Aura 连接信息）
 - 你在 `config.yaml`（`llm.provider`）中选择的 LLM 提供商所对应的 API 密钥：`GEMINI_API_KEY`、`GROQ_API_KEY`、`DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY`。Gemini 和 Groq 都提供免费额度。
 
-`config.yaml` 控制 LLM 提供商/模型、数据路径以及 Text2Cypher 的重试设置——详见该文件中的注释。商品/用户的筛选范围由 k-core 的大小单独控制（`select_kcore.py` 的 `--k`，见下方第 4 步），而不是通过配置项控制。
+`config.yaml` 控制 LLM 提供商/模型、数据路径以及旧 Text2Cypher 兜底路径的重试设置——详见该文件中的注释。商品/用户的筛选范围由 k-core 的大小单独控制（`select_kcore.py` 的 `--k`，见下方第 4 步），而不是通过配置项控制。
 
 ### 3. 启动 Neo4j
 
@@ -251,7 +247,7 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
 ```
 
 运行前会先打印数据健全性预检（商品/用户/评论数量、价格/图片/评分覆盖率），然后将基于
-RATED 的个性化（`recommend_home`，通过 Text2Cypher）与两个基线比较——Item-KNN（用户-物品
+RATED 的个性化（`recommend_home`，通过元路径推荐器）与两个基线比较——Item-KNN（用户-物品
 评分矩阵上的余弦相似度）和 Popularity（按 rating_count/avg_rating 的静态排名）。**cutoff**
 即 HR@K/NDCG@K 中的 K——衡量"我们有没有找到它"时看多少条 top 推荐结果：cutoff 为 10
 问的是被留出的商品是否落在 top 10 内，cutoff 为 50 则给了这些方法宽裕得多的空间。
@@ -301,10 +297,10 @@ npm run dev
    或 "a co-op couch game for the PS5 that's fun for kids and adults together"。
 4. 助手会要么提出一个澄清性问题（回答它，或选择 "こだわらない" / "no
    preference" 来跳过），要么在已有足够信号时直接开始搜索。
-5. 推荐结果会展示 LLM 生成的一句话 `explanation`——以 UI 当前语言书写（在页面顶部
-   切换 "日本語"/"EN"）——并且在开发模式下还会显示匹配到的属性以及原始生成的
-   Cypher（`intent.cypher`），使每一条推荐理由都可检查，而不是黑箱。如果 Text2Cypher
-   的生成/执行失败，或者查询合法地没有匹配到任何内容，列表会回退显示热门高评分商品，
+5. 推荐结果会展示基于图路径的一句话 `explanation`——以 UI 当前语言书写（在页面顶部
+   切换 "日本語"/"EN"）——并且在开发模式下还会显示匹配到的属性以及实际执行的
+   Cypher（`intent.cypher`），使每一条推荐理由都可检查，而不是黑箱。如果固定元路径和
+   旧兜底路径都失败，或者查询合法地没有匹配到任何内容，列表会回退显示热门高评分商品，
    而不是展示一个空白页面（响应中的 `fallback: true`）。
 6. 打开 "レビューを見る" 或点击 "Amazon.comで見る" 会通过 `/behavior/view` 记录一条
    `VIEWED` 边，并关联到发起该操作的 `search_id`。`_get_dynamic_few_shot()` 会读取这些
@@ -328,11 +324,9 @@ npm run dev
 
 ### `POST /recommend`
 
-接收一个自然语言查询。LLM 会针对图谱生成一条 Cypher 查询并返回其结果。个性化只有在
-`user_id` 指向一个拥有真实 `RATED`/属性历史的用户时才会生效——没有历史记录的
-`user_id` 会被当作匿名请求处理（不绑定 `$uid`，因此 LLM 无法引用它；有一个校验器
-会拒绝任何引用了未绑定的 `$uid`、或者用字面量 `user_id` 字符串硬编码而非使用 `$uid`
-的生成 Cypher）。
+接收一个自然语言查询。LLM 先抽取商品/类别/属性条件，Neo4j 再执行固定元路径查询并返回排序后的结果。
+当 `user_id` 指向拥有真实 `RATED`/`VIEWED`/属性历史的用户时，会启用个性化。只有固定元路径没有结果时，
+系统才使用旧 Text2Cypher 作为兜底。
 
 **请求：**
 ```json
@@ -381,16 +375,15 @@ npm run dev
 `lang="ja"` 还会用缓存的日语翻译填充 `display_title`（否则为 `null`；前端会回退使用
 `title`）。
 
-如果 Cypher 的生成/执行在重试后仍然失败，**或者生成的查询成功执行但返回零行**，
+如果固定元路径和旧 Text2Cypher 兜底在重试后仍然失败，**或者两者都返回零行**，
 响应会回退到一个基于热门度的查询（`fallback: true`），而不是展示空结果。
 
 ### `POST /recommend/home`
 
 不带查询文本的基于行为的推荐（需要 `user_id`，`lang` 为可选参数，同上）。对于没有
-`RATED`/属性历史的用户，这会完全跳过 LLM，直接从 Neo4j 返回热门高评分商品
-（不调用 LLM，除数据库往返外几乎没有额外延迟）——这正是用户尚未输入任何内容之前
-展示的初始推荐所走的路径，因为内置测试用户一开始就没有历史记录。对于有历史记录的
-用户，LLM 会在首次调用时生成一条个性化的 Cypher 查询，其结果会在服务端缓存
+`RATED`/`VIEWED`/属性历史的用户，这会完全跳过 LLM，直接从 Neo4j 返回热门高评分商品
+（不调用 LLM，除数据库往返外几乎没有额外延迟）。对于有历史记录的
+用户，后端会执行固定的 User -> Product -> Attribute -> Product 元路径，其结果会在服务端缓存
 （按 `user_id`+`lang`+`limit`，1 小时有效期）——之后的调用会直接从该缓存中即时返回。
 关于该缓存如何在用户提问之前就被预先填充，见下方的 `/recommend/home/warm`。
 
@@ -415,7 +408,7 @@ Web UI 会调用此接口。
 `action`/`filled_slots` 自行决定是要再问一个澄清性问题，还是转入搜索；这使得提问流程
 能够适应当前加载的任何目录/类型，没有硬编码的品类或问题模板。Python 只强制
 限制一个提问次数上限（`MAX_QUESTIONS = 5`），并在 LLM 调用本身失败时立即回退到搜索。
-一旦触发搜索，就会委托给与 `/recommend` 相同的 Text2Cypher 路径。
+一旦触发搜索，就会委托给与 `/recommend` 相同的结构化条件 + 元路径搜索。
 
 ```json
 {

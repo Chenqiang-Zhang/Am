@@ -23,24 +23,17 @@
   border-top-color: var(--color-primary);
 }
 
-/* 商品画像 — ゲームはパッケージ画像が選択の決め手になるため大きめに表示する。
-   Amazonの商品画像は白背景が前提なので、白ベースに載せて画像の欠けを目立たせない。 */
+/* 商品画像 */
 .thumb,
 .thumbPlaceholder {
   flex: 0 0 auto;
-  width: 180px;
-  height: 180px;
+  width: 120px;
+  height: 120px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  background: #ffffff;
+  background: #05060a;
   object-fit: contain;
-  padding: 6px;
-  box-sizing: border-box;
-  transition: transform 0.25s ease;
-}
-
-.card:hover .thumb {
-  transform: scale(1.04);
+  cursor: pointer;
 }
 
 .thumbPlaceholder {
@@ -87,6 +80,7 @@
   line-height: 1.5;
   letter-spacing: 0.01em;
   color: var(--color-text);
+  cursor: pointer;
   /* 長いAmazonタイトルは3行で省略（全文は title 属性でホバー表示） */
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -151,63 +145,50 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.amazonLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: var(--space-3);
-  padding: 6px 14px;
-  border: 1px solid var(--color-gold);
-  border-radius: var(--radius);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-gold);
-  text-decoration: none;
-  font-weight: 600;
-  transition: background 0.2s, color 0.2s;
-}
-
-.amazonLink:hover {
-  background: var(--color-gold);
-  color: #fff;
-}
-
 /* ===== ユーザーモード ===== */
 .user {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin: 2px 0 var(--space-1);
-  padding: 8px 10px;
-  border-left: 3px solid var(--color-primary);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--color-primary-weak);
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
-.reasonHeading {
-  color: var(--color-primary);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+.source {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 11px;
   line-height: 1.2;
-  text-transform: uppercase;
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .userTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: var(--space-2);
 }
 
 .userTag {
-  padding: 3px 9px;
+  padding: 3px 11px;
   border-radius: 999px;
-  background: var(--color-surface);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  background: transparent;
+  border: 1px solid var(--color-primary);
   color: var(--color-primary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
   letter-spacing: 0.02em;
 }
 
@@ -259,8 +240,8 @@
   }
   .thumb,
   .thumbPlaceholder {
-    width: 120px;
-    height: 120px;
+    width: 84px;
+    height: 84px;
   }
   .section {
     flex-direction: column;

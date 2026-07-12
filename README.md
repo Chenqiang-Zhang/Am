@@ -2,7 +2,7 @@
 
 [English](README.en.md) | **日本語** | [中文](README.zh-CN.md)
 
-Amazon Reviews'23 データセットを用いた実験的な商品推薦システム。ジャンル／カテゴリは `config.yaml` で切り替え可能で（現在は `Video_Games` で、以下のデフォルト値・例は特に断りなくこのジャンルを前提とする）、スキーマ・パイプラインスクリプト・Cypher クエリはすべてジャンル非依存に設計されている。本システムはレビューデータと商品メタデータを Neo4j ナレッジグラフへと変換し、LLM がグラフに対して直接 Cypher クエリを書いて実行する REST API を公開する — そのため、推薦理由はすべて実際に検証可能なグラフパスであり、ブラックボックスにはならない。
+Amazon Reviews'23 データセットを用いた実験的な商品推薦システム。ジャンル／カテゴリは `config.yaml` で切り替え可能で（現在は `Video_Games` で、以下のデフォルト値・例は特に断りなくこのジャンルを前提とする）、スキーマ・パイプラインスクリプトはジャンル非依存に設計されている。本システムはレビューデータと商品メタデータを Neo4j ナレッジグラフへと変換し、LLM が会話／検索意図を構造化し、Neo4j が固定の元パス検索とランキングを実行する REST API を公開する。推薦理由は生成文だけでなく、実際に検証可能なグラフパスから導かれる。
 
 ## アーキテクチャ
 
@@ -21,22 +21,16 @@ Neo4j ナレッジグラフ
     ↓ backfill_display_fields.py --images --titles-ja（任意 — Product.image_url / Product.title_ja）
     ↓
 REST API（FastAPI）
-    ├── Text2Cypher 検索        （LLM がリクエストごとに Cypher クエリを書いて実行。グラフスキーマと
-    │                            attr_type の語彙は稼働中のグラフから読み取るため、実際にロードされて
-    │                            いるジャンル／カタログにプロンプトが適応する — カテゴリのハードコード
-    │                            なし。生成・実行に失敗した場合、または結果が正当に0件だった場合は
-    │                            人気度クエリにフォールバックする）
-    ├── パーソナライゼーション   （ユーザの評価・属性履歴 + 過去の成功クエリを few-shot として利用。
-    │                            $uid は user_id に実際の RATED／属性履歴がある場合にのみバインドされる）
-    ├── ホーム推薦               （行動ベースでクエリテキストなし。履歴のないユーザに対しては LLM を
-    │                            完全にスキップし — 人気度クエリへ即座にフォールバックするためレイテンシ
-    │                            増加なし — さらにパーソナライズされた各ユーザの生成クエリをメモリに
-    │                            キャッシュすることで、タブが非表示／クローズされた際に発火するバック
-    │                            グラウンドの「warm」呼び出しにより、次回のページ表示を即時にできる）
+    ├── 構造化検索               （LLM は商品・カテゴリ・属性条件を抽出し、Cypher 文字列は直接生成しない）
+    ├── 元パスランキング         （User -> recent high-rated Product <- Peer User -> next Product を
+    │                            主順位にし、検索時は domain_platform/domain_franchise/domain_product_type
+    │                            を強制約としてから行動→属性、協調フィルタ、評価値、人気度で補完する）
+    ├── ホーム推薦               （履歴のあるユーザは同じ transition-first 元パスを使い、履歴のないユーザは
+    │                            LLM をスキップして人気商品を返す）
     ├── 対話チャット             （LLM が同じ稼働中の attr_type 語彙に基づき、何を尋ねるか・いつ検索する
     │                            かを自分で決定 — ジャンル非依存。Python 側は質問数のハードキャップと、
     │                            LLM 呼び出し自体が失敗した場合のフォールバックのみを強制する）
-    └── レビュー参照・閲覧ログ記録（すべて Neo4j に書き込み）
+    └── レビュー参照・閲覧ログ記録・旧 Text2Cypher フォールバック（すべて Neo4j と連携）
 ```
 
 ## グラフスキーマ
@@ -104,7 +98,7 @@ REST API（FastAPI）
 ├── app/                   # 稼働中のアプリケーション（バックエンド＋フロントエンド）
 │   ├── api/                       # 推薦 REST API
 │   │   ├── main.py                # FastAPI アプリ／ルーティング
-│   │   ├── recommender.py         # Text2Cypher 生成、チャット、パーソナライゼーション、レビュー
+│   │   ├── recommender.py         # 構造化検索、元パスランキング、チャット、パーソナライゼーション、レビュー
 │   │   └── models.py              # Pydantic リクエスト/レスポンスモデル
 │   └── web/                       # React + TypeScript による対話型 UI
 ```
@@ -129,7 +123,7 @@ cp .env.example .env
 - `NEO4J_URI` / `NEO4J_PASSWORD`（Neo4j Aura の接続情報）
 - `config.yaml`（`llm.provider`）で選択した LLM プロバイダに対応する API キー: `GEMINI_API_KEY`、`GROQ_API_KEY`、`DEEPSEEK_API_KEY`、または `OPENAI_API_KEY`。Gemini と Groq はどちらも無料枠がある。
 
-`config.yaml` は LLM プロバイダ／モデル、データパス、Text2Cypher のリトライ設定を制御する — 詳細は同ファイル内のコメントを参照。商品／ユーザの選定は config の値ではなく、k-core のサイズ（`select_kcore.py` の `--k`、後述のステップ4を参照）で別途制御される。
+`config.yaml` は LLM プロバイダ／モデル、データパス、旧 Text2Cypher フォールバックのリトライ設定を制御する — 詳細は同ファイル内のコメントを参照。商品／ユーザの選定は config の値ではなく、k-core のサイズ（`select_kcore.py` の `--k`、後述のステップ4を参照）で別途制御される。
 
 ### 3. Neo4j を起動する
 
@@ -254,23 +248,37 @@ python3 eval/eval_offline.py --cutoffs 10 20 50 --sample 100
 
 # 対象となる全ユーザに対するフルの leave-one-out 評価
 python3 eval/eval_offline.py --cutoffs 10 20 50 --resume
+
+# 横向比較・可視化・アルゴリズム進化レポート
+python3 eval/compare_recommenders.py --sample 1000 --out-dir reports/algorithm_evolution
+```
+
+Video Games では、検索関連性を安定させるために、インポート後に以下の決定的な補助属性を
+追加できる。これは旧 `platform` / `franchise` / `product_type` に混ざる説明文由来のノイズを
+避け、検索時の platform / franchise / product type 制約に使う:
+
+```bash
+python3 scripts/backfill_video_game_domain_attributes.py --replace --out-dir reports/data_quality
 ```
 
 実行前にデータ健全性チェック（商品・ユーザー・レビュー数、価格/画像/評価のカバレッジ）を
-出力したうえで、RATED ベースのパーソナライゼーション（Text2Cypher 経由の `recommend_home`）
-を2つのベースライン — Item-KNN（ユーザー×アイテムの評価行列に対するコサイン類似度）と
-Popularity（rating_count・avg_ratingによる静的ランキング）— と比較する。**カットオフ**とは
+出力したうえで、RATED ベースのパーソナライゼーションをベースライン — Popularity、Item-CF、
+Recent Item-CF、User-CF、Transition-CF、KG meta-path、Hybrid v4 — と比較する。加えて
+`domain_platform` / `domain_franchise` / `domain_product_type` に基づく Domain Match@K も報告する。
+**カットオフ**とは
 HR@K/NDCG@K の K のこと — 上位いくつの推薦を「見つけられたか」の判定に使うかを表す:
 カットオフ10なら保持しておいた商品が上位10件に入ったかを問い、カットオフ50ならその手法に
 より多くの余地を与えることになる。`--cutoffs`（デフォルト10/20/50）は、これらすべての
 カットオフについて leave-one-out の HR@K/NDCG@K を同時に算出する（最大のカットオフ件数分の
 結果を一度だけ取得し、そこから切り詰める）。各対象ユーザの直近の★4以上の評価をターゲットとして
-保持しておき、そのエッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、3手法
+保持しておき、そのエッジ（およびそれ以降に評価されたもの）を一時的に取り除いた上で、各手法
 すべてがその保持しておいた商品を top K 内に再びランクインさせられるかを試す。HR@K/NDCG@K に
 加えて、サマリには手法ごとの `catalog_coverage@k`/`avg_rating@k`（最小カットオフでの値）も
 それ自体独立したメトリクスとして報告される — 単にヒット率だけでなく「同じ人気商品ばかり
 勧めていないか」も見える。結果は `eval_results.jsonl` / `eval_results.summary.json` に
-書き出される（パスは `--out` で設定可能）。
+書き出される（`compare_recommenders.py` では `summary.json`、`per_user_results.jsonl`、
+`accuracy_metrics.png`、`quality_metrics.png`、`hr_by_cutoff.png`、`算法进化报告.md` を
+`--out-dir` に保存する）。
 
 ### 6. 推薦 API を起動する
 
@@ -312,10 +320,10 @@ npm run dev
    や "a co-op couch game for the PS5 that's fun for kids and adults together" など。
 4. アシスタントは確認の質問をするか（回答するか、「こだわらない」／"no preference" を選んで
    スキップできる）、十分な手がかりが揃っていればそのまま検索に進む。
-5. 推薦結果には、LLM による一文の `explanation`（UI の現在の言語で記述される。上部の「日本語」/"EN"
-   トグルで切り替え）が表示され、開発モードでは一致した属性と生成された Cypher の生データ
+5. 推薦結果には、グラフパスに基づく一文の `explanation`（UI の現在の言語で記述される。上部の「日本語」/"EN"
+   トグルで切り替え）が表示され、開発モードでは一致した属性と実行された Cypher の生データ
    （`intent.cypher`）も表示されるため、あらゆる推薦理由がブラックボックスにならず検証可能である。
-   Text2Cypher の生成・実行が失敗した場合、またはクエリが正当に何にも一致しなかった場合は、
+   固定元パスと旧フォールバックの両方が失敗した場合、またはクエリが正当に何にも一致しなかった場合は、
    空の画面を表示する代わりに人気の高評価商品にフォールバックする（レスポンスの `fallback: true`）。
 6. 「レビューを見る」を開く、または「Amazon.comで見る」をクリックすると、`/behavior/view` 経由で
    元の `search_id` に紐づいた `VIEWED` エッジが記録される。`_get_dynamic_few_shot()` はこれを
@@ -341,12 +349,10 @@ npm run dev
 
 ### `POST /recommend`
 
-自然言語のクエリを受け取る。LLM がグラフに対して1本の Cypher クエリを生成し、その結果を返す。
-パーソナライゼーションは、`user_id` が実際の `RATED`／属性履歴を持つユーザを指している場合にのみ
-有効になる — 履歴のない `user_id` は匿名リクエストと同様に扱われる（`$uid` はバインドされない
-ため LLM はそれを参照できない。バリデータは、`$uid` がバインドされていないのにそれを参照する
-生成 Cypher、または `$uid` を使わずリテラルの `user_id` 文字列をハードコードする生成 Cypher を
-拒否する）。
+自然言語のクエリを受け取る。LLM は商品・カテゴリ・属性条件を構造化し、Neo4j が固定の元パス
+クエリを実行してランキング済みの結果を返す。パーソナライゼーションは、`user_id` が実際の
+`RATED`／`VIEWED`／属性履歴を持つユーザを指している場合に有効になる。固定元パスで結果が
+得られない場合のみ、旧 Text2Cypher をフォールバックとして利用する。
 
 **リクエスト:**
 ```json
@@ -396,18 +402,17 @@ npm run dev
 キャッシュされた日本語訳を `display_title` にも格納する（それ以外は `null` で、フロントエンドは
 `title` にフォールバックする）。
 
-リトライ後も Cypher の生成・実行に失敗した場合、**または生成されたクエリの実行自体は成功したが
+固定元パスと旧 Text2Cypher フォールバックがどちらもリトライ後に失敗した場合、**またはどちらも
 0件だった場合**は、空の結果を表示する代わりに人気度ベースのクエリにフォールバックする
 （`fallback: true`）。
 
 ### `POST /recommend/home`
 
-クエリテキストなしの行動ベース推薦（`user_id` は必須、`lang` は上記同様に任意）。`RATED`／属性
-履歴のないユーザに対しては LLM を完全にスキップし、人気の高評価商品を Neo4j から直接返す
-（LLM 呼び出しなし。データベースの往復以外に実質的なレイテンシは発生しない） — 組み込みの
-テストユーザは履歴なしから始まるため、これはユーザが何も入力する前に表示される初期の推薦に
-使われるパスである。履歴のあるユーザについては、初回呼び出し時に LLM がパーソナライズされた
-Cypher クエリを生成し、結果はサーバ側でキャッシュされる（`user_id`＋`lang`＋`limit` ごとに
+クエリテキストなしの行動ベース推薦（`user_id` は必須、`lang` は上記同様に任意）。`RATED`／
+`VIEWED`／属性履歴のないユーザに対しては LLM を完全にスキップし、人気の高評価商品を Neo4j から直接返す
+（LLM 呼び出しなし。データベースの往復以外に実質的なレイテンシは発生しない）。履歴のある
+ユーザについては、固定の User -> Product -> Attribute -> Product 元パスを実行し、
+結果はサーバ側でキャッシュされる（`user_id`＋`lang`＋`limit` ごとに
 1時間の TTL）— それ以降の呼び出しはそのキャッシュから即座に返る。ユーザが尋ねる前にどのように
 キャッシュが事前に埋められるかについては、下記の `/recommend/home/warm` を参照。
 
@@ -434,7 +439,7 @@ Fire-and-forget 方式: `/recommend/home` と同じボディを受け取り、�
 これにより、ロードされているカタログ／ジャンルが何であっても質問の流れが適応し、ハードコード
 されたカテゴリや質問テンプレートは存在しない。Python 側は質問数のハードキャップ
 （`MAX_QUESTIONS = 5`）のみを強制し、LLM 呼び出し自体が失敗した場合は即座に検索へ
-フォールバックする。検索がトリガーされると、`/recommend` と同じ Text2Cypher パスに委譲する。
+フォールバックする。検索がトリガーされると、`/recommend` と同じ構造化条件 + 元パス検索に委譲する。
 
 ```json
 {
@@ -506,7 +511,7 @@ k を大きくするとグラフは急速に縮小する（線形カットでは
 ## 今後の展望
 
 - LLM による属性抽出のカバレッジを商品全体に拡大する
-- ユーザ間で共有される評価履歴を使った、協調フィルタリングの few-shot パスを追加する
+- 実クリック・購入・滞在時間などのオンライン行動を増やし、Transition-first ranking の重みを学習化する
 - 複数ステップのグラフ探索エンドポイント（`GET /product/{id}/related`）を追加する
 - 推薦理由に対する明示的なフィードバック（`GAVE_FEEDBACK` エッジ／サムズアップ・ダウン UI）は
   一度試みられたが撤去された — `_get_dynamic_few_shot()` の暗黙的なクリックシグナル（`SearchLog`
