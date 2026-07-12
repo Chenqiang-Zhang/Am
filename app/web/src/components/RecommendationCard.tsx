@@ -68,7 +68,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
         </div>
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
-        {rec.description && <p className={styles.description}>{rec.description}</p>}
+        {rec.description && <ExpandableDescription text={rec.description} />}
         <ReviewList
           productId={rec.product_id}
           ratingNumber={rec.rating_count}
@@ -77,6 +77,48 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
         />
       </div>
     </article>
+  );
+}
+
+// 商品説明文。「レビューを見る」と同じ折りたたみUI（ピル型トリガー → パネル展開）。
+// 全文はrecommendレスポンスに同梱済みなので追加フェッチは不要。
+function ExpandableDescription({ text }: { text: string }) {
+  const { lang } = useI18n();
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className={styles.descriptionTrigger}
+        onClick={() => setOpen(true)}
+        aria-expanded={false}
+      >
+        <span className={styles.descriptionTriggerIcon} aria-hidden="true">ⓘ</span>
+        <span>{lang === "ja" ? "商品説明を見る" : "Show description"}</span>
+        <span className={styles.descriptionChevron} aria-hidden="true">›</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className={styles.descriptionBlock}>
+      <div className={styles.descriptionHeader}>
+        <span className={styles.descriptionHeading}>
+          <span className={styles.descriptionTriggerIcon} aria-hidden="true">ⓘ</span>
+          {lang === "ja" ? "商品説明" : "Description"}
+        </span>
+        <button
+          type="button"
+          className={styles.descriptionCloseBtn}
+          onClick={() => setOpen(false)}
+          aria-expanded={true}
+        >
+          {lang === "ja" ? "閉じる" : "Close"} <span aria-hidden="true">×</span>
+        </button>
+      </div>
+      <p className={styles.descriptionText}>{text}</p>
+    </div>
   );
 }
 
@@ -133,7 +175,7 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
           ))}
         </div>
       )}
-      <ReasonSummary rec={rec} lang={lang} />
+      {/* 根拠メトリクス（条件一致数など）は機械的な数値なので開発者モード専用 */}
     </div>
   );
 }

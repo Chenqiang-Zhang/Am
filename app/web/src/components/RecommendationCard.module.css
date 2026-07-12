@@ -23,17 +23,25 @@
   border-top-color: var(--color-primary);
 }
 
-/* 商品画像 */
+/* 商品画像 — ゲームはパッケージ画像が選択の決め手になるため大きめに表示する。
+   Amazonの商品画像は白背景が前提なので、白ベースに載せて画像の欠けを目立たせない。 */
 .thumb,
 .thumbPlaceholder {
   flex: 0 0 auto;
-  width: 120px;
-  height: 120px;
+  width: 180px;
+  height: 180px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  background: #05060a;
+  background: #ffffff;
   object-fit: contain;
+  padding: 6px;
+  box-sizing: border-box;
+  transition: transform 0.25s ease;
   cursor: pointer;
+}
+
+.card:hover .thumb {
+  transform: scale(1.04);
 }
 
 .thumbPlaceholder {
@@ -164,16 +172,109 @@
   line-height: 1.2;
 }
 
-.description {
-  margin: 0;
-  color: var(--color-text-muted);
+/* 商品説明 — ReviewListの「レビューを見る」と同じ折りたたみUIで統一する */
+.descriptionTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-primary);
   font-size: 12px;
-  line-height: 1.55;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.descriptionTrigger:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-weak);
+  transform: translateY(-1px);
+}
+
+.descriptionTriggerIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  color: var(--color-primary);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.descriptionChevron {
+  font-size: 17px;
+  line-height: 10px;
+  margin-left: 1px;
+}
+
+.descriptionBlock {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+
+.descriptionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.descriptionHeading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+}
+
+.descriptionCloseBtn {
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.descriptionCloseBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* レビューの.listと同じスクロールスタイル（max-height + 細スクロールバー） */
+.descriptionText {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0 7px 0 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.descriptionText::-webkit-scrollbar {
+  width: 7px;
+}
+
+.descriptionText::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
 }
 
 .userTags {
@@ -246,8 +347,8 @@
   }
   .thumb,
   .thumbPlaceholder {
-    width: 84px;
-    height: 84px;
+    width: 120px;
+    height: 120px;
   }
   .section {
     flex-direction: column;

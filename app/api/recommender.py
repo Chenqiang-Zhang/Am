@@ -1111,6 +1111,102 @@ def _parse_llm_json(text: str) -> dict[str, Any]:
 
 # ── result mapping ─────────────────────────────────────────────────────────────
 
+# matched_attrsに入るdomain_*属性のcanonical値（"nintendo_switch"等）は機械生成の
+# 正規化値でvalue_jaを持たないため、表示用の変換表を持つ。プラットフォーム名は
+# 日本のストアフロントでもローマ字表記が標準なので日英共通。ここに無い値は
+# _prettify_attr_value()がスネークケースを整形する（"action_rpg"→"Action RPG"）。
+_ATTR_VALUE_DISPLAY: dict[str, str] = {
+    # platform（日英共通のローマ字表記）
+    "nintendo_switch": "Nintendo Switch",
+    "ps5": "PlayStation 5",
+    "ps4": "PlayStation 4",
+    "ps3": "PlayStation 3",
+    "playstation_vita": "PlayStation Vita",
+    "xbox_series_x": "Xbox Series X|S",
+    "xbox_one": "Xbox One",
+    "xbox_360": "Xbox 360",
+    "wii_u": "Wii U",
+    "wii": "Wii",
+    "nintendo_3ds": "Nintendo 3DS",
+    "nintendo_ds": "Nintendo DS",
+    "pc": "PC",
+}
+
+_ATTR_VALUE_DISPLAY_JA: dict[str, str] = {
+    # product_type
+    "video_game": "ゲームソフト",
+    "controller": "コントローラー",
+    "headset": "ヘッドセット",
+    "console": "ゲーム機本体",
+    "storage": "ストレージ",
+    "accessory": "アクセサリ",
+    # franchise（_DOMAIN_ALIASESのcanonical値）
+    "mario": "マリオ",
+    "zelda": "ゼルダ",
+    "pokemon": "ポケモン",
+    "sonic": "ソニック",
+    "minecraft": "マインクラフト",
+    "final_fantasy": "ファイナルファンタジー",
+    "spider_man": "スパイダーマン",
+    "animal_crossing": "どうぶつの森",
+    "kirby": "カービィ",
+    "splatoon": "スプラトゥーン",
+    "lego": "レゴ",
+    "star_wars": "スターウォーズ",
+    "assassins_creed": "アサシンクリード",
+    # genre系のよく出るcanonical値
+    "action": "アクション",
+    "adventure": "アドベンチャー",
+    "action_adventure": "アクションアドベンチャー",
+    "rpg": "RPG",
+    "action_rpg": "アクションRPG",
+    "jrpg": "JRPG",
+    "puzzle": "パズル",
+    "shooter": "シューティング",
+    "first_person_shooter": "FPS",
+    "racing": "レース",
+    "sports": "スポーツ",
+    "simulation": "シミュレーション",
+    "fighting": "格闘",
+    "horror": "ホラー",
+    "survival_horror": "サバイバルホラー",
+    "strategy": "ストラテジー",
+    "platformer": "プラットフォーマー",
+    "party": "パーティ",
+    "rhythm": "リズム",
+    "stealth": "ステルス",
+    "open_world": "オープンワールド",
+    "sandbox": "サンドボックス",
+}
+
+_ACRONYMS = {"rpg", "fps", "3ds", "ds", "pc", "hd", "4k", "vr", "dlc", "2d", "3d"}
+
+
+def _prettify_attr_value(value: str) -> str:
+    """スネークケースのcanonical値を表示用に整形（"action_rpg"→"Action RPG"）。"""
+    words = re.split(r"[\s_]+", value.strip())
+    return " ".join(
+        w.upper() if w.lower() in _ACRONYMS else w.capitalize() for w in words if w
+    )
+
+
+def _attr_display_value(raw_value: str, value_ja: Any, lang: str) -> str:
+    """matched_attrsの1値を表示用文字列に変換する。優先順:
+    グラフ由来のvalue_ja(ja時) > 日英共通表 > 日本語表(ja時) > スネークケース整形。
+    キーは正規化（小文字・空白/ハイフン→アンダースコア）してから引くので、
+    "Nintendo 3DS"と"nintendo_3ds"は同じ表示に揃い、重複排除にも掛かる。"""
+    if lang == "ja" and value_ja:
+        return str(value_ja)
+    key = re.sub(r"[\s\-]+", "_", raw_value.strip().lower())
+    if key in _ATTR_VALUE_DISPLAY:
+        return _ATTR_VALUE_DISPLAY[key]
+    if lang == "ja" and key in _ATTR_VALUE_DISPLAY_JA:
+        return _ATTR_VALUE_DISPLAY_JA[key]
+    if "_" in raw_value or raw_value.islower():
+        return _prettify_attr_value(raw_value)
+    return raw_value
+
+
 def _to_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
@@ -1134,8 +1230,7 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
     seen_attrs: set[tuple[str, str]] = set()
     for m in (record.get("matched_attrs") or []):
         if isinstance(m, dict) and m.get("attr_type") and m.get("value"):
-            value_ja = m.get("value_ja")
-            display_value = value_ja if (lang == "ja" and value_ja) else str(m["value"])
+            display_value = _attr_display_value(str(m["value"]), m.get("value_ja"), lang)
             key = (str(m["attr_type"]), display_value)
             if key in seen_attrs:
                 continue
@@ -2027,9 +2122,48 @@ LIMIT $limit
         results = self._execute_and_map(cypher, params, normalized_lang)
         relaxed = False
         used_condition_only = False
+
+        # 緩和ステップ0: 自由語彙の対話条件（ジャンル等）を先に外す。
+        # ジャンルは属性としてグラフにほぼ存在しない（本物のジャンル値は~150商品）ため、
+        # "adventure"のような語を全結果の必須条件にすると「マリオ×Switch×アドベンチャー」
+        # ですら0件になる。名指しされたフランチャイズ/機種のゲートは守ったまま、
+        # ジャンル語はスコアリング（query_attrs等の加点）としてだけ効かせる。
+        # フランチャイズを先に捨てる旧順序だと「マリオを捨ててadventureを守る」逆転が起き、
+        # マインクラフト1件だけが返る事故になっていた。
+        # ただしフランチャイズ・機種のどちらのゲートも無いクエリ（例: 「ホラーゲーム」）で
+        # ジャンルまで外すと無関係な汎用ゲームが返るだけなので、その場合は緩和せず
+        # Zhang設計どおり正直に0件を返す。
+        can_relax_open_vocab = bool(
+            params["franchise_required"] or params["platform_required"]
+        )
+        if (
+            not results and has_query and can_relax_open_vocab
+            and params["required_condition_keywords"]
+        ):
+            relaxed_params = dict(params)
+            relaxed_params["required_condition_keywords"] = []
+            if user_id and params.get("candidate_product_ids") == [] and candidate_count == 0:
+                relaxed_candidate_params = dict(relaxed_params)
+                relaxed_candidate_params.pop("uid", None)
+                relaxed_candidate_params["candidate_product_ids"] = []
+                relaxed_candidate_params["limit"] = max(50, limit)
+                relaxed_candidates = self._execute_and_map(
+                    _METAPATH_CONDITION_CYPHER, relaxed_candidate_params, normalized_lang
+                )
+                relaxed_ids = [row.product_id for row in relaxed_candidates]
+                if relaxed_ids:
+                    relaxed_params["candidate_product_ids"] = relaxed_ids
+                    candidate_count = len(relaxed_ids)
+            results = self._execute_and_map(cypher, relaxed_params, normalized_lang)
+            if results:
+                params = relaxed_params
+                relaxed = True
+
         if not results and has_query and params["franchise_required"]:
             relaxed_params = dict(params)
             relaxed_params["franchise_required"] = False
+            # ステップ0で外した自由語彙条件が復活しないようここでも空にする
+            relaxed_params["required_condition_keywords"] = []
             # Keep platform/product-type constraints, but allow a nearby game
             # when a very specific franchise query has no catalog coverage.
             if user_id:
