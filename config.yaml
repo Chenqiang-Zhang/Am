@@ -27,6 +27,8 @@ scale:
 llm:
   provider: "deepseek"            # gemini / groq / deepseek / openai
   model:   # 省略時はプロバイダのデフォルト
+  chat_temperature: 0.35           # 対話の追問だけに使う。構造化抽出には使わない
+  structured_temperature: 0.0      # 条件抽出・Text2Cypher は再現性を優先
   attr_type_normalize: true       # 抽出後に snake_case 正規化を行うか
   min_confidence: 0.6             # この値未満の Attribute は除外
   min_review_text_len: 30         # MENTIONS 抽出対象の最小文字数

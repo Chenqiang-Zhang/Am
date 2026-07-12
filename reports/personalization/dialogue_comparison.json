@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-07-12T08:20:47.603452+00:00",
+  "opening": "家族で遊べるゲームを探しています",
+  "replies": [
+    "アクション",
+    "協力プレイ"
+  ],
+  "runs": [
+    {
+      "user_id": "anonymous",
+      "turns": [
+        {
+          "action": "ask",
+          "question": "どのようなゲームジャンルをお探しですか？",
+          "options": [
+            "アクション",
+            "アドベンチャー",
+            "パーティーゲーム",
+            "スポーツ",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "ask",
+          "question": "ゲームモードの希望はありますか？",
+          "options": [
+            "協力プレイ (Co-op)",
+            "対戦 (PvP)",
+            "オンラインマルチプレイ",
+            "分割画面",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "search",
+          "question": null,
+          "options": []
+        }
+      ],
+      "cypher_sha256": "c67165083ad782cb15e5cc491e549db9bfc5544b3a8657ba8e74a841ba993966",
+      "top_products": []
+    },
+    {
+      "user_id": "AEWLQYBQDYWWUWK6UHHTNWO5AHYA",
+      "turns": [
+        {
+          "action": "ask",
+          "question": "どのプラットフォームで遊びますか？",
+          "options": [
+            "Nintendo Switch",
+            "PlayStation 4",
+            "Xbox One",
+            "PC",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "ask",
+          "question": "どのプラットフォームで遊びますか？",
+          "options": [
+            "Nintendo Switch",
+            "PlayStation",
+            "Xbox",
+            "PC",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "search",
+          "question": null,
+          "options": []
+        }
+      ],
+      "cypher_sha256": "c67165083ad782cb15e5cc491e549db9bfc5544b3a8657ba8e74a841ba993966",
+      "top_products": []
+    },
+    {
+      "user_id": "AHJRJCJMK3XVV4BSPBRAHIYEODWA",
+      "turns": [
+        {
+          "action": "ask",
+          "question": "どのプラットフォームで遊びますか？",
+          "options": [
+            "PlayStation",
+            "Nintendo Switch",
+            "Xbox",
+            "PC",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "ask",
+          "question": "どのプラットフォームで遊びますか？",
+          "options": [
+            "Nintendo Switch",
+            "PlayStation 4/5",
+            "Xbox",
+            "PC",
+            "こだわりなし"
+          ]
+        },
+        {
+          "action": "search",
+          "question": null,
+          "options": []
+        }
+      ],
+      "cypher_sha256": "c67165083ad782cb15e5cc491e549db9bfc5544b3a8657ba8e74a841ba993966",
+      "top_products": []
+    }
+  ]
+}

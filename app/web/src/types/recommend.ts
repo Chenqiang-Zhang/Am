@@ -37,6 +37,7 @@ export interface Recommendation {
   product_id: string;
   title: string;
   display_title: string | null;
+  description: string | null;
   image_url: string | null;
   price: number | null;
   avg_rating: number | null;
@@ -44,6 +45,7 @@ export interface Recommendation {
   score: number;
   matched_attrs: MatchedAttr[];
   explanation: string;
+  recommendation_source: "dialogue_only" | "dialogue_personalized" | "behavior_only" | "popular";
 }
 
 /** POST /recommend のレスポンス */

@@ -139,7 +139,7 @@ _FALLBACK_CYPHER = (
     "  coalesce(p.avg_rating, 3.5) * 0.5 "
     "  + log(toFloat(p.rating_count) + 1) * 0.2 AS score, "
     "  [] AS matched_attrs "
-    "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.image_url AS image_url, p.price AS price, "
+    "RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.image_url AS image_url, p.price AS price, "
     "  p.avg_rating AS avg_rating, p.rating_count AS rating_count, score, "
     "  $explanation AS explanation, matched_attrs "
     "ORDER BY score DESC LIMIT $limit"
@@ -260,9 +260,17 @@ WITH p, categories, rated_attrs, viewed_attrs, rated_seed_count, viewed_seed_cou
         AND any(kw IN $product_type_keywords
           WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
              OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+     , [kw IN $required_condition_keywords
+        WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+           OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+           OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)
+           OR any(a IN product_attrs WHERE
+             replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           )] AS required_condition_hits
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
-     product_type_attrs, rated_attrs, viewed_attrs,
+     product_type_attrs, required_condition_hits, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
      transition_peer_count, transition_seed_count, already_seen, confirmed_rated_mentions,
      (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
@@ -274,10 +282,11 @@ WHERE already_seen = 0
   AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
   AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
   AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+  AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
   AND behavior_hits > 0
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
-     product_type_attrs, rated_attrs, viewed_attrs,
+     product_type_attrs, required_condition_hits, rated_attrs, viewed_attrs,
      rated_seed_count, viewed_seed_count, cf_peer_count, cf_seed_count,
      transition_peer_count, transition_seed_count, condition_hits, behavior_hits,
      (
@@ -306,6 +315,7 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
 RETURN p.product_id AS product_id,
        p.title AS title,
        p.title_ja AS title_ja,
+       p.description AS description,
        p.image_url AS image_url,
        p.price AS price,
        p.avg_rating AS avg_rating,
@@ -318,6 +328,12 @@ RETURN p.product_id AS product_id,
          WHEN size(viewed_attrs) > 0 THEN $viewed_explanation
        ELSE $condition_explanation
        END AS explanation,
+       CASE
+         WHEN $has_query = false THEN 'behavior_only'
+         WHEN transition_peer_count > 0 OR cf_peer_count > 0
+           OR size(rated_attrs) > 0 OR size(viewed_attrs) > 0 THEN 'dialogue_personalized'
+         ELSE 'dialogue_only'
+       END AS recommendation_source,
        [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs + rated_attrs + viewed_attrs)[0..8]
         WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
 ORDER BY score DESC LIMIT $limit
@@ -378,9 +394,17 @@ WITH p, categories, product_attrs,
         AND any(kw IN $product_type_keywords
           WHERE replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
              OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw)] AS product_type_attrs
+     , [kw IN $required_condition_keywords
+        WHERE toLower(coalesce(p.title, '')) CONTAINS kw
+           OR toLower(coalesce(p.title_ja, '')) CONTAINS kw
+           OR any(cat IN categories WHERE toLower(coalesce(cat, '')) CONTAINS kw)
+           OR any(a IN product_attrs WHERE
+             replace(toLower(coalesce(a.value, '')), '_', ' ') CONTAINS kw
+             OR replace(toLower(coalesce(a.value_ja, '')), '_', ' ') CONTAINS kw
+           )] AS required_condition_hits
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
-     product_type_attrs,
+     product_type_attrs, required_condition_hits,
      (size(product_kw_hits) + size(category_kw_hits) + size(query_attrs)
       + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
       + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits
@@ -388,6 +412,7 @@ WHERE condition_hits > 0
   AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
   AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
   AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+  AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs, product_type_attrs,
      (
@@ -406,12 +431,14 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
 RETURN p.product_id AS product_id,
        p.title AS title,
        p.title_ja AS title_ja,
+       p.description AS description,
        p.image_url AS image_url,
        p.price AS price,
        p.avg_rating AS avg_rating,
        p.rating_count AS rating_count,
        score,
        $condition_explanation AS explanation,
+       'dialogue_only' AS recommendation_source,
        [a IN (franchise_attrs + platform_attrs + product_type_attrs + query_attrs)[0..8]
         WHERE a IS NOT NULL | {attr_type: a.attr_type, value: a.value, value_ja: a.value_ja}] AS matched_attrs
 ORDER BY score DESC LIMIT $limit
@@ -422,6 +449,14 @@ _CONDITION_STOPWORDS = {
     "a", "an", "and", "are", "for", "from", "game", "games", "good", "high",
     "i", "in", "is", "me", "of", "or", "product", "recommend", "reviews",
     "the", "to", "want", "with",
+}
+
+# These words identify the catalog rather than a user's distinctive need.  They
+# may help recall, but must never be enough on their own to pass the dialogue
+# constraint gate.
+_GENERIC_CONDITION_TERMS = {
+    "game", "games", "video game", "video games", "software", "product",
+    "products", "ゲーム", "ビデオゲーム", "ソフト", "商品", "おすすめ",
 }
 
 _IGNORED_BEHAVIOR_ATTR_TYPES = [
@@ -448,6 +483,14 @@ _FRANCHISE_ATTR_TYPES = [
 
 _PRODUCT_TYPE_ATTR_TYPES = [
     "domain_product_type",
+]
+
+_CHAT_PROFILE_ATTR_TYPES = [
+    "domain_platform",
+    "domain_franchise",
+    "genre",
+    "gameplay_style",
+    "game_mode",
 ]
 
 _DOMAIN_ALIASES: dict[str, dict[str, list[str]]] = {
@@ -582,6 +625,27 @@ def _keyword_list(value: Any, max_items: int = 10) -> list[str]:
         if len(cleaned) >= max_items:
             break
     return cleaned
+
+
+def _required_condition_keywords(conditions: dict[str, Any]) -> list[str]:
+    """Return distinctive dialogue terms that every search result must satisfy.
+
+    Platform, franchise, and product type have their own canonical graph gates.
+    This list protects the remaining open-vocabulary dialogue conditions (for
+    example, ``adventure`` or ``co-op``) from being outweighed by user history.
+    """
+    terms: list[str] = []
+    for key in ("product_keywords", "category_keywords", "attribute_keywords"):
+        for term in conditions.get(key, []) or []:
+            normalized = str(term).strip().lower().replace("_", " ")
+            if normalized and normalized not in _GENERIC_CONDITION_TERMS and normalized not in terms:
+                terms.append(normalized)
+    # The condition LLM preserves Japanese wording but also emits an English
+    # canonical form for catalog lookup.  Requiring both would turn a valid
+    # ``adventure`` match into a false zero-result when the graph stores
+    # ``冒険`` or ``adventure_game`` rather than the literal Japanese phrase.
+    latin_terms = [term for term in terms if not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", term)]
+    return (latin_terms or terms)[:12]
 
 
 def _domain_constraints_from_terms(terms: list[str]) -> dict[str, list[str]]:
@@ -789,6 +853,28 @@ def _format_user_ctx(ctx: dict) -> str:
         lines.append("Recent searches (newest first):")
         for q in ctx["recent_queries"]:
             lines.append(f'  "{q}"')
+    return "\n".join(lines)
+
+
+def _format_chat_user_profile(ctx: dict | None) -> str:
+    """Compact private profile for choosing a useful dialogue follow-up."""
+    if not ctx or not (ctx.get("rated") or ctx.get("viewed") or ctx.get("preferred_attrs")):
+        return ""
+    lines = [
+        "## Optional User Profile (secondary signal, never overrides current dialogue)",
+    ]
+    if ctx.get("rated"):
+        titles = ", ".join(str(p.get("title", "")) for p in ctx["rated"][:3])
+        if titles:
+            lines.append(f"Recent/high-rated examples: {titles}")
+    if ctx.get("preferred_attrs"):
+        attrs = ", ".join(
+            f"{a.get('attr_type')}: {a.get('value')}"
+            for a in ctx["preferred_attrs"][:5]
+            if a.get("attr_type") and a.get("value")
+        )
+        if attrs:
+            lines.append(f"Observed history signals: {attrs}")
     return "\n".join(lines)
 
 
@@ -1016,6 +1102,7 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
         product_id=str(record.get("product_id", "")),
         title=str(record.get("title", "")),
         display_title=title_ja if (lang == "ja" and title_ja) else None,
+        description=_strip_html(record.get("description")) or None,
         image_url=record.get("image_url") or None,
         price=_to_float(record.get("price")),
         avg_rating=_to_float(record.get("avg_rating")),
@@ -1023,6 +1110,7 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
         score=float(record.get("score") or 0.0),
         matched_attrs=matched_attrs,
         explanation=str(record.get("explanation", "")),
+        recommendation_source=str(record.get("recommendation_source") or "popular"),
     )
 
 
@@ -1036,7 +1124,9 @@ def _normalize_lang(lang: str | None) -> str:
     return "ja" if (lang or "").lower().startswith("ja") else "en"
 
 
-def _build_chat_system_prompt(genre: str, attr_vocab_text: str, target_language: str) -> str:
+def _build_chat_system_prompt(
+    genre: str, attr_vocab_text: str, target_language: str, user_profile: str = ""
+) -> str:
     """カテゴリ非依存のチャットプロンプト。
 
     どんな属性を聞くべきかはハードコードせず、グラフに実際にある attr_type 語彙
@@ -1051,6 +1141,8 @@ The catalog itself is in English; the user may write in Japanese or English. \
 Write everything you SHOW the user (question, options, preference_summary) in {target_language}.
 
 {vocab_section}
+
+{user_profile}
 
 Through conversation, ask about 2-4 clarifying preferences that would help narrow down a
 search in the catalog above. Infer the likely product category from the conversation and
@@ -1070,6 +1162,13 @@ DECISION RULE:
   all, OR {MAX_QUESTIONS} questions have already been asked.
 - Use the full conversation history (including your own prior questions) to avoid asking
   about something already answered or already skipped.
+- The current dialogue is the user's primary intent. A profile is only a secondary
+  signal for choosing a useful follow-up question; never replace, contradict, or
+  silently add a preference that the user did not state in this conversation.
+- When an optional profile is available, prefer a follow-up dimension that can
+  distinguish its observed platforms, franchises, or play styles. You may use
+  them as answer options, but always retain a neutral/no-preference option and
+  do not claim that the user has already chosen one.
 
 Always include "preference_summary": ALL of the user's confirmed preferences accumulated
 across the ENTIRE conversation so far (not just this latest turn) as short labels for
@@ -1119,6 +1218,8 @@ class Recommender:
         base_url = llm_cfg.get("base_url") or None
         self._llm, self._model = _build_llm_client(provider, model, base_url)
         self._max_attempts: int = int(t2c_cfg.get("max_cypher_attempts", 3))
+        self._chat_temperature = float(llm_cfg.get("chat_temperature", 0.35))
+        self._structured_temperature = float(llm_cfg.get("structured_temperature", 0.0))
 
         neo4j_uri = neo4j_cfg.get("uri") or os.environ.get("NEO4J_URI", "")
         neo4j_user = (
@@ -1162,6 +1263,15 @@ class Recommender:
             if user_id:
                 self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
             return search_id, intent, results, fallback
+
+        # A search request must never silently turn into a history-only or
+        # popularity-only list.  Returning no results is preferable to claiming
+        # that an unrelated game satisfies the user's stated dialogue needs.
+        if query.strip():
+            intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
+            if user_id:
+                self.log_search(user_id, search_id, query, cypher, explanation, [])
+            return search_id, intent, [], False
 
         dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
         system_prompt = _build_search_prompt(
@@ -1275,7 +1385,13 @@ class Recommender:
         normalized_lang = _normalize_lang(lang)
         target_language = "Japanese" if normalized_lang == "ja" else "English"
 
-        system = _build_chat_system_prompt(self._genre, self._get_attr_vocab_text(), target_language)
+        user_ctx = self._get_user_context(user_id) if user_id else None
+        system = _build_chat_system_prompt(
+            self._genre,
+            self._get_attr_vocab_text(),
+            target_language,
+            _format_chat_user_profile(user_ctx),
+        )
         llm_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         for m in messages:
             role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
@@ -1284,7 +1400,7 @@ class Recommender:
         try:
             response = self._llm.chat.completions.create(
                 model=self._model, messages=llm_messages,
-                response_format={"type": "json_object"}, temperature=0,
+                response_format={"type": "json_object"}, temperature=self._chat_temperature,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
         except Exception as exc:
@@ -1517,10 +1633,12 @@ LIMIT $limit
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product)"
                     "-[:HAS_ATTRIBUTE]->(a:Attribute) "
                     "WHERE r.rating >= 4 "
+                    "AND a.attr_type IN $profile_attr_types "
                     "RETURN a.attr_type AS attr_type, a.value AS value, "
                     "count(*) AS freq "
                     "ORDER BY freq DESC LIMIT 8",
                     uid=user_id,
+                    profile_attr_types=_CHAT_PROFILE_ATTR_TYPES,
                 )
                 preferred_attrs = [
                     {"attr_type": r["attr_type"], "value": r["value"], "freq": r["freq"]}
@@ -1578,7 +1696,7 @@ LIMIT $limit
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
-            temperature=0,
+            temperature=self._structured_temperature,
             max_tokens=1500,
         )
         return _parse_llm_json(resp.choices[0].message.content or "{}")
@@ -1679,6 +1797,7 @@ LIMIT $limit
             "platform_keywords": conditions["platform_keywords"],
             "franchise_keywords": conditions["franchise_keywords"],
             "product_type_keywords": conditions["product_type_keywords"],
+            "required_condition_keywords": _required_condition_keywords(conditions),
             "platform_attr_types": _PLATFORM_ATTR_TYPES,
             "franchise_attr_types": _FRANCHISE_ATTR_TYPES,
             "product_type_attr_types": _PRODUCT_TYPE_ATTR_TYPES,

@@ -48,6 +48,7 @@ class Recommendation(BaseModel):
     product_id: str
     title: str
     display_title: str | None = None  # titleの日本語訳（lang="ja"かつ翻訳済みの場合のみ）
+    description: str | None = None
     image_url: str | None = None
     price: float | None = None
     avg_rating: float | None = None
@@ -55,6 +56,7 @@ class Recommendation(BaseModel):
     score: float
     matched_attrs: list[MatchedAttr] = Field(default_factory=list)
     explanation: str
+    recommendation_source: str = "dialogue_only"
 
 
 class RecommendResponse(BaseModel):

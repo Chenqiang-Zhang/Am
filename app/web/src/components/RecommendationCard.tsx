@@ -68,6 +68,7 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
         </div>
 
         {devMode ? <DevExplanation rec={rec} /> : <UserExplanation rec={rec} />}
+        {rec.description && <p className={styles.description}>{rec.description}</p>}
         <ReviewList
           productId={rec.product_id}
           ratingNumber={rec.rating_count}
@@ -112,9 +113,17 @@ function ProductImage({ src, alt, onClick }: { src: string | null; alt: string; 
 function UserExplanation({ rec }: { rec: Recommendation }) {
   const { lang } = useI18n();
   const tags = friendlyTags(rec, lang);
+  const sourceLabel = rec.recommendation_source === "dialogue_personalized"
+    ? (lang === "ja" ? "対話条件 + あなたの履歴" : "Dialogue match + your history")
+    : rec.recommendation_source === "dialogue_only"
+      ? (lang === "ja" ? "対話条件に一致" : "Dialogue match")
+      : rec.recommendation_source === "behavior_only"
+        ? (lang === "ja" ? "あなたの行動履歴に基づく推薦" : "Based on your behavior history")
+      : (lang === "ja" ? "人気・評価ベース" : "Popular and highly rated");
 
   return (
     <div className={styles.user}>
+      <span className={styles.source}>{sourceLabel}</span>
       {tags.length > 0 && (
         <div className={styles.userTags}>
           {tags.map((t) => (
