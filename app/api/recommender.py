@@ -472,10 +472,10 @@ _PRODUCT_TYPE_ATTR_TYPES = [
 
 _DOMAIN_ALIASES: dict[str, dict[str, list[str]]] = {
     "platform": {
-        "nintendo_switch": ["nintendo switch", "switch", "nintendo_switch", "スイッチ"],
-        "ps5": ["playstation 5", "ps5", "ps 5"],
-        "ps4": ["playstation 4", "ps4", "ps 4"],
-        "ps3": ["playstation 3", "ps3", "ps 3"],
+        "nintendo_switch": ["nintendo switch", "switch", "nintendo_switch", "スイッチ", "ニンテンドースイッチ"],
+        "ps5": ["playstation 5", "ps5", "ps 5", "プレステ5", "プレイステーション5"],
+        "ps4": ["playstation 4", "ps4", "ps 4", "プレステ4", "プレイステーション4"],
+        "ps3": ["playstation 3", "ps3", "ps 3", "プレステ3", "プレイステーション3"],
         "playstation_vita": ["playstation vita", "ps vita", "vita"],
         "xbox_series_x": ["xbox series x", "xbox series s", "series x", "series s"],
         "xbox_one": ["xbox one"],
@@ -484,37 +484,46 @@ _DOMAIN_ALIASES: dict[str, dict[str, list[str]]] = {
         "wii": ["nintendo wii", "wii"],
         "nintendo_3ds": ["nintendo 3ds", "3ds"],
         "nintendo_ds": ["nintendo ds", "ds"],
-        "pc": ["pc", "windows", "steam", "computer"],
+        "pc": ["pc", "windows", "steam", "computer", "パソコン"],
     },
     "franchise": {
         "mario": ["mario", "super mario", "マリオ"],
         "zelda": ["zelda", "legend of zelda", "ゼルダ"],
-        "pokemon": ["pokemon", "pokémon", "ポケモン"],
+        "pokemon": ["pokemon", "pokémon", "ポケモン", "ポケットモンスター"],
         "sonic": ["sonic", "ソニック"],
-        "minecraft": ["minecraft", "マインクラフト"],
+        "minecraft": ["minecraft", "マインクラフト", "マイクラ"],
         "call_of_duty": ["call of duty", "cod"],
-        "final_fantasy": ["final fantasy", "ff"],
-        "spider_man": ["spider-man", "spider man", "spiderman"],
+        "final_fantasy": ["final fantasy", "ff", "ファイナルファンタジー"],
+        "spider_man": ["spider-man", "spider man", "spiderman", "スパイダーマン"],
         "grand_theft_auto": ["grand theft auto", "gta"],
         "red_dead": ["red dead redemption", "red dead"],
-        "assassins_creed": ["assassin's creed", "assassins creed"],
-        "lego": ["lego"],
-        "star_wars": ["star wars"],
+        "assassins_creed": ["assassin's creed", "assassins creed", "アサシンクリード"],
+        "lego": ["lego", "レゴ"],
+        "star_wars": ["star wars", "スターウォーズ"],
         "madden": ["madden"],
         "nba_2k": ["nba 2k", "2k"],
         "fifa": ["fifa"],
         "mlb_the_show": ["mlb the show", "baseball"],
-        "animal_crossing": ["animal crossing", "どうぶつの森"],
+        "animal_crossing": ["animal crossing", "どうぶつの森", "あつ森"],
         "kirby": ["kirby", "カービィ"],
         "splatoon": ["splatoon", "スプラトゥーン"],
     },
     "product_type": {
-        "video_game": ["game", "games", "video game", "software", "ゲーム"],
-        "controller": ["controller", "gamepad", "joy-con", "joy con", "dualshock", "dualsense"],
-        "headset": ["headset", "headphone", "gaming headset"],
-        "console": ["console", "system", "本体"],
-        "storage": ["memory card", "microsd", "micro sd", "sd card", "storage"],
-        "accessory": ["accessory", "case", "charger", "cable", "stand", "protector", "skin"],
+        "video_game": ["game", "games", "video game", "software", "ゲーム", "ソフト"],
+        "controller": [
+            "controller", "gamepad", "joy-con", "joy con", "dualshock", "dualsense",
+            "コントローラー", "コントローラ", "ゲームパッド", "プロコン",
+        ],
+        "headset": ["headset", "headphone", "gaming headset", "ヘッドセット", "ヘッドホン"],
+        "console": ["console", "system", "本体", "ゲーム機"],
+        "storage": [
+            "memory card", "microsd", "micro sd", "sd card", "storage",
+            "メモリーカード", "マイクロsd", "sdカード",
+        ],
+        "accessory": [
+            "accessory", "case", "charger", "cable", "stand", "protector", "skin",
+            "アクセサリ", "ケース", "充電器", "ケーブル", "保護フィルム",
+        ],
     },
 }
 
@@ -1066,6 +1075,31 @@ def _extract_title_terms(query: str) -> list[str]:
         seen.add(term)
         unique_terms.append(term)
     return unique_terms
+
+
+def _results_miss_soft_facets(signal_query: str, results: list["Recommendation"]) -> bool:
+    """元パス検索の結果が、クエリで要求されたジャンル等のソフトファセットを
+    全く反映していないかを判定する。
+
+    ジャンルは属性としては疎（本物のジャンル値は~150商品）なので、元パスの条件一致は
+    「platform/typeだけ合った汎用ゲーム」を返しがち。その場合は結果が空でなくても、
+    MENTIONS・説明文を証拠として使える決定的ファセット層に委ねたほうが適合する。
+    判定は上位結果のmatched_attrsに要求ファセットの語彙が1つも現れないかどうか。"""
+    signals = _extract_facet_signals(signal_query)
+    soft = {ft: sorted(vals) for ft, vals in signals.items() if ft in _SOFT_EVIDENCE_FACETS}
+    if not soft or not results:
+        return False
+    alias_sets = [_facet_alias_set(ft, vals) for ft, vals in soft.items()]
+    for rec_item in results[:5]:
+        for attr in rec_item.matched_attrs:
+            value_norm = _normalize_search_text(str(attr.value))
+            if not value_norm:
+                continue
+            for aliases in alias_sets:
+                if any(_text_has_token(value_norm, alias) for alias in aliases):
+                    return False
+    return True
+
 
 def _build_fix_prompt(lang: str) -> str:
     target = "Japanese" if lang == "ja" else "English"
@@ -2026,6 +2060,13 @@ class Recommender:
             signal_query, user_id if has_uid else None, limit, normalized_lang
         )
 
+        # ①の結果が「要求されたジャンル等を全く反映していない汎用結果」なら、
+        # MENTIONS/説明文を証拠に使えるファセット層で差し替えを試みる
+        if results and _results_miss_soft_facets(signal_query, results):
+            canonical_search = self._rank_local_candidates(signal_query, user_ctx, limit, normalized_lang)
+            if canonical_search:
+                cypher, explanation, results = canonical_search
+
         # ② 決定的ファセット層（①が空のときのみ）
         if not results:
             canonical_search = self._rank_local_candidates(signal_query, user_ctx, limit, normalized_lang)
@@ -2178,7 +2219,7 @@ class Recommender:
         try:
             response = self._llm.chat.completions.create(
                 model=self._model, messages=llm_messages,
-                response_format={"type": "text"}, temperature=0,
+                response_format={"type": "json_object"}, temperature=0,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
         except Exception as exc:
@@ -2614,7 +2655,7 @@ RETURN count(DISTINCT f) AS saved
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            response_format={"type": "text"},
+            response_format={"type": "json_object"},
             temperature=0,
             max_tokens=3000,
         )

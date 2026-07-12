@@ -38,7 +38,8 @@ export default function RecommendationCard({ rec, rank, devMode, userId, searchI
   // クリックで記録していたが、そのリンク自体が無効化されて死んだトリガーに
   // なっていたため、外部遷移なしでカード内クリックから記録する方式に変更。
   function markViewed() {
-    if (viewed) return;
+    // 一般（匿名）モードでは選択中テストユーザーへ履歴を混入させない
+    if (viewed || !userId) return;
     setViewed(true);
     logView({ user_id: userId, product_id: rec.product_id, search_id: searchId });
   }
