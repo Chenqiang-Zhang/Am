@@ -69,6 +69,57 @@
   letter-spacing: 0.05em;
 }
 
+/* 現在の推薦モードを、切替操作とは別に常時見える形で示す。 */
+.modeStatus {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-top: var(--space-2);
+  padding: 6px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.modeStatusPersonalized {
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+}
+
+.modeStatusGeneral {
+  border-color: color-mix(in srgb, var(--color-gold) 42%, var(--color-border));
+}
+
+.modeDot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-weak);
+}
+
+.modeStatusGeneral .modeDot {
+  background: var(--color-gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gold) 18%, transparent);
+}
+
+.modeCopy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 7px;
+  color: var(--color-text-muted);
+}
+
+.modeCopy strong {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
 .devToggle {
   flex: 0 0 auto;
   display: inline-flex;

@@ -78,6 +78,19 @@ export interface ReviewsResponse {
   reviews: ReviewItem[];
 }
 
+// ===== 商品説明文 =====
+export interface DescriptionResponse {
+  product_id: string;
+  description: string | null;
+  translated: boolean;
+}
+
+// ===== 推薦フィードバック =====
+export interface FeedbackResponse {
+  status: string;
+  product_id: string;
+}
+
 /** POST /chat のレスポンス */
 export interface ChatResponse {
   action: "ask" | "search";
@@ -87,6 +100,7 @@ export interface ChatResponse {
   intent: SearchIntent | null;
   recommendations: Recommendation[];
   search_id: string | null;
+  fallback: boolean;
 }
 
 // ===== 行動ログ =====
@@ -112,4 +126,5 @@ export interface SampleUsersResponse {
 export interface ClearHistoryResponse {
   viewed_deleted: number;
   searches_deleted: number;
+  feedback_deleted: number;
 }

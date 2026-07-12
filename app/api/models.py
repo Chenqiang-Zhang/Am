@@ -89,6 +89,7 @@ class ChatResponse(BaseModel):
     intent: SearchIntent | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
     search_id: str | None = None  # action="search"のとき、VIEWEDと紐付けるためのSearchLog ID
+    fallback: bool = False  # 条件検索が0件で人気商品へフォールバックしたか
 
 
 # ===== レビュー取得 =====
@@ -105,6 +106,26 @@ class ReviewsResponse(BaseModel):
     reviews: list[ReviewItem]
 
 
+# ===== 商品説明文取得 =====
+class DescriptionResponse(BaseModel):
+    product_id: str
+    description: str | None = None
+    translated: bool = False
+
+
+# ===== 推薦フィードバック =====
+class FeedbackRequest(BaseModel):
+    user_id: str | None = None
+    search_id: str | None = None
+    helpful: bool
+    lang: str = "ja"
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    product_id: str
+
+
 # ===== デモ用テストユーザー選択 =====
 class SampleUser(BaseModel):
     user_id: str
@@ -119,3 +140,4 @@ class SampleUsersResponse(BaseModel):
 class ClearHistoryResponse(BaseModel):
     viewed_deleted: int
     searches_deleted: int
+    feedback_deleted: int = 0

@@ -209,6 +209,61 @@
   animation: loadProgress var(--splash-duration) steps(14, end) both;
 }
 
+.menu {
+  display: flex;
+  flex-direction: column;
+  width: min(330px, 76vw);
+  padding: 14px 18px 12px;
+  border: 3px solid #a994dd;
+  outline: 2px solid #321561;
+  outline-offset: 4px;
+  background: rgb(15 8 42 / 0.94);
+  box-shadow: 7px 7px 0 rgb(0 0 0 / 0.34);
+  animation: menuAppear 0.35s steps(4, end) both;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: #eae4ff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  color: #fff;
+  background: rgb(124 92 255 / 0.42);
+  outline: none;
+}
+
+.cursor {
+  width: 12px;
+  color: #65f4ff;
+  font-size: 11px;
+  animation: cursorBlink 0.65s steps(2, end) infinite;
+}
+
+.menuHint {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgb(169 148 221 / 0.4);
+  color: #bfb3e8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
 @keyframes brandDrop {
   from { opacity: 0; transform: translateY(-18px); }
   to { opacity: 1; transform: translateY(0); }
@@ -257,6 +312,15 @@
   55% { transform: scaleX(0.62); }
   82% { transform: scaleX(0.84); }
   100% { transform: scaleX(1); }
+}
+
+@keyframes menuAppear {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cursorBlink {
+  50% { opacity: 0.2; }
 }
 
 @media (max-width: 520px) {

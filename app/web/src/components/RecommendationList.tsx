@@ -6,11 +6,12 @@ import styles from "./RecommendationList.module.css";
 interface Props {
   items: Recommendation[];
   devMode: boolean;
-  userId: string;
+  userId: string | null;
   searchId: string | null;
+  fallback: boolean;
 }
 
-export default function RecommendationList({ items, devMode, userId, searchId }: Props) {
+export default function RecommendationList({ items, devMode, userId, searchId, fallback }: Props) {
   const { t, lang } = useI18n();
 
   if (items.length === 0) {
@@ -35,6 +36,7 @@ export default function RecommendationList({ items, devMode, userId, searchId }:
       <div className={styles.topRow}>
         <h2 className={styles.heading}>{heading}</h2>
       </div>
+      {fallback && <p className={styles.fallbackNotice}>{t.fallbackNotice}</p>}
       <div className={styles.list}>
         {items.map((rec, i) => (
           <RecommendationCard

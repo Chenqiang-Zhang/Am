@@ -19,12 +19,17 @@ interface Result {
   preference_summary: string[];
   intent: SearchIntent | null;
   searchId: string | null;
+  fallback: boolean;
 }
 
 type Status = "idle" | "loading" | "error";
 
 // 対話型推薦ページ。会話で希望を聞き取り → 十分になったら推薦する。
-export default function ChatPage() {
+interface Props {
+  heroEntrance?: boolean;
+}
+
+export default function ChatPage({ heroEntrance = false }: Props) {
   const { t, lang, setLang } = useI18n();
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [options, setOptions] = useState<string[]>([]);
@@ -64,6 +69,7 @@ export default function ChatPage() {
           preference_summary: [],
           intent: r.intent,
           searchId: r.search_id,
+          fallback: r.fallback,
         });
       } catch (e) {
         if (cancelled) return;
@@ -119,6 +125,7 @@ export default function ChatPage() {
           preference_summary: r.preference_summary,
           intent: r.intent,
           searchId: r.search_id,
+          fallback: r.fallback,
         });
       }
       setStatus("idle");
@@ -141,7 +148,8 @@ export default function ChatPage() {
   // RATED（データセット由来の評価履歴）以外——VIEWED行動ログとSearchLog検索履歴——を
   // 選択中のユーザーについて削除する。個人化の根拠であるRATEDは削除されない。
   async function handleClearHistory() {
-    if (clearingHistory || !window.confirm(t.clearHistoryConfirm)) return;
+    // 一般モードは匿名操作であり、選択中ユーザーの履歴を操作してはならない。
+    if (generalMode || clearingHistory || !window.confirm(t.clearHistoryConfirm)) return;
     setClearingHistory(true);
     try {
       await clearHistory(userId);
@@ -211,7 +219,7 @@ export default function ChatPage() {
             type="button"
             className={styles.devToggle}
             onClick={handleClearHistory}
-            disabled={clearingHistory}
+            disabled={clearingHistory || generalMode}
           >
             {t.clearHistory}
           </button>
@@ -219,11 +227,21 @@ export default function ChatPage() {
         <div className={styles.headerText}>
           <h1 className={styles.title}>{t.appTitle}</h1>
           <p className={styles.subtitle}>{t.appSubtitle}</p>
+          <div
+            className={`${styles.modeStatus} ${generalMode ? styles.modeStatusGeneral : styles.modeStatusPersonalized}`}
+            role="status"
+          >
+            <span className={styles.modeDot} aria-hidden="true" />
+            <span className={styles.modeCopy}>
+              <strong>{generalMode ? t.generalMode : t.personalizedMode}</strong>
+              <span>{generalMode ? t.generalModeDetail : t.personalizedModeDetail}</span>
+            </span>
+          </div>
         </div>
       </header>
 
       <section className={styles.conversation}>
-        {conversation.length === 0 && <HeroIllustration />}
+        {conversation.length === 0 && <HeroIllustration entering={heroEntrance} />}
         <ChatBubble role="assistant" content={t.greeting} />
         {conversation.map((m, i) => (
           <ChatBubble key={i} role={m.role} content={m.content} />
@@ -270,8 +288,9 @@ export default function ChatPage() {
           <RecommendationList
             items={result.recommendations}
             devMode={devMode}
-            userId={userId}
+            userId={effectiveUserId}
             searchId={result.searchId}
+            fallback={result.fallback}
           />
           {conversation.length > 0 && (
             <div className={styles.restartBanner}>

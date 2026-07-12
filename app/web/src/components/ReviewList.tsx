@@ -8,7 +8,7 @@ import styles from "./ReviewList.module.css";
 interface Props {
   productId: string;
   ratingNumber?: number | null;
-  userId: string;
+  userId: string | null;
   searchId: string | null;
 }
 
@@ -23,8 +23,11 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
   async function load() {
     if (status !== "idle") return;
     setStatus("loading");
-    // レビュー詳細を見る = VIEWED（商品への強い関心のシグナル）として記録する
-    logView({ user_id: userId, product_id: productId, search_id: searchId });
+    // 個人化モードだけ、レビュー詳細を見る = VIEWED として記録する。
+    // 一般モードではuserIdがnullなので、選択中のテストユーザーへ履歴を混入させない。
+    if (userId) {
+      logView({ user_id: userId, product_id: productId, search_id: searchId });
+    }
     try {
       const data = await fetchReviews(productId, 5, lang);
       setReviews(data.reviews);
@@ -36,8 +39,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
 
   if (status === "idle") {
     return (
-      <button type="button" className={styles.trigger} onClick={load}>
-        {lang === "ja" ? "レビューを見る" : "Show reviews"} ▼
+      <button type="button" className={styles.trigger} onClick={load} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">★</span>
+        <span>{lang === "ja" ? "レビューを見る" : "Show reviews"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -52,8 +57,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
 
   if (!open) {
     return (
-      <button type="button" className={styles.trigger} onClick={() => setOpen(true)}>
-        {lang === "ja" ? "レビューを見る" : "Show reviews"} ▼
+      <button type="button" className={styles.trigger} onClick={() => setOpen(true)} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">★</span>
+        <span>{lang === "ja" ? "レビューを見る" : "Show reviews"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -63,7 +70,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
   return (
     <div className={styles.block}>
       <div className={styles.header}>
-        <span className={styles.heading}>{lang === "ja" ? "レビュー" : "Reviews"}</span>
+        <span className={styles.heading}>
+          <span className={styles.panelIcon} aria-hidden="true">★</span>
+          {lang === "ja" ? "レビュー" : "Reviews"}
+        </span>
         <span className={styles.count}>
           {reviews.length > 0
             ? (lang === "ja" ? `${reviews.length}件表示` : `${reviews.length} shown`)
@@ -74,8 +84,8 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
             </span>
           )}
         </span>
-        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)}>
-          {lang === "ja" ? "閉じる" : "Close"} ▲
+        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)} aria-expanded={true}>
+          {lang === "ja" ? "閉じる" : "Close"} <span aria-hidden="true">×</span>
         </button>
       </div>
       {reviews.length === 0 ? (
@@ -88,7 +98,11 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
         </p>
       ) : (
         <>
-          <ul className={styles.list}>
+          <ul
+            className={styles.list}
+            tabIndex={0}
+            aria-label={lang === "ja" ? "レビュー一覧" : "Review list"}
+          >
             {reviews.map((r, i) => (
               <ReviewRow key={i} review={r} lang={lang} />
             ))}
