@@ -286,7 +286,7 @@ WHERE already_seen = 0
   AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
   AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
   AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
-  AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
+  AND ($attribute_required = false OR size(query_attrs) > 0)
   AND behavior_hits > 0
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs,
@@ -425,7 +425,7 @@ WHERE condition_hits > 0
   AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
   AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
   AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
-  AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
+  AND ($attribute_required = false OR size(query_attrs) > 0)
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs, product_type_attrs,
      (
@@ -471,6 +471,13 @@ _CONDITION_STOPWORDS = {
     "a", "an", "and", "are", "for", "from", "game", "games", "good", "high",
     "i", "in", "is", "me", "of", "or", "product", "recommend", "reviews",
     "the", "to", "want", "with",
+}
+
+# These are answers to a clarification question, not catalog constraints.  They
+# must not be sent to the condition extractor or become product/attribute terms.
+_NO_PREFERENCE_RESPONSES = {
+    "こだわりなし", "特になし", "おまかせ", "どれでも", "なし", "スキップ",
+    "no preference", "no preferences", "skip", "anything", "any",
 }
 
 # These words identify the catalog rather than a user's distinctive need.  They
@@ -618,6 +625,11 @@ Guidelines:
   "headset", "console", "storage", "accessory".
 - Translate user intent into English keywords when that is likely to match the
   catalog, but keep useful Japanese terms too when the user wrote Japanese.
+- Never include a skip/no-preference answer such as "こだわりなし", "特になし",
+  or "no preference" in any keyword list.
+- Put alternative descriptions of the same desired property (for example,
+  "horror" and "scary") in attribute_keywords as recall alternatives, not as
+  independent mandatory filters.
 - min_rating is null unless the user explicitly asks for high-rated/well-reviewed
   products; then use 4.0.
 - Return JSON only. User-facing wording is not needed, but if you include any text,
@@ -653,6 +665,13 @@ def _keyword_list(value: Any, max_items: int = 10) -> list[str]:
         if len(cleaned) >= max_items:
             break
     return cleaned
+
+
+def _is_no_preference_message(content: str) -> bool:
+    """Return whether a chat turn explicitly declines the current preference."""
+    normalized = re.sub(r"\s+", " ", str(content or "").strip().lower())
+    normalized = normalized.strip(" 。！!？?.,")
+    return normalized in _NO_PREFERENCE_RESPONSES
 
 
 def _required_condition_keywords(conditions: dict[str, Any]) -> list[str]:
@@ -732,6 +751,8 @@ def _fallback_condition_terms(query: str) -> dict[str, Any]:
         attr_terms.extend(["family", "kids", "party", "multiplayer", "local_multiplayer"])
     if "baseball" in joined or "野球" in joined:
         attr_terms.extend(["baseball", "sports"])
+    if any(x in joined for x in ("horror", "scary", "怖い", "恐怖", "ホラー")):
+        attr_terms.extend(["horror", "survival horror", "scary"])
     if any(x in joined for x in ("good review", "high rated", "人気", "高評価", "レビュー")):
         min_rating: float | None = 4.0
     else:
@@ -1558,7 +1579,11 @@ class Recommender:
 
         # ── 結果を返す：search は構造化条件 + 元パス検索に委譲 ───────────────
         if should_search:
-            query_text = " ".join(m.get("content", "") for m in all_user_msgs)
+            query_text = " ".join(
+                str(m.get("content", ""))
+                for m in all_user_msgs
+                if not _is_no_preference_message(str(m.get("content", "")))
+            )
             search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
             return {
                 "action": "search",
@@ -1987,6 +2012,8 @@ LIMIT $limit
             "platform_keywords": conditions["platform_keywords"],
             "franchise_keywords": conditions["franchise_keywords"],
             "product_type_keywords": conditions["product_type_keywords"],
+            # Retained for the diagnostic hit collection in the fixed Cypher.
+            # It no longer acts as an all-terms hard filter.
             "required_condition_keywords": _required_condition_keywords(conditions),
             "platform_attr_types": _PLATFORM_ATTR_TYPES,
             "franchise_attr_types": _FRANCHISE_ATTR_TYPES,
@@ -1994,6 +2021,7 @@ LIMIT $limit
             "platform_required": bool(conditions["platform_keywords"]),
             "franchise_required": bool(conditions["franchise_keywords"]),
             "product_type_required": bool(conditions["product_type_keywords"]),
+            "attribute_required": bool(conditions["attribute_keywords"]),
             "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
             "min_rating": float(conditions.get("min_rating") or 0.0),
             "has_query": has_query,

@@ -1,5 +1,12 @@
 from app.api.models import ReviewItem, SearchIntent
-from app.api.recommender import _domain_constraints_from_terms, _record_to_recommendation
+from app.api.recommender import (
+    _METAPATH_CONDITION_CYPHER,
+    _METAPATH_USER_CYPHER,
+    _fallback_condition_terms,
+    _domain_constraints_from_terms,
+    _is_no_preference_message,
+    _record_to_recommendation,
+)
 
 
 def test_recommendation_uses_requested_japanese_fields_and_reason_metrics() -> None:
@@ -55,3 +62,25 @@ def test_api_models_preserve_diagnostics_and_review_language_state() -> None:
     assert intent.condition_source == "heuristic_fallback"
     assert review.translated is False
     assert review.display_language == "en"
+
+
+def test_no_preference_reply_is_not_a_catalog_constraint() -> None:
+    assert _is_no_preference_message("こだわりなし")
+    assert _is_no_preference_message(" No preference! ")
+    assert not _is_no_preference_message("怖いゲームが欲しい")
+
+
+def test_horror_fallback_expands_japanese_intent_to_catalog_terms() -> None:
+    conditions = _fallback_condition_terms("怖いゲームが欲しい PC")
+
+    assert "horror" in conditions["attribute_keywords"]
+    assert "scary" in conditions["attribute_keywords"]
+
+
+def test_attribute_synonyms_are_or_recall_conditions_not_all_required() -> None:
+    expected_gate = "AND ($attribute_required = false OR size(query_attrs) > 0)"
+
+    assert expected_gate in _METAPATH_CONDITION_CYPHER
+    assert expected_gate in _METAPATH_USER_CYPHER
+    assert "all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)" not in _METAPATH_CONDITION_CYPHER
+    assert "all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)" not in _METAPATH_USER_CYPHER
