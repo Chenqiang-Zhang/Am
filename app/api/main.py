@@ -112,8 +112,10 @@ async def clear_history(user_id: str) -> ClearHistoryResponse:
 async def chat(req: ChatRequest) -> ChatResponse:
     if _recommender is None:
         raise HTTPException(status_code=503, detail="Recommender not initialized")
+    # 対話型推薦は会話条件だけを使う。リクエストにuser_idが含まれていても、
+    # 個人化プロフィールや評価・閲覧履歴を検索へ混ぜないよう常にNoneを渡す。
     result = await asyncio.to_thread(
-        _recommender.chat, [m.model_dump() for m in req.messages], req.limit, req.lang, req.user_id
+        _recommender.chat, [m.model_dump() for m in req.messages], req.limit, req.lang, None
     )
     return ChatResponse(**result)
 

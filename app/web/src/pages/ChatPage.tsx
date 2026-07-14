@@ -51,7 +51,8 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
   // 一般モード: 選択中のテストユーザーの履歴を一時的に無視し、非個人化（人気商品
   // フォールバック相当）の結果と比較できるようにする。ユーザー選択自体は変えない。
   const [generalMode, setGeneralMode] = useState(false);
-  const effectiveUserId = generalMode ? null : userId;
+  // 選択ユーザーは個人化推薦専用。対話型推薦には渡さず、会話条件だけで検索する。
+  const personalizedUserId = generalMode ? null : userId;
   // reset()を「会話が既に空(0件)のとき」に押しても再取得が走るよう、conversation.lengthの
   // 変化だけに頼らず明示的に発火させるためのカウンタ。
   const [homeReloadKey, setHomeReloadKey] = useState(0);
@@ -67,7 +68,7 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
       setHomeError(null);
       setHomeResult(null);
       try {
-        const r = await recommendHome({ user_id: effectiveUserId, limit: LIMIT, lang });
+        const r = await recommendHome({ user_id: personalizedUserId, limit: LIMIT, lang });
         if (cancelled) return;
         setHomeResult({
           recommendations: r.recommendations,
@@ -86,13 +87,13 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
     return () => {
       cancelled = true;
     };
-  }, [selectedTool, effectiveUserId, lang, homeReloadKey]);
+  }, [selectedTool, personalizedUserId, lang, homeReloadKey]);
 
   // タブを閉じる/バックグラウンドに回した時に、次回開いた時のためのホーム推薦を
   // バックエンド側で先読みキャッシュしておく（履歴が無い場合は高速パスで十分なので
   // バックエンド側で無視される）。
   useEffect(() => {
-    const uid = effectiveUserId;
+    const uid = personalizedUserId;
     function warm() {
       if (selectedTool !== "personalized") return;
       warmHomeCache({ user_id: uid, limit: LIMIT, lang });
@@ -106,7 +107,7 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", warm);
     };
-  }, [selectedTool, effectiveUserId, lang]);
+  }, [selectedTool, personalizedUserId, lang]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -121,7 +122,8 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
     setStatus("loading");
 
     try {
-      const r = await chat(next, LIMIT, lang, effectiveUserId);
+      // 対話型推薦は選択ユーザーの評価・閲覧履歴を使わない。
+      const r = await chat(next, LIMIT, lang, null);
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
@@ -320,7 +322,7 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
               <RecommendationList
                 items={homeResult.recommendations}
                 devMode={devMode}
-                userId={effectiveUserId}
+                userId={personalizedUserId}
                 searchId={homeResult.searchId}
                 fallback={homeResult.fallback}
               />
@@ -373,7 +375,7 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
               <RecommendationList
                 items={dialogueResult.recommendations}
                 devMode={devMode}
-                userId={effectiveUserId}
+                userId={null}
                 searchId={dialogueResult.searchId}
                 fallback={dialogueResult.fallback}
               />

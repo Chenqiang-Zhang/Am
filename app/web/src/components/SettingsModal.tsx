@@ -56,8 +56,8 @@ export default function SettingsModal({
             <h3>{lang === "ja" ? "推薦ユーザー" : "Recommendation user"}</h3>
             <p>
               {lang === "ja"
-                ? "個人化に利用する評価・閲覧履歴のユーザーを選択します。"
-                : "Choose whose ratings and viewing history are used for personalization."}
+                ? "個人化推薦に利用する評価・閲覧履歴のユーザーを選択します。対話型推薦には使用されません。"
+                : "Choose whose ratings and viewing history are used for personalized recommendations. This does not affect conversational recommendations."}
             </p>
           </div>
           <TestUserSelect userId={userId} onChange={onUserChange} />
