@@ -11,6 +11,17 @@ export type Lang = "ja" | "en";
 interface Dict {
   appTitle: string;
   appSubtitle: string;
+  personalizedTool: string;
+  personalizedToolDescription: string;
+  personalizedTitle: string;
+  personalizedSubtitle: string;
+  dialogueTool: string;
+  dialogueToolDescription: string;
+  dialogueTitle: string;
+  dialogueSubtitle: string;
+  toolSwitcherLabel: string;
+  personalizedLead: string;
+  refreshRecommendations: string;
   greeting: string;
   devView: string;
   generalMode: string;
@@ -49,6 +60,17 @@ interface Dict {
 const ja: Dict = {
   appTitle: "ゲームコンシェルジュ",
   appSubtitle: "会話しながら、あなたにぴったりのゲームをご提案します。",
+  personalizedTool: "個人化推薦",
+  personalizedToolDescription: "履歴からすぐに提案",
+  personalizedTitle: "あなた向けゲーム推薦",
+  personalizedSubtitle: "評価・閲覧履歴をもとに、あなたに合うゲームを提案します。",
+  dialogueTool: "対話型推薦",
+  dialogueToolDescription: "会話で希望を深掘り",
+  dialogueTitle: "対話型ゲームコンシェルジュ",
+  dialogueSubtitle: "会話しながら、今の希望に合うゲームを一緒に探します。",
+  toolSwitcherLabel: "推薦ツールを切り替える",
+  personalizedLead: "選択中のユーザーの評価・閲覧履歴を分析したおすすめです。",
+  refreshRecommendations: "おすすめを更新",
   greeting: "こんにちは！どんなゲームをお探しですか？",
   devView: "開発者ビュー",
   generalMode: "一般モード（非個人化）",
@@ -87,6 +109,17 @@ const ja: Dict = {
 const en: Dict = {
   appTitle: "Game Concierge",
   appSubtitle: "We'll suggest games for you through a short chat.",
+  personalizedTool: "Personalized",
+  personalizedToolDescription: "Instant picks from history",
+  personalizedTitle: "Games selected for you",
+  personalizedSubtitle: "Recommendations based on your ratings and viewing history.",
+  dialogueTool: "Conversational",
+  dialogueToolDescription: "Explore through a chat",
+  dialogueTitle: "Conversational Game Concierge",
+  dialogueSubtitle: "Tell us what you want and explore matching games together.",
+  toolSwitcherLabel: "Switch recommendation tool",
+  personalizedLead: "These recommendations use the selected user's ratings and viewing history.",
+  refreshRecommendations: "Refresh recommendations",
   greeting: "Hi! What kind of game are you looking for?",
   devView: "Developer view",
   generalMode: "General mode (no personalization)",

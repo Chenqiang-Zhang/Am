@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { sampleUsers } from "../api/client";
 import type { SampleUser } from "../types/recommend";
+import { useI18n } from "../i18n";
 import styles from "./TestUserSelect.module.css";
 
 // デモ用: テスト用ユーザーID を選択する。個人化(過去の評価・閲覧履歴)の効果を確認するため。
@@ -34,6 +35,7 @@ export function useStoredTestUserId(): [string, (id: string) => void] {
 }
 
 export default function TestUserSelect({ userId, onChange }: Props) {
+  const { lang } = useI18n();
   const [realUsers, setRealUsers] = useState<SampleUser[]>([]);
 
   useEffect(() => {
@@ -45,12 +47,16 @@ export default function TestUserSelect({ userId, onChange }: Props) {
       className={styles.select}
       value={userId}
       onChange={(e) => onChange(e.target.value)}
-      aria-label="テストユーザー"
+      aria-label={lang === "ja" ? "推薦ユーザー" : "Recommendation user"}
     >
-      <option value={ORIGINAL_TEST_USER_ID}>オリジナルテストユーザー（履歴なし）</option>
+      <option value={ORIGINAL_TEST_USER_ID}>
+        {lang === "ja" ? "オリジナルテストユーザー（履歴なし）" : "Original test user (no history)"}
+      </option>
       {realUsers.map((u) => (
         <option key={u.user_id} value={u.user_id}>
-          実ユーザー: {u.user_id}（評価{u.rated_count}件）
+          {lang === "ja"
+            ? `実ユーザー: ${u.user_id}（評価${u.rated_count}件）`
+            : `Real user: ${u.user_id} (${u.rated_count} ratings)`}
         </option>
       ))}
     </select>

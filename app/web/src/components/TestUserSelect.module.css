@@ -1,14 +1,19 @@
 .select {
-  flex: 0 0 auto;
-  padding: 6px 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
+  border-radius: var(--radius);
+  background: var(--color-bg);
   color: var(--color-text);
-  font-size: 13px;
-  max-width: 220px;
+  font-size: 12px;
 }
 
 .select:hover {
   border-color: var(--color-primary);
+}
+
+.select:focus {
+  border-color: var(--color-primary);
+  outline: 3px solid var(--color-primary-weak);
 }

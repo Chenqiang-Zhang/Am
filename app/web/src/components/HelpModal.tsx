@@ -8,55 +8,59 @@ interface Props {
 
 const STEPS_JA = [
   {
-    icon: "💬",
-    title: "欲しいものを話しかける",
-    body: "「協力プレイできるアクションゲームが欲しい」「プレゼントに使えるゲーム」など、自然な言葉で入力してください。",
-  },
-  {
-    icon: "🤖",
-    title: "AIが好みを深掘りする",
-    body: "ジャンル・プレイ人数・価格帯などをさらに質問します。ボタンから選ぶか、テキストで答えてください。",
+    icon: "🎮",
+    title: "2つの推薦ツールから選ぶ",
+    body: "起動画面または画面上部の切り替えボタンから、「個人化推薦」と「対話型推薦」を選べます。",
   },
   {
     icon: "✨",
-    title: "おすすめ商品が表示される",
-    body: "条件が揃うと推薦リストが表示されます。「レビューを見る」で実際の口コミを確認できます。",
+    title: "個人化推薦：履歴からすぐに探す",
+    body: "選択中のユーザーの評価・閲覧履歴をもとに、ゲームを自動で提案します。会話を始める必要はありません。",
+  },
+  {
+    icon: "💬",
+    title: "対話型推薦：希望を話して探す",
+    body: "欲しいゲームを自然な言葉で入力してください。AIの質問に答えると、会話から得た条件で推薦します。",
   },
   {
     icon: "🔄",
-    title: "リセットしてやり直す",
-    body: "違う商品を探したいときは入力欄横の「リセット」ボタンで会話をクリアできます。",
+    title: "いつでも切り替える",
+    body: "画面上部のボタンで2つのツールを行き来できます。対話内容は切り替えても保持され、「最初から」でリセットできます。",
   },
 ];
 
 const STEPS_EN = [
   {
-    icon: "💬",
-    title: "Describe what you want",
-    body: 'Type in natural language — e.g. "a co-op action game" or "a gift-worthy game".',
-  },
-  {
-    icon: "🤖",
-    title: "AI asks follow-up questions",
-    body: "It may ask about genre, player count, or price range. Pick from the buttons or type your own answer.",
+    icon: "🎮",
+    title: "Choose one of two tools",
+    body: "Pick Personalized or Conversational recommendations on the title screen or with the switcher at the top.",
   },
   {
     icon: "✨",
-    title: "Recommendations appear",
-    body: 'Once it has enough info, a product list is shown. Use "Show reviews" for actual customer reviews.',
+    title: "Personalized: get instant picks",
+    body: "Games are suggested automatically from the selected user's ratings and viewing history. No conversation is required.",
+  },
+  {
+    icon: "💬",
+    title: "Conversational: describe what you want",
+    body: "Type your request naturally and answer the AI's follow-up questions. Recommendations use the preferences gathered in the chat.",
   },
   {
     icon: "🔄",
-    title: "Reset to start over",
-    body: 'Hit the "Reset" button next to the input to clear the conversation and search for something else.',
+    title: "Switch at any time",
+    body: 'Move between tools with the buttons at the top. Your chat is kept until you choose "Start over".',
   },
 ];
 
 const TIPS_JA = [
+  "ユーザー選択と開発者向け機能は、右上の歯車から変更できます",
+  "商品カードの「レビューを見る」で、データセットに含まれる口コミを確認できます",
   "レビューはデータセットに取り込んだ件数のみ表示されます",
 ];
 
 const TIPS_EN = [
+  "Use the gear in the top-right to change the demo user or open developer options",
+  "Use Show reviews on a product card to inspect reviews in the dataset",
   "Reviews shown are limited to what was imported into our dataset",
 ];
 

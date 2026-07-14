@@ -212,7 +212,8 @@
 .menu {
   display: flex;
   flex-direction: column;
-  width: min(330px, 76vw);
+  gap: 4px;
+  width: min(440px, 84vw);
   padding: 14px 18px 12px;
   border: 3px solid #a994dd;
   outline: 2px solid #321561;
@@ -222,12 +223,22 @@
   animation: menuAppear 0.35s steps(4, end) both;
 }
 
+.menuTitle {
+  margin: 0 0 4px;
+  color: #bfb3e8;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+}
+
 .menuItem {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 9px 10px;
   border: none;
   background: transparent;
   color: #eae4ff;
@@ -250,7 +261,32 @@
   width: 12px;
   color: #65f4ff;
   font-size: 11px;
+  opacity: 0.2;
   animation: cursorBlink 0.65s steps(2, end) infinite;
+}
+
+.menuItem:hover .cursor,
+.menuItem:focus-visible .cursor {
+  opacity: 1;
+}
+
+.menuCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menuCopy strong {
+  color: inherit;
+  font-size: 14px;
+}
+
+.menuCopy small {
+  color: #bfb3e8;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .menuHint {

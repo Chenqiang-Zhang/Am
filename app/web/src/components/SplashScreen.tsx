@@ -1,10 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import pixelRunner from "../assets/pixel-runner-v2.png";
 import styles from "./SplashScreen.module.css";
+import type { RecommendationTool } from "../types/tool";
 
 interface Props {
   onDone: () => void;
-  onStart?: () => void;
+  onStart?: (tool: RecommendationTool) => void;
   minDurationMs?: number;
 }
 
@@ -26,24 +27,12 @@ export default function SplashScreen({ onDone, onStart, minDurationMs = 3200 }: 
     return () => clearTimeout(doneTimer);
   }, [fadingOut, onDone]);
 
-  function startGame() {
+  function startTool(tool: RecommendationTool) {
     if (!fadingOut) {
-      onStart?.();
+      onStart?.(tool);
       setFadingOut(true);
     }
   }
-
-  useEffect(() => {
-    if (!showMenu || fadingOut) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        startGame();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [showMenu, fadingOut]);
 
   const durationStyle = {
     "--splash-duration": `${minDurationMs}ms`,
@@ -86,16 +75,31 @@ export default function SplashScreen({ onDone, onStart, minDurationMs = 3200 }: 
         </div>
       ) : (
         <div className={styles.menu}>
+          <p className={styles.menuTitle}>推薦方法を選ぶ</p>
           <button
             type="button"
             className={styles.menuItem}
-            onClick={startGame}
+            onClick={() => startTool("personalized")}
             autoFocus
           >
             <span className={styles.cursor} aria-hidden="true">▶</span>
-            はじめる
+            <span className={styles.menuCopy}>
+              <strong>個人化推薦</strong>
+              <small>評価・閲覧履歴から、すぐにおすすめ</small>
+            </span>
           </button>
-          <p className={styles.menuHint}>クリック または Enter で すすむ</p>
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => startTool("dialogue")}
+          >
+            <span className={styles.cursor} aria-hidden="true">▶</span>
+            <span className={styles.menuCopy}>
+              <strong>対話型推薦</strong>
+              <small>会話で希望を伝えて、おすすめを探す</small>
+            </span>
+          </button>
+          <p className={styles.menuHint}>使いたいツールを選択してください</p>
         </div>
       )}
     </div>
