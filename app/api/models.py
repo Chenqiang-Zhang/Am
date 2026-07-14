@@ -43,6 +43,8 @@ class SearchIntent(BaseModel):
     retrieval_status: Literal["matched", "matched_after_relaxation", "no_match", "fallback_popular"] = "matched"
     no_result_reason: str | None = None
     candidate_count: int = 0
+    hard_conditions: list[str] = Field(default_factory=list)
+    soft_conditions: list[str] = Field(default_factory=list)
 
 
 class MatchedAttr(BaseModel):
@@ -107,6 +109,7 @@ class ChatResponse(BaseModel):
     recommendations: list[Recommendation] = Field(default_factory=list)
     search_id: str | None = None  # action="search"のとき、VIEWEDと紐付けるためのSearchLog ID
     fallback: bool = False  # 条件検索が0件で人気商品へフォールバックしたか
+    provisional: bool = False  # action="ask"中に表示する暫定推薦か
 
 
 # ===== レビュー取得 =====

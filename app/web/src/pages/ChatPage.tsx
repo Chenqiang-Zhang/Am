@@ -22,6 +22,7 @@ interface Result {
   intent: SearchIntent | null;
   searchId: string | null;
   fallback: boolean;
+  provisional: boolean;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -76,6 +77,7 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
           intent: r.intent,
           searchId: r.search_id,
           fallback: r.fallback,
+          provisional: false,
         });
       } catch (e) {
         if (cancelled) return;
@@ -117,7 +119,6 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
     setConversation(next);
     setInput("");
     setOptions([]);
-    setDialogueResult(null);
     setDialogueError(null);
     setStatus("loading");
 
@@ -127,15 +128,15 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
-      } else {
-        setDialogueResult({
-          recommendations: r.recommendations,
-          preference_summary: r.preference_summary,
-          intent: r.intent,
-          searchId: r.search_id,
-          fallback: r.fallback,
-        });
       }
+      setDialogueResult({
+        recommendations: r.recommendations,
+        preference_summary: r.preference_summary,
+        intent: r.intent,
+        searchId: r.search_id,
+        fallback: r.fallback,
+        provisional: r.provisional ?? r.action === "ask",
+      });
       setStatus("idle");
     } catch (e) {
       setDialogueError(e instanceof ApiError ? e.message : "Error");
@@ -378,8 +379,9 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
                 userId={null}
                 searchId={dialogueResult.searchId}
                 fallback={dialogueResult.fallback}
+                provisional={dialogueResult.provisional}
               />
-              {conversation.length > 0 && (
+              {!dialogueResult.provisional && conversation.length > 0 && (
                 <div className={styles.restartBanner}>
                   <span className={styles.restartText}>
                     {lang === "ja" ? "他の商品を探しますか？" : "Looking for something else?"}

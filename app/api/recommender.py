@@ -283,9 +283,15 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      (size(rated_attrs) + size(viewed_attrs) + cf_peer_count + transition_peer_count) AS behavior_hits
 WHERE already_seen = 0
   AND ($has_query = false OR condition_hits > 0)
-  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
-  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
-  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+  AND ($platform_required = false
+       OR ($dialogue_soft_preferences = true AND size(platform_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(platform_text_hits) + size(platform_attrs) > 0))
+  AND ($franchise_required = false
+       OR ($dialogue_soft_preferences = true AND size(franchise_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(franchise_text_hits) + size(franchise_attrs) > 0))
+  AND ($product_type_required = false
+       OR ($dialogue_soft_preferences = true AND size(product_type_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(product_type_text_hits) + size(product_type_attrs) > 0))
   AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
   AND behavior_hits > 0
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
@@ -300,7 +306,8 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
        + log(toFloat(cf_peer_count) + 1) * 1.2
        + log(toFloat(cf_seed_count) + 1) * 0.5
        +
-       toFloat(size(query_attrs)) * 2.0
+       toFloat(size(query_attrs))
+         * CASE WHEN $dialogue_soft_preferences THEN 20.0 ELSE 2.0 END
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
        + toFloat(size(franchise_text_hits)) * 14.0
@@ -422,14 +429,21 @@ WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
       + size(platform_text_hits) + size(franchise_text_hits) + size(product_type_text_hits)
       + size(platform_attrs) + size(franchise_attrs) + size(product_type_attrs)) AS condition_hits
 WHERE condition_hits > 0
-  AND ($platform_required = false OR size(platform_text_hits) + size(platform_attrs) > 0)
-  AND ($franchise_required = false OR size(franchise_text_hits) + size(franchise_attrs) > 0)
-  AND ($product_type_required = false OR size(product_type_text_hits) + size(product_type_attrs) > 0)
+  AND ($platform_required = false
+       OR ($dialogue_soft_preferences = true AND size(platform_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(platform_text_hits) + size(platform_attrs) > 0))
+  AND ($franchise_required = false
+       OR ($dialogue_soft_preferences = true AND size(franchise_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(franchise_text_hits) + size(franchise_attrs) > 0))
+  AND ($product_type_required = false
+       OR ($dialogue_soft_preferences = true AND size(product_type_attrs) > 0)
+       OR ($dialogue_soft_preferences = false AND size(product_type_text_hits) + size(product_type_attrs) > 0))
   AND all(kw IN $required_condition_keywords WHERE kw IN required_condition_hits)
 WITH p, product_kw_hits, category_kw_hits, query_attrs, platform_text_hits,
      franchise_text_hits, product_type_text_hits, platform_attrs, franchise_attrs, product_type_attrs,
      (
-       toFloat(size(query_attrs)) * 2.0
+       toFloat(size(query_attrs))
+         * CASE WHEN $dialogue_soft_preferences THEN 20.0 ELSE 2.0 END
        + toFloat(size(product_kw_hits)) * 1.5
        + toFloat(size(category_kw_hits)) * 1.0
        + toFloat(size(franchise_text_hits)) * 14.0
@@ -580,6 +594,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
             "rated": "高評価した商品と共有する属性が強い候補です",
             "viewed": "最近閲覧した商品と共有する属性がある候補です",
             "condition": "会話で指定された条件に一致する候補です",
+            "dialogue_soft": "商品種別・機種・シリーズを満たす候補を、その他の希望との一致度で順位付けしました",
         }
     return {
         "top": "Meta-path recommendation using dialogue constraints and user-history attribute links",
@@ -589,6 +604,7 @@ def _metapath_explanations(lang: str) -> dict[str, str]:
         "rated": "Shares attributes with products this user rated highly",
         "viewed": "Shares attributes with products this user recently viewed",
         "condition": "Matches the structured dialogue constraints",
+        "dialogue_soft": "Candidates satisfy product type, platform, and franchise constraints, then rank by other preferences",
     }
 
 
@@ -690,10 +706,21 @@ def _domain_constraints_from_terms(terms: list[str]) -> dict[str, list[str]]:
             if value and value not in constraints[key]:
                 constraints[key].append(value)
 
+    def contains_alias(alias: str) -> bool:
+        alias = alias.lower().replace("_", " ").strip()
+        if not alias:
+            return False
+        # Short Latin aliases must match complete tokens. Without boundaries,
+        # "ds" also matches "3ds", and "wii" matches "wiiu".
+        if re.fullmatch(r"[a-z0-9 +.\-']+", alias):
+            pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+            return re.search(pattern, text) is not None
+        return alias in text
+
     for group, aliases in _DOMAIN_ALIASES.items():
         out_key = f"{group}_keywords"
         for canonical, variants in aliases.items():
-            if any(v in text for v in variants):
+            if any(contains_alias(v) for v in variants):
                 add_unique(out_key, [canonical, canonical.replace("_", " "), *variants])
 
     # If the user asks for a game, prefer game software over accessories. Do not
@@ -761,6 +788,36 @@ def _format_applied_conditions(conditions: dict[str, Any]) -> list[str]:
     if conditions.get("min_rating"):
         labels.append(f"min_rating: {conditions['min_rating']}")
     return labels
+
+
+def _dialogue_condition_groups(conditions: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Split extracted conditions into the fixed conversational search policy.
+
+    Only product type, platform, and franchise are exclusion gates. Everything
+    else remains a ranking signal so sparse open-vocabulary attributes do not
+    collapse a useful candidate pool to one or zero products.
+    """
+    hard: list[str] = []
+    soft: list[str] = []
+    for key, label in (
+        ("product_type_keywords", "product_type"),
+        ("platform_keywords", "platform"),
+        ("franchise_keywords", "franchise"),
+    ):
+        values = conditions.get(key) or []
+        if values:
+            hard.append(f"{label}: {', '.join(str(v) for v in values[:3])}")
+    for key, label in (
+        ("product_keywords", "product"),
+        ("category_keywords", "category"),
+        ("attribute_keywords", "attribute"),
+    ):
+        values = conditions.get(key) or []
+        if values:
+            soft.append(f"{label}: {', '.join(str(v) for v in values[:3])}")
+    if conditions.get("min_rating"):
+        soft.append(f"rating_preference: {conditions['min_rating']}")
+    return hard, soft
 
 def _build_fix_prompt(lang: str) -> str:
     target = "Japanese" if lang == "ja" else "English"
@@ -1090,6 +1147,32 @@ def _build_llm_client(provider: str, model: str | None, base_url: str | None):
     return OpenAI(**kwargs), resolved_model
 
 
+def _create_json_completion(client: Any, **kwargs: Any) -> Any:
+    """Request JSON mode, retrying without it for LM Studio model runtimes.
+
+    Some LM Studio backends accept only ``json_schema`` or plain text rather
+    than OpenAI's ``json_object`` mode. Every caller already gives an explicit
+    JSON-only prompt, so a plain-text retry remains parseable and keeps local
+    development independent of the loaded model's response-format support.
+    """
+    if getattr(client, "_am_plain_json_only", False):
+        return client.chat.completions.create(**kwargs)
+    try:
+        return client.chat.completions.create(
+            **kwargs,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:
+        message = str(exc).lower()
+        if "response_format" not in message and "json_object" not in message:
+            raise
+        try:
+            setattr(client, "_am_plain_json_only", True)
+        except Exception:
+            pass
+        return client.chat.completions.create(**kwargs)
+
+
 # ── JSON / Cypher parsing ──────────────────────────────────────────────────────
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -1278,6 +1361,9 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
 
 # 対話型推薦：聞き返しは最大この回数まで（LLMがaction判断に失敗し続けた場合の安全網）
 MAX_QUESTIONS = 5
+# 商品カテゴリを除き、短期的な希望をこの数だけ確認してから最終結果へ進む。
+# ASK中にも暫定候補を返すため、質問を増やしても結果を待たせるだけにはならない。
+MIN_CONFIRMED_PREFERENCES = 3
 
 
 def _normalize_lang(lang: str | None) -> str:
@@ -1304,7 +1390,7 @@ Write everything you SHOW the user (question, options, preference_summary) in {t
 
 {user_profile}
 
-Through conversation, ask about 2-4 clarifying preferences that would help narrow down a
+Through conversation, ask about 3-4 clarifying preferences that would help rank a
 search in the catalog above. Infer the likely product category from the conversation and
 prioritize the attribute types most relevant to that category from the list above (plus
 price range or minimum rating if it seems relevant) — do not ask about an attribute type
@@ -1316,9 +1402,9 @@ ALWAYS include one "no preference / skip this" option as the last option.
 DECISION RULE:
 - filled_slots = number of DISTINCT preferences the user has explicitly confirmed so far
   (do not count the product category itself, and do not count a "no preference" answer).
-- action = "ask" while filled_slots < 2 AND fewer than {MAX_QUESTIONS} questions have been
+- action = "ask" while filled_slots < {MIN_CONFIRMED_PREFERENCES} AND fewer than {MAX_QUESTIONS} questions have been
   asked so far AND the user hasn't said they have no preferences at all.
-- action = "search" once filled_slots >= 2, OR the user said they have no preference at
+- action = "search" once filled_slots >= {MIN_CONFIRMED_PREFERENCES}, OR the user said they have no preference at
   all, OR {MAX_QUESTIONS} questions have already been asked.
 - Use the full conversation history (including your own prior questions) to avoid asking
   about something already answered or already skipped.
@@ -1373,9 +1459,11 @@ class Recommender:
         t2c_cfg: dict = cfg.get("text2cypher", {})
         neo4j_cfg: dict = cfg.get("neo4j", {})
 
-        provider = str(llm_cfg.get("provider", "gemini"))
-        model = llm_cfg.get("model") or None
-        base_url = llm_cfg.get("base_url") or None
+        # Environment overrides make the same branch usable with LM Studio or
+        # a remote OpenAI-compatible endpoint without editing shared config.yaml.
+        provider = str(os.environ.get("LLM_PROVIDER") or llm_cfg.get("provider", "gemini"))
+        model = os.environ.get("LLM_MODEL") or llm_cfg.get("model") or None
+        base_url = os.environ.get("LLM_BASE_URL") or llm_cfg.get("base_url") or None
         self._llm, self._model = _build_llm_client(provider, model, base_url)
         self._max_attempts: int = int(t2c_cfg.get("max_cypher_attempts", 3))
         self._chat_temperature = float(llm_cfg.get("chat_temperature", 0.35))
@@ -1517,6 +1605,28 @@ class Recommender:
             self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
         return search_id, intent, results, fallback
 
+    def recommend_dialogue(
+        self, query: str, limit: int = 10, lang: str = "ja"
+    ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
+        """Recommend from the current conversation without behavior history.
+
+        Product type, platform, and franchise are the only exclusion gates.
+        Open-vocabulary preferences such as genre, play style, mood, and
+        difficulty contribute to ranking but never remove an otherwise valid
+        domain candidate.
+        """
+        search_id = str(uuid.uuid4())
+        normalized_lang = _normalize_lang(lang)
+        cypher, explanation, results, diagnostics = self._run_metapath_recommendation(
+            query,
+            None,
+            limit,
+            normalized_lang,
+            dialogue_soft_preferences=True,
+        )
+        intent = SearchIntent(cypher=cypher, cypher_explanation=explanation, **diagnostics)
+        return search_id, intent, results, False
+
     _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
 
     def _get_or_generate_home(
@@ -1608,7 +1718,8 @@ class Recommender:
         どの属性について聞くか・いつ検索に切り替えるかはハードコードせず、LLM自身の
         action/filled_slotsに委ねる（カテゴリ非依存）。Python側はMAX_QUESTIONSの
         安全網と、LLM呼び出し自体が失敗した場合に検索へフォールバックする処理のみ持つ。
-        search が決まった後の商品検索は self.recommend() 経由の構造化条件 + 元パス検索に委譲する。
+        ASK中・SEARCH後のどちらも、履歴を使わない対話専用の固定検索へ委譲する。
+        商品種別・機種・シリーズだけを必須条件とし、その他の希望は順位付けに使う。
         """
         all_user_msgs = [m for m in messages if m.get("role") == "user"]
         asked = sum(1 for m in messages if m.get("role") == "assistant")
@@ -1628,9 +1739,10 @@ class Recommender:
             llm_messages.append({"role": role, "content": m.get("content", "")})
 
         try:
-            response = self._llm.chat.completions.create(
+            response = _create_json_completion(
+                self._llm,
                 model=self._model, messages=llm_messages,
-                response_format={"type": "json_object"}, temperature=self._chat_temperature,
+                temperature=self._chat_temperature,
             )
             data = _parse_llm_json(response.choices[0].message.content or "{}")
         except Exception as exc:
@@ -1647,14 +1759,19 @@ class Recommender:
         should_search = (
             not data
             or data.get("action") == "search"
-            or filled_slots >= 2
+            or filled_slots >= MIN_CONFIRMED_PREFERENCES
             or asked >= MAX_QUESTIONS
         )
 
-        # ── 結果を返す：search は構造化条件 + 元パス検索に委譲 ───────────────
+        # ASK中も会話条件だけから暫定候補を取得する。質問が進むたびに同じ
+        # 固定検索を再実行し、必須条件で候補を保ちながら希望条件で順位を更新する。
+        query_text = " ".join(m.get("content", "") for m in all_user_msgs)
+        search_id, intent, products, fallback = self.recommend_dialogue(
+            query_text, limit, normalized_lang
+        )
+
+        # ── 結果を返す：ASKは暫定、SEARCHは最終 ─────────────────────────────
         if should_search:
-            query_text = " ".join(m.get("content", "") for m in all_user_msgs)
-            search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
             return {
                 "action": "search",
                 "question": None,
@@ -1663,6 +1780,8 @@ class Recommender:
                 "intent": intent,
                 "recommendations": products,
                 "search_id": search_id,
+                "fallback": fallback,
+                "provisional": False,
             }
 
         fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
@@ -1671,9 +1790,11 @@ class Recommender:
             "question": data.get("question") or fallback_question,
             "options": data.get("options") or [],
             "preference_summary": summary,
-            "intent": None,
-            "recommendations": [],
+            "intent": intent,
+            "recommendations": products,
             "search_id": None,
+            "fallback": fallback,
+            "provisional": True,
         }
 
     def _get_attr_vocab_text(self) -> str:
@@ -1962,13 +2083,13 @@ LIMIT $limit
     # ── LLM call ────────────────────────────────────────────────────────────────
 
     def _call_llm(self, system: str, user: str) -> dict[str, Any]:
-        resp = self._llm.chat.completions.create(
+        resp = _create_json_completion(
+            self._llm,
             model=self._model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            response_format={"type": "json_object"},
             temperature=self._structured_temperature,
             max_tokens=1500,
         )
@@ -2004,7 +2125,8 @@ LIMIT $limit
 
         product_keywords = _keyword_list(data.get("product_keywords")) or fallback["product_keywords"]
         category_keywords = _keyword_list(data.get("category_keywords")) or fallback["category_keywords"]
-        attribute_keywords = _keyword_list(data.get("attribute_keywords")) or fallback["attribute_keywords"]
+        llm_attribute_keywords = _keyword_list(data.get("attribute_keywords"))
+        attribute_keywords = llm_attribute_keywords or fallback["attribute_keywords"]
         platform_keywords = _keyword_list(data.get("platform_keywords"))
         franchise_keywords = _keyword_list(data.get("franchise_keywords"))
         product_type_keywords = _keyword_list(data.get("product_type_keywords"))
@@ -2018,20 +2140,38 @@ LIMIT $limit
         # Japanese-only labels or omits obvious catalog keywords.
         expanded_query = " ".join([query, *product_keywords, *attribute_keywords])
         expanded = _fallback_condition_terms(expanded_query)
-        domain = _domain_constraints_from_terms(
+        explicit_domain = _domain_constraints_from_terms([query])
+        inferred_domain = _domain_constraints_from_terms(
             [expanded_query, *platform_keywords, *franchise_keywords, *product_type_keywords]
         )
         product_keywords = _keyword_list([*product_keywords, *expanded["product_keywords"]], max_items=12)
         category_keywords = _keyword_list([*category_keywords, *expanded["category_keywords"]], max_items=8)
-        attribute_keywords = _keyword_list([*attribute_keywords, *expanded["attribute_keywords"]], max_items=12)
+        # When the LLM has already identified genuine preference attributes,
+        # do not append every raw conversation token as another attribute. That
+        # would make platform/franchise wording dominate the soft ranking.
+        expanded_attribute_keywords = (
+            [] if llm_attribute_keywords else expanded["attribute_keywords"]
+        )
+        attribute_keywords = _keyword_list(
+            [*attribute_keywords, *expanded_attribute_keywords], max_items=12
+        )
+        # Explicitly named domain values in the conversation are deterministic
+        # and override LLM guesses. This prevents a model from interpreting
+        # "Nintendo 3DS" as both 3DS and the broader Nintendo DS platform.
         platform_keywords = _keyword_list(
-            [*platform_keywords, *domain["platform_keywords"]], max_items=12
+            explicit_domain["platform_keywords"]
+            or [*platform_keywords, *inferred_domain["platform_keywords"]],
+            max_items=12,
         )
         franchise_keywords = _keyword_list(
-            [*franchise_keywords, *domain["franchise_keywords"]], max_items=12
+            explicit_domain["franchise_keywords"]
+            or [*franchise_keywords, *inferred_domain["franchise_keywords"]],
+            max_items=12,
         )
         product_type_keywords = _keyword_list(
-            [*product_type_keywords, *domain["product_type_keywords"]], max_items=12
+            explicit_domain["product_type_keywords"]
+            or [*product_type_keywords, *inferred_domain["product_type_keywords"]],
+            max_items=12,
         )
         if min_rating is None:
             min_rating = expanded.get("min_rating")
@@ -2053,6 +2193,7 @@ LIMIT $limit
         user_id: str | None,
         limit: int,
         lang: str,
+        dialogue_soft_preferences: bool = False,
     ) -> tuple[str, str, list[Recommendation], dict[str, Any]]:
         normalized_lang = _normalize_lang(lang)
         conditions = self._extract_conditions(query, normalized_lang)
@@ -2073,6 +2214,7 @@ LIMIT $limit
             }
 
         explanations = _metapath_explanations(normalized_lang)
+        hard_conditions, soft_conditions = _dialogue_condition_groups(conditions)
         params: dict[str, Any] = {
             "limit": limit,
             "candidate_product_ids": [],
@@ -2082,7 +2224,14 @@ LIMIT $limit
             "platform_keywords": conditions["platform_keywords"],
             "franchise_keywords": conditions["franchise_keywords"],
             "product_type_keywords": conditions["product_type_keywords"],
-            "required_condition_keywords": _required_condition_keywords(conditions),
+            # The regular /recommend path keeps open-vocabulary query terms as
+            # exclusion gates. Conversational recommendation deliberately makes
+            # them ranking-only signals; only the three domain fields below gate.
+            "required_condition_keywords": (
+                []
+                if dialogue_soft_preferences
+                else _required_condition_keywords(conditions)
+            ),
             "platform_attr_types": _PLATFORM_ATTR_TYPES,
             "franchise_attr_types": _FRANCHISE_ATTR_TYPES,
             "product_type_attr_types": _PRODUCT_TYPE_ATTR_TYPES,
@@ -2090,8 +2239,16 @@ LIMIT $limit
             "franchise_required": bool(conditions["franchise_keywords"]),
             "product_type_required": bool(conditions["product_type_keywords"]),
             "ignored_behavior_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
-            "min_rating": float(conditions.get("min_rating") or 0.0),
+            # Rating is also a preference in dialogue mode. The existing score
+            # already rewards rating, while a threshold would incorrectly turn
+            # it into a fourth hard constraint.
+            "min_rating": (
+                0.0
+                if dialogue_soft_preferences
+                else float(conditions.get("min_rating") or 0.0)
+            ),
             "has_query": has_query,
+            "dialogue_soft_preferences": dialogue_soft_preferences,
             "transition_explanation": explanations["transition"],
             "peer_explanation": explanations["peer"],
             "rated_explanation": explanations["rated"],
@@ -2137,7 +2294,10 @@ LIMIT $limit
             params["franchise_required"] or params["platform_required"]
         )
         if (
-            not results and has_query and can_relax_open_vocab
+            not dialogue_soft_preferences
+            and not results
+            and has_query
+            and can_relax_open_vocab
             and params["required_condition_keywords"]
         ):
             relaxed_params = dict(params)
@@ -2159,7 +2319,12 @@ LIMIT $limit
                 params = relaxed_params
                 relaxed = True
 
-        if not results and has_query and params["franchise_required"]:
+        if (
+            not dialogue_soft_preferences
+            and not results
+            and has_query
+            and params["franchise_required"]
+        ):
             relaxed_params = dict(params)
             relaxed_params["franchise_required"] = False
             # ステップ0で外した自由語彙条件が復活しないようここでも空にする
@@ -2193,7 +2358,10 @@ LIMIT $limit
             cypher = _METAPATH_CONDITION_CYPHER
             results = self._execute_and_map(cypher, condition_params, normalized_lang)
             used_condition_only = bool(results)
-        top_explanation = explanations["top"] if user_id else explanations["condition_top"]
+        if dialogue_soft_preferences:
+            top_explanation = explanations["dialogue_soft"]
+        else:
+            top_explanation = explanations["top"] if user_id else explanations["condition_top"]
         if results:
             status = "matched_after_relaxation" if (relaxed or used_condition_only) else "matched"
             no_result_reason = None
@@ -2205,10 +2373,12 @@ LIMIT $limit
             no_result_reason = "No catalog item satisfied all dialogue constraints"
         return cypher, top_explanation, results, {
             "applied_conditions": _format_applied_conditions(conditions),
+            "hard_conditions": hard_conditions if dialogue_soft_preferences else [],
+            "soft_conditions": soft_conditions if dialogue_soft_preferences else [],
             "condition_source": conditions["condition_source"],
             "retrieval_status": status,
             "no_result_reason": no_result_reason,
-            "candidate_count": candidate_count,
+            "candidate_count": candidate_count or len(results),
         }
 
     # ── Cypher generation with retry-on-error / retry-on-empty ──────────────────

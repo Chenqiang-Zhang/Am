@@ -41,6 +41,13 @@ def test_domain_aliases_emit_normalized_v3_constraints() -> None:
     assert "video game" in constraints["product_type_keywords"]
 
 
+def test_3ds_alias_does_not_also_select_ds() -> None:
+    constraints = _domain_constraints_from_terms(["Nintendo 3DS Mario game"])
+
+    assert "nintendo 3ds" in constraints["platform_keywords"]
+    assert "nintendo ds" not in constraints["platform_keywords"]
+
+
 def test_api_models_preserve_diagnostics_and_review_language_state() -> None:
     intent = SearchIntent(
         cypher="MATCH (p:Product) RETURN p",

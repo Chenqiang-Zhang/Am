@@ -29,6 +29,8 @@ export interface SearchIntent {
   retrieval_status: "matched" | "matched_after_relaxation" | "no_match" | "fallback_popular";
   no_result_reason: string | null;
   candidate_count: number;
+  hard_conditions: string[];
+  soft_conditions: string[];
 }
 
 /** 推薦根拠となった、商品に一致した構造化属性 1 件 */
@@ -122,6 +124,7 @@ export interface ChatResponse {
   recommendations: Recommendation[];
   search_id: string | null;
   fallback: boolean;
+  provisional: boolean;
 }
 
 // ===== 行動ログ =====

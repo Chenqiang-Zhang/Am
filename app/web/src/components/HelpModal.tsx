@@ -20,7 +20,7 @@ const STEPS_JA = [
   {
     icon: "💬",
     title: "対話型推薦：希望を話して探す",
-    body: "欲しいゲームを自然な言葉で入力してください。AIの質問に答えると、会話から得た条件で推薦します。",
+    body: "欲しいゲームを自然な言葉で入力してください。会話の途中から現在の候補が表示され、AIの質問に答えるたびに内容と順番が更新されます。",
   },
   {
     icon: "🔄",
@@ -43,7 +43,7 @@ const STEPS_EN = [
   {
     icon: "💬",
     title: "Conversational: describe what you want",
-    body: "Type your request naturally and answer the AI's follow-up questions. Recommendations use the preferences gathered in the chat.",
+    body: "Type your request naturally. Current candidates appear during the chat and update whenever you answer a follow-up question.",
   },
   {
     icon: "🔄",

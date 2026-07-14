@@ -9,9 +9,17 @@ interface Props {
   userId: string | null;
   searchId: string | null;
   fallback: boolean;
+  provisional?: boolean;
 }
 
-export default function RecommendationList({ items, devMode, userId, searchId, fallback }: Props) {
+export default function RecommendationList({
+  items,
+  devMode,
+  userId,
+  searchId,
+  fallback,
+  provisional = false,
+}: Props) {
   const { t, lang } = useI18n();
 
   if (items.length === 0) {
@@ -20,16 +28,25 @@ export default function RecommendationList({ items, devMode, userId, searchId, f
         <span className={styles.emptyIcon}>🎮</span>
         <p className={styles.emptyText}>{t.empty}</p>
         <p className={styles.emptyHint}>
-          {lang === "ja"
-            ? "「最初から」ボタンで条件をリセットしてもう一度お試しください。"
-            : 'Use "Start over" to reset and try again.'}
+          {provisional
+            ? lang === "ja"
+              ? "会話を続けると、現在の条件に合わせて候補を更新します。"
+              : "Keep chatting and the candidates will update with your preferences."
+            : lang === "ja"
+              ? "「最初から」ボタンで条件をリセットしてもう一度お試しください。"
+              : 'Use "Start over" to reset and try again.'}
         </p>
       </div>
     );
   }
 
-  const heading =
-    lang === "ja" ? `おすすめ（${items.length}件）` : `Recommendations (${items.length})`;
+  const heading = provisional
+    ? lang === "ja"
+      ? `現在の候補（${items.length}件）`
+      : `Current candidates (${items.length})`
+    : lang === "ja"
+      ? `おすすめ（${items.length}件）`
+      : `Recommendations (${items.length})`;
 
   return (
     <section className={styles.section}>
