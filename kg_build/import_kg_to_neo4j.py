@@ -45,15 +45,6 @@ def _int(value: str | None) -> int | None:
         return None
 
 
-def _bool(value: str | None) -> bool | None:
-    v = (value or "").strip().lower()
-    if v == "true":
-        return True
-    if v == "false":
-        return False
-    return None
-
-
 def iter_csv_batches(
     path: Path,
     batch_size: int,
@@ -101,7 +92,6 @@ def create_schema(driver: Any, database: str | None) -> None:
         "CREATE CONSTRAINT category_id  IF NOT EXISTS FOR (c:Category)  REQUIRE c.category_id  IS UNIQUE",
         "CREATE CONSTRAINT brand_id     IF NOT EXISTS FOR (b:Brand)     REQUIRE b.brand_id     IS UNIQUE",
         "CREATE CONSTRAINT attribute_id IF NOT EXISTS FOR (a:Attribute) REQUIRE a.attribute_id IS UNIQUE",
-        "CREATE CONSTRAINT log_id       IF NOT EXISTS FOR (s:SearchLog) REQUIRE s.log_id       IS UNIQUE",
         # additional indexes for Attribute lookup
         "CREATE INDEX attr_type  IF NOT EXISTS FOR (a:Attribute) ON (a.attr_type)",
         "CREATE INDEX attr_value IF NOT EXISTS FOR (a:Attribute) ON (a.value)",
@@ -163,7 +153,6 @@ def import_graph(
             SET rv.rating       = row.rating,
                 rv.timestamp    = row.timestamp,
                 rv.helpful_vote = row.helpful_vote,
-                rv.verified     = row.verified,
                 rv.title        = row.title,
                 rv.text         = row.text
             """,
@@ -172,7 +161,6 @@ def import_graph(
                 "rating":       _float(r.get("rating")),
                 "timestamp":    _int(r.get("timestamp")),
                 "helpful_vote": _int(r.get("helpful_vote")) or 0,
-                "verified":     _bool(r.get("verified")),
                 "title":        r.get("title", ""),
                 "text":         r.get("text", ""),
             },

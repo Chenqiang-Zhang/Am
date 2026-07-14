@@ -28,12 +28,6 @@ class HomeRecommendRequest(BaseModel):
     lang: str = "en"  # explanationの出力言語（"ja" | "en"）
 
 
-class ViewLogRequest(BaseModel):
-    user_id: str
-    product_id: str
-    search_id: str | None = None
-
-
 class SearchIntent(BaseModel):
     cypher: str
     cypher_explanation: str
@@ -62,7 +56,6 @@ class RecommendResponse(BaseModel):
     mode: str = "search"  # "search" | "home"
     intent: SearchIntent
     recommendations: list[Recommendation]
-    search_id: str
     fallback: bool = False
 
 
@@ -86,7 +79,7 @@ class ChatResponse(BaseModel):
     preference_summary: list[str] = Field(default_factory=list)
     intent: SearchIntent | None = None
     recommendations: list[Recommendation] = Field(default_factory=list)
-    search_id: str | None = None  # action="search"のとき、VIEWEDと紐付けるためのSearchLog ID
+    fallback: bool = False  # 条件検索が0件で人気商品へフォールバックしたか
 
 
 # ===== レビュー取得 =====
@@ -95,12 +88,23 @@ class ReviewItem(BaseModel):
     text: str
     rating: float | None = None
     helpful_vote: int | None = None
-    verified_purchase: bool | None = None
+    translated: bool = False
+    display_language: str = "en"
 
 
 class ReviewsResponse(BaseModel):
     product_id: str
     reviews: list[ReviewItem]
+    requested_language: str = "en"
+    translated_count: int = 0
+    fallback_count: int = 0
+
+
+# ===== 商品説明文取得 =====
+class DescriptionResponse(BaseModel):
+    product_id: str
+    description: str | None = None
+    translated: bool = False
 
 
 # ===== デモ用テストユーザー選択 =====
@@ -113,7 +117,27 @@ class SampleUsersResponse(BaseModel):
     users: list[SampleUser]
 
 
-# ===== 履歴クリア =====
-class ClearHistoryResponse(BaseModel):
-    viewed_deleted: int
-    searches_deleted: int
+# ===== 推薦理由のグラフ可視化 =====
+class GraphNode(BaseModel):
+    id: str  # "{type}:{自然キー}" 形式。例: "Product:B0001234"
+    type: str  # "Product" | "User" | "Attribute" | "Brand" | "Category"
+    label: str
+    role: str | None = None  # "recommended" | "anchor" | "context"
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    type: str  # "RATED" | "HAS_ATTRIBUTE" | "MADE_BY" | "BELONGS_TO"
+
+
+class GraphData(BaseModel):
+    nodes: list[GraphNode] = Field(default_factory=list)
+    edges: list[GraphEdge] = Field(default_factory=list)
+
+
+class ExplainGraphRequest(BaseModel):
+    product_id: str
+    user_id: str | None = None
+    matched_attrs: list[MatchedAttr] = Field(default_factory=list)
+    lang: str = "en"

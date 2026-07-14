@@ -6,7 +6,13 @@ Output (JSONL, one line per product):
     {"attr_type": "platform", "value": "pc", "evidence": "...", "confidence": 0.9}
   ]}
 
-attr_type is LLM-defined in snake_case. Post-normalization merges spelling variants.
+attr_type/value are drawn from a GROWABLE vocabulary (attr_vocab.yaml, seeded by
+propose_attr_vocab.py and reviewed by hand): the LLM is told to reuse an existing
+(attr_type, value) pair whenever one fits, and may introduce a new one only when
+truly necessary — when that happens it's added to the same database (see
+utils/attr_vocab.py's GrowableVocab), not dropped, so later batches in this same run
+see and can reuse it too. rule_attributes() maps `details` dict keys through
+detail_key_map.yaml (same directory, static) instead of auto-slugifying them.
 Run build_attribute_graph.py afterwards to produce Neo4j import CSVs.
 """
 from __future__ import annotations
@@ -15,12 +21,14 @@ import argparse
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from utils.attr_vocab import GrowableVocab, load_detail_key_map
 from utils.csv_io import load_done_ids, read_jsonl_gz
 from utils.llm_client import build_client, provider_from_config
 from utils.llm_json import batch_extract_with_fallback, split_usage
@@ -62,9 +70,12 @@ ATTRIBUTE_SCHEMA: dict[str, Any] = {
     "required": ["products"],
 }
 
-def build_system_prompt(genre: str) -> str:
-    """Build the LLM system prompt. Static — per-product known attributes are
-    passed in the user payload (see product_payload()), not here."""
+def build_system_prompt(genre: str, vocab_text: str) -> str:
+    """Build the LLM system prompt. vocab_text is the CURRENT state of the growable
+    attr_type/value vocabulary (GrowableVocab.prompt_text() — call this fresh for
+    every LLM call, not once per run, so growth from earlier batches is visible).
+    Per-product known attributes are passed in the user payload (see
+    product_payload()), not here."""
     return f"""\
 Extract product attributes for a knowledge graph of {genre}.
 
@@ -75,15 +86,14 @@ Each product in the input includes a "known_attributes" list — attr_type/value
 already extracted from structured metadata fields (zero-cost, rule-based). Do NOT
 re-extract these facts. Only return attributes for NEW information found in
 title/features/description that is not already covered by known_attributes.
-If a new fact fits the same concept as one of the known attr_type names, reuse
-that exact name instead of inventing a new one.
 
-ADDITIONAL attr_types for free-text content (use when known_attributes don't apply):
-  product_type     the specific kind of product this is, e.g. "board_game", "wireless_mouse", "shampoo"
-  material         what it's physically made of, if stated
-  target_audience  who or what it's intended for, e.g. "kids", "professionals", "dry_skin", "pc"
-  (Invent additional snake_case names only if none of the above, and none of
-   known_attributes, truly fit — prefer reusing an existing name over inventing one.)
+EXISTING attr_type/value vocabulary — STRONGLY prefer reusing one of these exact
+(attr_type, value) combinations when it fits. When an entry lists "allowed values",
+treat those as the known values for that attr_type. Only introduce a new attr_type,
+or a new value under an existing attr_type, when you are confident nothing existing
+truly fits — new entries become part of the shared vocabulary, so invent one only
+when genuinely necessary, not as a default:
+{vocab_text}
 
 FORBIDDEN attr_type — never use these:
   brand           (brand is a separate node in the graph; do not extract it)
@@ -103,11 +113,8 @@ General rules:
 
 # ── structured fields → rule-based attributes ─────────────────────────────────
 
-# details キーはキュレーション無しで _key_to_attr_type() が全て自動的に
-# snake_case 化する（例: "Item Form" → "item_form"）。ジャンル（Amazon カテゴリ）
-# を切り替えても手で保守する対応表は不要。
-#
-# details キーのうち、ジャンルを問わず属性として無意味なものは共通で除外する。
+# details キーのうち、ジャンルを問わず属性として無意味なものは共通で除外する
+# （propose_attr_vocab.py もこのリストを再利用し、LLMにこれらのキーを尋ねない）。
 # "Brand" は既に一級のKGノード（MADE_BY関係）なので Attribute としては不要。
 IGNORED_DETAIL_KEYS = {
     "Brand",
@@ -119,13 +126,10 @@ IGNORED_DETAIL_KEYS = {
     "International Shipping", "Included Components", "Number of Items",
 }
 
-_KEY_TO_ATTR_TYPE_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _key_to_attr_type(raw_key: str) -> str:
-    """details の生キー（例: "Skin Type"）を snake_case の attr_type に変換する。"""
-    return _KEY_TO_ATTR_TYPE_RE.sub("_", raw_key.strip().lower()).strip("_")
-
+# 残りの details キーは detail_key_map.yaml（propose_attr_vocab.py が生成し、人手で
+# レビュー済みの allowlist）を通してのみ attr_type になる。マップに無い/null のキーは
+# 破棄する（以前の _key_to_attr_type() による無条件slugifyは廃止 — 閉じた語彙という
+# 前提が崩れるため）。
 
 _SIZE_PAT = re.compile(
     r"\b\d+(?:\.\d+)?\s?(?:fl\.?\s?oz|oz|ounce|ounces|ml|g|gram|grams|inch|inches|mm|cm|pcs|pack)\b",
@@ -134,7 +138,7 @@ _SIZE_PAT = re.compile(
 _COLOR_WORDS = {"black", "white", "brown", "blonde", "red", "pink", "blue", "green", "gold", "silver", "purple", "clear"}
 
 
-def rule_attributes(row: dict[str, Any]) -> list[dict[str, Any]]:
+def rule_attributes(row: dict[str, Any], detail_key_map: dict[str, str | None]) -> list[dict[str, Any]]:
     attrs: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
 
@@ -153,10 +157,10 @@ def rule_attributes(row: dict[str, Any]) -> list[dict[str, Any]]:
     for key, raw_val in details.items():
         if key in IGNORED_DETAIL_KEYS:
             continue
-        attr_type = _key_to_attr_type(key)
-        if not attr_type:
+        canonical = detail_key_map.get(key)
+        if not canonical:
             continue
-        add(attr_type, raw_val, f"{key}: {raw_val}", 0.9)
+        add(canonical, raw_val, f"{key}: {raw_val}", 0.9)
 
     title = clean_text(row.get("title"))
     for match in _SIZE_PAT.findall(title):
@@ -214,15 +218,22 @@ def extract_with_fallback(
 
 # ── normalization post-processing ──────────────────────────────────────────────
 
-def normalize_attrs(attrs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Normalize attr_type to snake_case and deduplicate."""
+def normalize_attrs(attrs: list[dict[str, Any]], vocab: GrowableVocab) -> list[dict[str, Any]]:
+    """Normalize attr_type/value to snake_case and deduplicate. Every pair is resolved
+    against vocab with growth allowed — reused if already known, added to the shared
+    database if not (see GrowableVocab.resolve()). Only empty/malformed input is
+    actually skipped."""
     seen: set[tuple[str, str]] = set()
     result: list[dict[str, Any]] = []
     for a in attrs:
-        t = normalize_attr_type(str(a.get("attr_type", "")))
-        v = normalize_value(str(a.get("value", "")))
-        if not t or not v:
+        raw_t = str(a.get("attr_type", ""))
+        raw_v = str(a.get("value", ""))
+        if not raw_t or not raw_v:
             continue
+        resolved = vocab.resolve(raw_t, raw_v, allow_growth=True)
+        if resolved is None:
+            continue
+        t, v = resolved
         key = (t, v)
         if key in seen:
             continue
@@ -236,19 +247,8 @@ def normalize_attrs(attrs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def merge_attrs(rule: list[dict], llm: list[dict], do_normalize: bool) -> list[dict]:
-    combined = rule + llm
-    if do_normalize:
-        return normalize_attrs(combined)
-    seen: set[tuple[str, str]] = set()
-    result: list[dict] = []
-    for a in combined:
-        key = (str(a.get("attr_type", "")).lower(), str(a.get("value", "")).lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(a)
-    return result
+def merge_attrs(rule: list[dict], llm: list[dict], vocab: GrowableVocab) -> list[dict]:
+    return normalize_attrs(rule + llm, vocab)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -277,6 +277,10 @@ def parse_args() -> argparse.Namespace:
         help="CSV with a 'product_id' column (e.g. nodes_products.csv). "
              "Only products listed here will be processed.",
     )
+    parser.add_argument("--attr-vocab-path", type=Path, default=None,
+                         help="Path to attr_vocab.yaml (default: <output_dir>/attributes/attr_vocab.yaml)")
+    parser.add_argument("--detail-key-map-path", type=Path, default=None,
+                         help="Path to detail_key_map.yaml (default: <output_dir>/attributes/detail_key_map.yaml)")
     return parser.parse_args()
 
 
@@ -295,11 +299,11 @@ def main() -> None:
     meta_path = args.meta_path or (config_dir / data_cfg.get("meta_path", "data/meta_Video_Games.jsonl.gz"))
     out_dir = config_dir / data_cfg.get("output_dir", "kg_output/video_games")
     output_path = args.output_path or (out_dir / "attributes" / "product_attributes.jsonl")
+    attrs_dir = out_dir / "attributes"
 
     cfg_provider, cfg_model, cfg_base_url = provider_from_config(llm_cfg)
     provider = args.provider or cfg_provider
     model_arg = args.model or cfg_model
-    do_normalize = llm_cfg.get("attr_type_normalize", True)
     min_confidence = args.min_confidence if args.min_confidence is not None else llm_cfg.get("min_confidence", 0.6)
 
     if not args.rule_only:
@@ -309,8 +313,18 @@ def main() -> None:
     use_responses_api = False  # use chat.completions for all providers
 
     genre = cfg.get("genre", "products")
-    system_prompt = build_system_prompt(genre)
-    print(f"Prompt built for genre={genre!r}")
+    vocab_path = args.attr_vocab_path or (attrs_dir / "attr_vocab.yaml")
+    detail_key_map_path = args.detail_key_map_path or (attrs_dir / "detail_key_map.yaml")
+    vocab = GrowableVocab(vocab_path)
+    detail_key_map = load_detail_key_map(detail_key_map_path)
+    if vocab.type_count() == 0:
+        print(
+            f"WARNING: {vocab_path} not found or empty — starting from an empty vocabulary "
+            f"(every attribute will be a 'new' addition). Run kg_build/propose_attr_vocab.py "
+            f"first for a better starting point.",
+            file=sys.stderr,
+        )
+    print(f"Prompt will draw from genre={genre!r}, {vocab.type_count()} attr_types currently in vocabulary")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     done_ids = load_done_ids(output_path, "product_id") if args.resume else set()
@@ -334,6 +348,9 @@ def main() -> None:
             llm_map: dict[str, list[dict]] = {}
             usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         else:
+            # built fresh from the live vocab so growth from earlier batches (this run,
+            # possibly on another worker thread) is visible to this call
+            system_prompt = build_system_prompt(genre, vocab.prompt_text())
             llm_map, usage = extract_with_fallback(client, model, payloads, system_prompt, args.max_output_tokens, args.retries, use_responses_api)
 
         records: list[dict] = []
@@ -341,7 +358,7 @@ def main() -> None:
         for item in batch:
             pid = item["product_id"]
             llm_attrs = [a for a in llm_map.get(pid, []) if float(a.get("confidence", 0)) >= min_confidence]
-            attrs = merge_attrs(item["rule_attrs"], llm_attrs, do_normalize)
+            attrs = merge_attrs(item["rule_attrs"], llm_attrs, vocab)
             records.append({
                 "product_id": pid,
                 "model": "rules" if args.rule_only else model,
@@ -372,6 +389,8 @@ def main() -> None:
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             print(f"  {rec['product_id']}  attrs={len(rec['attributes'])}")
         out.flush()
+        vocab.save()  # persist any growth from this batch immediately (crash-safe,
+                       # and visible to later batches via process_batch's fresh prompt_text())
 
     with output_path.open("a", encoding="utf-8") as out:
         executor = ThreadPoolExecutor(max_workers=args.workers) if args.workers > 1 and not args.rule_only else None
@@ -389,16 +408,17 @@ def main() -> None:
                 if allowed_ids is not None and pid not in allowed_ids:
                     continue
 
-                rule_attrs = rule_attributes(row)
+                rule_attrs = rule_attributes(row, detail_key_map)
                 payload = product_payload(row, args.max_input_chars, rule_attrs)
 
                 if args.skip_sparse and is_sparse(payload):
                     with output_path.open("a", encoding="utf-8") as _out:
                         _out.write(json.dumps({
                             "product_id": pid, "model": "rules",
-                            "attributes": normalize_attrs(rule_attrs) if do_normalize else rule_attrs,
+                            "attributes": normalize_attrs(rule_attrs, vocab),
                             "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
                         }, ensure_ascii=False) + "\n")
+                    vocab.save()
                     processed += 1
                     continue
 
@@ -415,7 +435,13 @@ def main() -> None:
             if executor:
                 executor.shutdown(wait=True)
 
+    vocab.save()
     print(f"\nWrote {processed} products to {output_path}")
+    growth = vocab.growth_summary()
+    if growth:
+        print(f"Vocabulary grew this run — {growth}\n  -> review {vocab_path} by hand if this looks noisy.")
+    else:
+        print(f"No vocabulary growth this run — {vocab.type_count()} attr_types, all reused.")
 
 
 if __name__ == "__main__":

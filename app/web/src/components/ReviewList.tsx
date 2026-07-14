@@ -1,33 +1,31 @@
 import { useState } from "react";
-import type { ReviewItem } from "../types/recommend";
+import type { ReviewItem, ReviewsResponse } from "../types/recommend";
 import { useI18n } from "../i18n";
-import { fetchReviews, logView } from "../api/client";
+import { fetchReviews } from "../api/client";
 import RatingStars from "./RatingStars";
 import styles from "./ReviewList.module.css";
 
 interface Props {
   productId: string;
   ratingNumber?: number | null;
-  userId: string;
-  searchId: string | null;
 }
 
 type Status = "idle" | "loading" | "done" | "error";
 
-export default function ReviewList({ productId, ratingNumber, userId, searchId }: Props) {
+export default function ReviewList({ productId, ratingNumber }: Props) {
   const { lang, t } = useI18n();
   const [status, setStatus] = useState<Status>("idle");
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [reviewMeta, setReviewMeta] = useState<Pick<ReviewsResponse, "translated_count" | "fallback_count"> | null>(null);
   const [open, setOpen] = useState(true);
 
   async function load() {
     if (status !== "idle") return;
     setStatus("loading");
-    // レビュー詳細を見る = VIEWED（商品への強い関心のシグナル）として記録する
-    logView({ user_id: userId, product_id: productId, search_id: searchId });
     try {
       const data = await fetchReviews(productId, 5, lang);
       setReviews(data.reviews);
+      setReviewMeta({ translated_count: data.translated_count, fallback_count: data.fallback_count });
       setStatus("done");
     } catch {
       setStatus("error");
@@ -36,8 +34,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
 
   if (status === "idle") {
     return (
-      <button type="button" className={styles.trigger} onClick={load}>
-        {lang === "ja" ? "レビューを見る" : "Show reviews"} ▼
+      <button type="button" className={styles.trigger} onClick={load} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">★</span>
+        <span>{lang === "ja" ? "レビューを見る" : "Show reviews"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -52,8 +52,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
 
   if (!open) {
     return (
-      <button type="button" className={styles.trigger} onClick={() => setOpen(true)}>
-        {lang === "ja" ? "レビューを見る" : "Show reviews"} ▼
+      <button type="button" className={styles.trigger} onClick={() => setOpen(true)} aria-expanded={false}>
+        <span className={styles.triggerIcon} aria-hidden="true">★</span>
+        <span>{lang === "ja" ? "レビューを見る" : "Show reviews"}</span>
+        <span className={styles.chevron} aria-hidden="true">›</span>
       </button>
     );
   }
@@ -63,7 +65,10 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
   return (
     <div className={styles.block}>
       <div className={styles.header}>
-        <span className={styles.heading}>{lang === "ja" ? "レビュー" : "Reviews"}</span>
+        <span className={styles.heading}>
+          <span className={styles.panelIcon} aria-hidden="true">★</span>
+          {lang === "ja" ? "レビュー" : "Reviews"}
+        </span>
         <span className={styles.count}>
           {reviews.length > 0
             ? (lang === "ja" ? `${reviews.length}件表示` : `${reviews.length} shown`)
@@ -74,10 +79,17 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
             </span>
           )}
         </span>
-        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)}>
-          {lang === "ja" ? "閉じる" : "Close"} ▲
+        <button type="button" className={styles.closeBtn} onClick={() => setOpen(false)} aria-expanded={true}>
+          {lang === "ja" ? "閉じる" : "Close"} <span aria-hidden="true">×</span>
         </button>
       </div>
+      {lang === "ja" && reviewMeta && reviewMeta.fallback_count > 0 && (
+        <p className={styles.languageNote}>
+          {reviewMeta.translated_count > 0
+            ? `${reviewMeta.fallback_count}件は日本語訳が未登録のため英語原文を表示しています`
+            : "日本語訳が未登録のため英語原文を表示しています"}
+        </p>
+      )}
       {reviews.length === 0 ? (
         <p className={styles.empty}>
           {ratingNumber && ratingNumber > 0
@@ -88,7 +100,11 @@ export default function ReviewList({ productId, ratingNumber, userId, searchId }
         </p>
       ) : (
         <>
-          <ul className={styles.list}>
+          <ul
+            className={styles.list}
+            tabIndex={0}
+            aria-label={lang === "ja" ? "レビュー一覧" : "Review list"}
+          >
             {reviews.map((r, i) => (
               <ReviewRow key={i} review={r} lang={lang} />
             ))}
@@ -111,10 +127,8 @@ function ReviewRow({ review, lang }: { review: ReviewItem; lang: string }) {
     <li className={styles.item}>
       <div className={styles.itemHead}>
         <RatingStars rating={review.rating} count={null} />
-        {review.verified_purchase && (
-          <span className={styles.verified}>
-            {lang === "ja" ? "購入済み" : "Verified"}
-          </span>
+        {lang === "ja" && !review.translated && (
+          <span className={styles.originalLanguage}>English original</span>
         )}
         {(review.helpful_vote ?? 0) > 0 && (
           <span className={styles.helpful}>

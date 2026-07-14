@@ -47,7 +47,7 @@ REST API（FastAPI）
 |---|---|
 | `User` | `user_id` |
 | `Product` | `product_id`、`title`、`title_ja`、`price`、`avg_rating`、`rating_count`、`description`、`image_url` |
-| `Review` | `review_id`、`title`、`title_ja`、`text`、`text_ja`、`rating`、`timestamp`、`helpful_vote`、`verified` |
+| `Review` | `review_id`、`title`、`title_ja`、`text`、`text_ja`、`rating`、`timestamp`、`helpful_vote` |
 | `Category` | `category_id`、`name`、`level` |
 | `Brand` | `brand_id`、`name` |
 | `Attribute` | `attribute_id`、`attr_type`、`value`、`value_ja`（LLM 提取，与类型无关） |

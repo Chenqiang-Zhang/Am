@@ -204,7 +204,6 @@ def build_kg(
             "rating": rating,
             "timestamp": timestamp,
             "helpful_vote": row.get("helpful_vote", 0),
-            "verified": row.get("verified_purchase", ""),
             "title": clean_text(row.get("title")),
             "text": clean_text(row.get("text")),
         })
@@ -229,7 +228,7 @@ def build_kg(
         ),
         "reviews": write_csv(
             output_dir / "nodes_reviews.csv", review_rows,
-            ["review_id", "rating", "timestamp", "helpful_vote", "verified", "title", "text"],
+            ["review_id", "rating", "timestamp", "helpful_vote", "title", "text"],
         ),
         "brands": write_csv(
             output_dir / "nodes_brands.csv", brand_rows.values(), ["brand_id", "name"],

@@ -4,7 +4,9 @@ Convert LLM extraction outputs to Neo4j import CSVs.
 Reads:
   product_attributes.jsonl     (from extract_product_attributes.py)
   review_mentions.jsonl        (from extract_review_mentions.py)
-  attribute_canonical_map.json (optional, from canonicalize_attributes.py)
+  attribute_canonical_map.json (optional, hand-authored — attr_type/value are already
+                                 closed at extraction time via attr_vocab.yaml, so this
+                                 is only for a manual one-off cleanup pass if ever needed)
   nodes_products.csv           (from build_base_graph.py; used to drop attributes for
                                  products outside the current scale.max_meta selection)
 
@@ -163,7 +165,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument(
         "--canonical-map", type=Path,
-        help="Path to attribute_canonical_map.json (from canonicalize_attributes.py). "
+        help="Path to attribute_canonical_map.json (optional, hand-authored manual cleanup map). "
              "Auto-detected in attributes_dir if omitted; skipped entirely if absent.",
     )
     parser.add_argument(

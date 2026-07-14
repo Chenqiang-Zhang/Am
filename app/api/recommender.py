@@ -5,12 +5,11 @@ Endpoints served:
   POST /recommend                        — keyword search with optional personalization
   POST /recommend/home                   — behavior-based recommendations (no query text)
   POST /recommend/home/warm              — fire-and-forget cache warm-up (call on tab close/hide)
-  POST /behavior/view                    — log product view to Neo4j
   POST /chat                             — multi-turn conversational recommendation (CRS)
   GET  /products/{product_id}/reviews    — top reviews for a product
 
 Flow (search):
-  1. Build user context from Neo4j (rated/viewed products, inferred attributes)
+  1. Build user context from Neo4j (rated products, inferred attributes)
   2. LLM chooses query strategy and generates Cypher
   3. Execute Cypher; retry (feeding back the error, or "0 results — broaden the
      filters" if it ran but matched nothing) up to max_cypher_attempts
@@ -46,14 +45,13 @@ import os
 import re
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
 import yaml
 from neo4j import GraphDatabase
 
-from .models import MatchedAttr, Recommendation, SearchIntent
+from .models import GraphData, GraphEdge, GraphNode, MatchedAttr, Recommendation, SearchIntent
 
 # ── graph schema ───────────────────────────────────────────────────────────────
 
@@ -64,7 +62,7 @@ Nodes:
                rating_count (int|null), description, image_url (string|null) }
   User      { user_id }
   Review    { review_id, rating (float 1-5), timestamp (int unix-ms),
-               helpful_vote (int), verified (bool), title, text }
+               helpful_vote (int), title, text }
   Category  { category_id, name, level (int, 0=root) }
   Brand     { brand_id, name }
   Attribute { attribute_id, attr_type, value,
@@ -75,12 +73,12 @@ Nodes:
 Relationships:
   (User)-[:RATED {rating (float), timestamp}]->(Product)
   (User)-[:WROTE]->(Review)
-  (User)-[:VIEWED {timestamp}]->(Product)
   (Review)-[:ABOUT]->(Product)
   (Product)-[:MADE_BY]->(Brand)
   (Product)-[:BELONGS_TO]->(Category)
   (Category)-[:SUBCATEGORY_OF]->(Category)
   (Product)-[:HAS_ATTRIBUTE]->(Attribute)
+  (Review)-[:MENTIONS {sentiment (string: "positive"|"negative"|"neutral")}]->(Attribute)
 """
 
 _FEW_SHOT_EXAMPLES = """\
@@ -117,12 +115,12 @@ _RULES = """\
 - matched_attrs: collect({attr_type: a.attr_type, value: a.value, value_ja: a.value_ja})  — use [] when no attrs
   (always include value_ja alongside value — Python picks whichever fits the requested language)
 
-## Excluding already-rated/viewed products (CRITICAL)
+## Excluding already-rated products (CRITICAL)
 Bind the user node in MATCH first, then filter in WHERE:
-  CORRECT:   MATCH (u:User {user_id:$uid}) ... WHERE NOT (u)-[:RATED]->(p) AND NOT (u)-[:VIEWED]->(p)
+  CORRECT:   MATCH (u:User {user_id:$uid}) ... WHERE NOT (u)-[:RATED]->(p)
   CORRECT:   MATCH (u:User {user_id:$uid})-[r:RATED]->(liked:Product) ... WHERE NOT (u)-[:RATED]->(rec)
-  WRONG:     WHERE NOT (p)<-[:RATED]-(u:User {user_id:$uid}) AND NOT (p)<-[:VIEWED]-(u)
-  — in the WRONG pattern, 'u' in the second NOT is unbound and excludes ALL viewed products
+  WRONG:     WHERE NOT (p)<-[:RATED]-(u:User {user_id:$uid})
+  — in the WRONG pattern, 'u' in the NOT is unbound and excludes ALL rated products
 
 Output — JSON only, no markdown fences:
 {"cypher": "<valid Cypher>", "explanation": "<one sentence>"}
@@ -191,7 +189,6 @@ def _format_output_language(lang: str) -> str:
 def _build_search_prompt(
     genre: str,
     user_ctx: dict | None,
-    dynamic_few_shot: list[dict] | None = None,
     attr_vocab_text: str = "",
     lang: str = "en",
     has_uid: bool = False,
@@ -209,15 +206,13 @@ def _build_search_prompt(
     if attr_vocab_text:
         parts.append(attr_vocab_text)
     parts.append(_FEW_SHOT_EXAMPLES)
-    if dynamic_few_shot:
-        parts.append(_format_dynamic_few_shot(dynamic_few_shot))
     if has_uid:
         parts.append(_format_user_ctx(user_ctx or {}))
         parts.append(
             "## Personalization\n"
             "Incorporate the user context above to personalize results.\n"
             "- Use $uid when referencing this user in Cypher\n"
-            "- Exclude products the user already RATED or VIEWED when possible"
+            "- Exclude products the user already RATED when possible"
         )
     else:
         parts.append(
@@ -240,7 +235,6 @@ def _build_home_prompt(
     user_ctx: dict,
     attr_vocab_text: str = "",
     lang: str = "en",
-    dynamic_few_shot: list[dict] | None = None,
 ) -> str:
     """呼び出し元(recommend_home())は履歴が無いユーザーにはLLMを呼ばず直接人気商品を
     返すため、このプロンプトは常に実履歴のあるuser_ctxが渡される前提で組み立てる。"""
@@ -253,13 +247,11 @@ def _build_home_prompt(
     if attr_vocab_text:
         parts.append(attr_vocab_text)
     parts.append(_FEW_SHOT_EXAMPLES)
-    if dynamic_few_shot:
-        parts.append(_format_dynamic_few_shot(dynamic_few_shot))
     parts.append(_format_user_ctx(user_ctx))
     parts.append(
         "## Hint\n"
         "User history exists. Generate a personalized query using $uid.\n"
-        "Exclude products the user already RATED or VIEWED."
+        "Exclude products the user already RATED."
     )
     parts.append(_format_output_language(lang))
     parts.append(_RULES)
@@ -272,31 +264,10 @@ def _format_user_ctx(ctx: dict) -> str:
         lines.append("Rated products (high rating first):")
         for p in ctx["rated"]:
             lines.append(f"  [{p['rating']:.1f}★] {p['title']}")
-    if ctx.get("viewed"):
-        lines.append("Recently viewed:")
-        for p in ctx["viewed"]:
-            lines.append(f"  {p['title']}")
     if ctx.get("preferred_attrs"):
         lines.append("Inferred preferred attributes (from 4+ star ratings):")
         for a in ctx["preferred_attrs"]:
             lines.append(f"  {a['attr_type']}: {a['value']}  (×{a['freq']})")
-    if ctx.get("recent_queries"):
-        lines.append("Recent searches (newest first):")
-        for q in ctx["recent_queries"]:
-            lines.append(f'  "{q}"')
-    return "\n".join(lines)
-
-
-def _format_dynamic_few_shot(examples: list[dict]) -> str:
-    """Format past successful (query, cypher) pairs as user-specific few-shot examples."""
-    lines = ["## This User's Past Successful Queries (led to clicks — prioritize similar patterns)"]
-    for ex in examples:
-        q = ex.get("query", "")
-        c = ex.get("cypher", "")
-        e = ex.get("explanation", "")
-        lines.append(f'User: "{q}"')
-        lines.append(json.dumps({"cypher": c, "explanation": e}))
-        lines.append("")
     return "\n".join(lines)
 
 
@@ -635,17 +606,15 @@ class Recommender:
 
     def recommend(
         self, query: str, user_id: str | None = None, limit: int = 10, lang: str = "en"
-    ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
-        search_id = str(uuid.uuid4())
+    ) -> tuple[SearchIntent, list[Recommendation], bool]:
         fallback = False
         normalized_lang = _normalize_lang(lang)
         user_ctx = self._get_user_context(user_id) if user_id else None
         # $uidが使えるのはuser_idがあり、かつ実際にRATED/属性の履歴がある場合のみ
         # （履歴が無ければ$uidを束縛しても個人化の意味が無く、誤ってuidを使われるのを防ぐ）
         has_uid = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
-        dynamic_few_shot = self._get_dynamic_few_shot(user_id) if user_id else []
         system_prompt = _build_search_prompt(
-            self._genre, user_ctx, dynamic_few_shot, self._get_attr_vocab_text(), normalized_lang, has_uid
+            self._genre, user_ctx, self._get_attr_vocab_text(), normalized_lang, has_uid
         )
         try:
             params: dict[str, Any] = {"limit": limit}
@@ -665,9 +634,7 @@ class Recommender:
             results = self._run_popular(limit, normalized_lang)
             fallback = True
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
-        if user_id:
-            self.log_search(user_id, search_id, query, cypher, explanation, [r.product_id for r in results])
-        return search_id, intent, results, fallback
+        return intent, results, fallback
 
     _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
 
@@ -676,8 +643,8 @@ class Recommender:
     ) -> tuple[str, str, list[Recommendation]] | None:
         """履歴のあるユーザー向けホーム推薦をキャッシュ優先で返す（生成に失敗したらNone）。
 
-        recommend_home()（通常の表示・SearchLogに残る）とwarm_home_cache()（タブを
-        バックグラウンドに回した時などの先読み・ログに残さない）の両方から使う共通ロジック。
+        recommend_home()（通常の表示）とwarm_home_cache()（タブをバックグラウンドに
+        回した時などの先読み）の両方から使う共通ロジック。
         """
         cache_key = f"{user_id}:{lang}:{limit}"
         cached = self._home_cache.get(cache_key)
@@ -685,10 +652,9 @@ class Recommender:
             return cached["cypher"], cached["explanation"], cached["results"]
 
         user_ctx = self._get_user_context(user_id)
-        dynamic_few_shot = self._get_dynamic_few_shot(user_id)
         try:
             system_prompt = _build_home_prompt(
-                self._genre, user_ctx, self._get_attr_vocab_text(), lang, dynamic_few_shot
+                self._genre, user_ctx, self._get_attr_vocab_text(), lang
             )
             user_msg = "Generate personalized home-page product recommendations based on user history."
             cypher, explanation, results = self._generate_cypher_and_execute(
@@ -708,8 +674,8 @@ class Recommender:
         """タブを閉じる/バックグラウンドに回した時などに呼ばれるfire-and-forget用途。
 
         次回開いた時にrecommend_home()が即座に返せるよう、ホーム推薦を先読みして
-        キャッシュしておく。応答を待つ相手がいないのでSearchLogには残さない。
-        キャッシュが既に新しければ_get_or_generate_home()内で即returnされ、LLMは呼ばれない。
+        キャッシュしておく。キャッシュが既に新しければ_get_or_generate_home()内で
+        即returnされ、LLMは呼ばれない。
         """
         if not user_id:
             return  # 非個人化モード（user_id無し）はキャッシュ対象がないため何もしない
@@ -722,10 +688,9 @@ class Recommender:
 
     def recommend_home(
         self, user_id: str | None, limit: int = 10, lang: str = "en"
-    ) -> tuple[str, SearchIntent, list[Recommendation], bool]:
-        search_id = str(uuid.uuid4())
+    ) -> tuple[SearchIntent, list[Recommendation], bool]:
         normalized_lang = _normalize_lang(lang)
-        # VIEWEDだけでは属性情報が得られないため、RATEDまたは属性があるときのみパーソナライズ。
+        # RATEDまたは属性があるときのみパーソナライズする。
         # user_id自体が無い（非個人化モード）場合も同様にhas_history=Falseとして扱う。
         user_ctx = self._get_user_context(user_id) if user_id else None
         has_history = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("preferred_attrs")))
@@ -740,9 +705,7 @@ class Recommender:
             results = self._run_popular(limit, normalized_lang)
             fallback = has_history
         intent = SearchIntent(cypher=cypher, cypher_explanation=explanation)
-        if user_id:
-            self.log_search(user_id, search_id, "[home]", cypher, explanation, [r.product_id for r in results])
-        return search_id, intent, results, fallback
+        return intent, results, fallback
 
     def chat(
         self, messages: list[dict[str, Any]], limit: int = 10, lang: str = "ja",
@@ -793,7 +756,7 @@ class Recommender:
         # ── 結果を返す：search は Text2Cypher に委譲 ─────────────────────────
         if should_search:
             query_text = " ".join(m.get("content", "") for m in all_user_msgs)
-            search_id, intent, products, _fallback = self.recommend(query_text, user_id, limit, normalized_lang)
+            intent, products, fallback = self.recommend(query_text, user_id, limit, normalized_lang)
             return {
                 "action": "search",
                 "question": None,
@@ -801,7 +764,7 @@ class Recommender:
                 "preference_summary": summary,
                 "intent": intent,
                 "recommendations": products,
-                "search_id": search_id,
+                "fallback": fallback,
             }
 
         fallback_question = "他にご希望はありますか？" if normalized_lang == "ja" else "Any other preferences?"
@@ -812,7 +775,6 @@ class Recommender:
             "preference_summary": summary,
             "intent": None,
             "recommendations": [],
-            "search_id": None,
         }
 
     def _get_attr_vocab_text(self) -> str:
@@ -860,9 +822,8 @@ RETURN r.title AS title,
        r.text AS text,
        r.text_ja AS text_ja,
        toFloat(r.rating) AS rating,
-       toInteger(r.helpful_vote) AS helpful_vote,
-       r.verified AS verified_purchase
-ORDER BY r.helpful_vote DESC, r.rating DESC
+       toInteger(r.helpful_vote) AS helpful_vote
+ORDER BY r.helpful_vote DESC, r.rating DESC, r.review_id ASC
 LIMIT $limit
 """
         use_ja = _normalize_lang(lang) == "ja"
@@ -873,102 +834,223 @@ LIMIT $limit
                 r = dict(record)
                 text_ja = r.pop("text_ja", None)
                 title_ja = r.pop("title_ja", None)
-                r["text"] = text_ja if (use_ja and text_ja) else _strip_html(r.get("text"))
+                translated = bool(use_ja and text_ja)
+                r["text"] = text_ja if translated else _strip_html(r.get("text"))
                 r["title"] = title_ja if (use_ja and title_ja) else _strip_html(r.get("title"))
+                r["translated"] = translated
+                r["display_language"] = "ja" if translated else "en"
                 rows.append(r)
             return rows
 
-    _MAX_VIEWED: int = 20
-    _MAX_SEARCHES: int = 30
-
-    def log_search(
-        self,
-        user_id: str,
-        search_id: str,
-        query: str,
-        cypher: str,
-        explanation: str,
-        result_product_ids: list[str],
-    ) -> None:
-        """Record a search as a SearchLog node linked to the user."""
-        ts = int(time.time() * 1000)
-        write_cypher = (
-            "MERGE (u:User {user_id: $uid}) "
-            "CREATE (sl:SearchLog {"
-            "  log_id: $log_id, query: $q, cypher: $cypher,"
-            "  explanation: $explanation, result_product_ids: $pids,"
-            "  result_count: $rc, timestamp: $ts"
-            "}) "
-            "CREATE (u)-[:SEARCHED]->(sl)"
-        )
-        # Keep only the latest _MAX_SEARCHES SearchLog nodes per user.
-        trim_cypher = (
-            "MATCH (u:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
-            "WITH sl ORDER BY sl.timestamp DESC "
-            "WITH collect(sl) AS all_sl "
-            "FOREACH (old IN all_sl[$keep..] | DETACH DELETE old)"
-        )
-        try:
-            with self._driver.session(database=self._neo4j_db) as session:
-                session.run(
-                    write_cypher,
-                    uid=user_id, log_id=search_id, q=query,
-                    cypher=cypher, explanation=explanation,
-                    pids=result_product_ids, rc=len(result_product_ids), ts=ts,
-                )
-                session.run(trim_cypher, uid=user_id, keep=self._MAX_SEARCHES)
-        except Exception as exc:
-            print(f"[recommender] log_search failed: {exc}", file=sys.stderr)
-
-    def log_view(self, user_id: str, product_id: str, search_id: str | None = None) -> None:
-        """Record that a user viewed a product (VIEWED edge in Neo4j)."""
-        ts = int(time.time() * 1000)
-        write_cypher = (
-            "MERGE (u:User {user_id: $uid}) "
-            "WITH u "
-            "MATCH (p:Product {product_id: $pid}) "
-            "CREATE (u)-[:VIEWED {timestamp: $ts, search_id: $sid}]->(p)"
-        )
-        # Keep only the latest _MAX_VIEWED edges per user; delete the rest.
-        trim_cypher = (
-            "MATCH (u:User {user_id: $uid})-[v:VIEWED]->() "
-            "WITH v ORDER BY v.timestamp DESC "
-            "WITH collect(v) AS vs "
-            "FOREACH (old IN vs[$keep..] | DELETE old)"
-        )
-        try:
-            with self._driver.session(database=self._neo4j_db) as session:
-                session.run(write_cypher, uid=user_id, pid=product_id, ts=ts, sid=search_id)
-                session.run(trim_cypher, uid=user_id, keep=self._MAX_VIEWED)
-        except Exception as exc:
-            print(f"[recommender] log_view failed: {exc}", file=sys.stderr)
-
-    def clear_behavior_history(self, user_id: str) -> dict[str, int]:
-        """RATED（データセット由来の評価履歴）はそのままに、このユーザーの永続的な行動データ
-        ——VIEWED行動ログとSearchLog検索履歴——だけを削除する。デモで行動ログをまっさらな
-        状態に戻したい時に使う（推薦の根拠であるRATED自体は変更しない）。"""
+    def get_description(self, product_id: str, lang: str = "en") -> dict[str, Any] | None:
+        """商品説明文の言語選択（レビューと同じtranslatedパターン）。独立クエリなので
+        Text2Cypherの検索結果には含めない — 押した時だけ取得する。"""
         with self._driver.session(database=self._neo4j_db) as session:
-            viewed_result = session.run(
-                "MATCH (:User {user_id: $uid})-[r:VIEWED]->() "
-                "WITH collect(r) AS rs "
-                "FOREACH (x IN rs | DELETE x) "
-                "RETURN size(rs) AS n",
-                uid=user_id,
+            record = session.run(
+                "MATCH (p:Product {product_id: $product_id}) "
+                "RETURN p.description AS description, p.description_ja AS description_ja",
+                product_id=product_id,
             ).single()
-            search_result = session.run(
-                "MATCH (:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
-                "WITH collect(sl) AS sls "
-                "FOREACH (x IN sls | DETACH DELETE x) "
-                "RETURN size(sls) AS n",
-                uid=user_id,
-            ).single()
-        # 古い履歴を前提に生成されたホーム推薦キャッシュも破棄する
-        for key in [k for k in self._home_cache if k.startswith(f"{user_id}:")]:
-            del self._home_cache[key]
+        if record is None:
+            return None
+        raw_description = record.get("description")
+        raw_description_ja = record.get("description_ja")
+        use_ja = _normalize_lang(lang) == "ja"
         return {
-            "viewed_deleted": viewed_result["n"] if viewed_result else 0,
-            "searches_deleted": search_result["n"] if search_result else 0,
+            "description": _strip_html(raw_description_ja if use_ja and raw_description_ja else raw_description) or None,
+            "translated": bool(use_ja and raw_description_ja),
         }
+
+    # ── 推薦理由のグラフ可視化 ───────────────────────────────────────────────────
+
+    _GRAPH_MAX_ATTRS = 5
+    _GRAPH_NEIGHBOR_LIMIT = 12
+
+    @staticmethod
+    def _node_id(node_type: str, key: str) -> str:
+        return f"{node_type}:{key}"
+
+    @staticmethod
+    def _pick_display(value: Any, value_ja: Any, lang: str) -> str:
+        return str(value_ja) if (_normalize_lang(lang) == "ja" and value_ja) else str(value)
+
+    def explain_graph(
+        self,
+        product_id: str,
+        user_id: str | None,
+        matched_attrs: list[dict],
+        lang: str = "en",
+    ) -> GraphData:
+        """推薦理由の初期サブグラフを組み立てる。matched_attrsのvalueはlang="ja"時に
+        value_jaへ差し替え済みの表示値(_record_to_recommendation参照)なので、Neo4j側は
+        a.value と a.value_ja の両方に対して照合する。"""
+        nodes: dict[str, GraphNode] = {}
+        edges: list[GraphEdge] = []
+
+        def add_node(node_type: str, key: str, label: str, role: str | None = None) -> str:
+            nid = self._node_id(node_type, key)
+            if nid not in nodes or role:
+                nodes[nid] = GraphNode(id=nid, type=node_type, label=label, role=role)
+            return nid
+
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                prod_row = session.run(
+                    "MATCH (p:Product {product_id: $pid}) RETURN p.title AS title",
+                    pid=product_id,
+                ).single()
+                if not prod_row:
+                    return GraphData()
+                prod_node = add_node("Product", product_id, prod_row["title"], role="recommended")
+
+                user_node: str | None = None
+                if user_id:
+                    user_node = add_node("User", user_id, user_id, role="anchor")
+
+                for attr in (matched_attrs or [])[: self._GRAPH_MAX_ATTRS]:
+                    attr_type = attr.get("attr_type") if isinstance(attr, dict) else getattr(attr, "attr_type", None)
+                    value = attr.get("value") if isinstance(attr, dict) else getattr(attr, "value", None)
+                    if not attr_type or not value:
+                        continue
+                    attr_row = session.run(
+                        "MATCH (p:Product {product_id: $pid})-[:HAS_ATTRIBUTE]->(a:Attribute) "
+                        "WHERE a.attr_type = $t AND (a.value = $v OR a.value_ja = $v) "
+                        "RETURN a.attribute_id AS attribute_id, a.attr_type AS attr_type, "
+                        "       a.value AS value, a.value_ja AS value_ja LIMIT 1",
+                        pid=product_id, t=attr_type, v=value,
+                    ).single()
+                    if not attr_row:
+                        continue
+                    attr_id = attr_row["attribute_id"]
+                    display_value = self._pick_display(attr_row["value"], attr_row["value_ja"], lang)
+                    attr_node = add_node("Attribute", attr_id, f"{attr_row['attr_type']}: {display_value}")
+                    edges.append(GraphEdge(source=prod_node, target=attr_node, type="HAS_ATTRIBUTE"))
+
+                    if user_id:
+                        peer_row = session.run(
+                            "MATCH (u:User {user_id: $uid})-[r:RATED]->(liked:Product)-[:HAS_ATTRIBUTE]->"
+                            "(a:Attribute {attribute_id: $aid}) "
+                            "WHERE r.rating >= 4 AND liked.product_id <> $pid "
+                            "RETURN liked.product_id AS product_id, liked.title AS title LIMIT 1",
+                            uid=user_id, aid=attr_id, pid=product_id,
+                        ).single()
+                        if peer_row:
+                            peer_node = add_node(
+                                "Product", peer_row["product_id"], peer_row["title"], role="context"
+                            )
+                            edges.append(GraphEdge(source=user_node, target=peer_node, type="RATED"))
+                            edges.append(GraphEdge(source=peer_node, target=attr_node, type="HAS_ATTRIBUTE"))
+
+                ctx_row = session.run(
+                    "MATCH (p:Product {product_id: $pid}) "
+                    "OPTIONAL MATCH (p)-[:MADE_BY]->(b:Brand) "
+                    "OPTIONAL MATCH (p)-[:BELONGS_TO]->(c:Category) "
+                    "RETURN b.brand_id AS brand_id, b.name AS brand_name, "
+                    "       c.category_id AS category_id, c.name AS category_name",
+                    pid=product_id,
+                ).single()
+                if ctx_row:
+                    if ctx_row["brand_id"]:
+                        brand_node = add_node("Brand", ctx_row["brand_id"], ctx_row["brand_name"])
+                        edges.append(GraphEdge(source=prod_node, target=brand_node, type="MADE_BY"))
+                    if ctx_row["category_id"]:
+                        cat_node = add_node("Category", ctx_row["category_id"], ctx_row["category_name"])
+                        edges.append(GraphEdge(source=prod_node, target=cat_node, type="BELONGS_TO"))
+        except Exception as exc:
+            print(f"[recommender] explain_graph failed: {exc}", file=sys.stderr)
+            return GraphData()
+
+        return GraphData(nodes=list(nodes.values()), edges=edges)
+
+    def graph_neighbors(
+        self, node_type: str, node_key: str, limit: int | None = None, lang: str = "en"
+    ) -> GraphData:
+        """指定ノードの1ホップ隣接を返す（クリック展開用）。呼び出し側のキャンバスには
+        対象ノード自体は既に存在している前提で、新規ノードと対象への辺だけを返す。"""
+        limit = limit or self._GRAPH_NEIGHBOR_LIMIT
+        self_id = self._node_id(node_type, node_key)
+        nodes: dict[str, GraphNode] = {}
+        edges: list[GraphEdge] = []
+
+        def add_node(nt: str, key: str, label: str) -> str:
+            nid = self._node_id(nt, key)
+            nodes.setdefault(nid, GraphNode(id=nid, type=nt, label=label))
+            return nid
+
+        try:
+            with self._driver.session(database=self._neo4j_db) as session:
+                if node_type == "Product":
+                    row = session.run(
+                        "MATCH (p:Product {product_id: $pid}) "
+                        "OPTIONAL MATCH (p)-[:MADE_BY]->(b:Brand) "
+                        "OPTIONAL MATCH (p)-[:BELONGS_TO]->(c:Category) "
+                        "RETURN b.brand_id AS brand_id, b.name AS brand_name, "
+                        "       c.category_id AS category_id, c.name AS category_name",
+                        pid=node_key,
+                    ).single()
+                    if row:
+                        if row["brand_id"]:
+                            b = add_node("Brand", row["brand_id"], row["brand_name"])
+                            edges.append(GraphEdge(source=self_id, target=b, type="MADE_BY"))
+                        if row["category_id"]:
+                            c = add_node("Category", row["category_id"], row["category_name"])
+                            edges.append(GraphEdge(source=self_id, target=c, type="BELONGS_TO"))
+                    res = session.run(
+                        "MATCH (p:Product {product_id: $pid})-[:HAS_ATTRIBUTE]->(a:Attribute) "
+                        "RETURN a.attribute_id AS attribute_id, a.attr_type AS attr_type, "
+                        "       a.value AS value, a.value_ja AS value_ja LIMIT $limit",
+                        pid=node_key, limit=limit,
+                    )
+                    for r in res:
+                        display_value = self._pick_display(r["value"], r["value_ja"], lang)
+                        a = add_node("Attribute", r["attribute_id"], f"{r['attr_type']}: {display_value}")
+                        edges.append(GraphEdge(source=self_id, target=a, type="HAS_ATTRIBUTE"))
+
+                elif node_type == "Attribute":
+                    res = session.run(
+                        "MATCH (p:Product)-[:HAS_ATTRIBUTE]->(a:Attribute {attribute_id: $aid}) "
+                        "RETURN p.product_id AS product_id, p.title AS title LIMIT $limit",
+                        aid=node_key, limit=limit,
+                    )
+                    for r in res:
+                        p = add_node("Product", r["product_id"], r["title"])
+                        edges.append(GraphEdge(source=p, target=self_id, type="HAS_ATTRIBUTE"))
+
+                elif node_type == "Brand":
+                    res = session.run(
+                        "MATCH (p:Product)-[:MADE_BY]->(:Brand {brand_id: $bid}) "
+                        "RETURN p.product_id AS product_id, p.title AS title LIMIT $limit",
+                        bid=node_key, limit=limit,
+                    )
+                    for r in res:
+                        p = add_node("Product", r["product_id"], r["title"])
+                        edges.append(GraphEdge(source=p, target=self_id, type="MADE_BY"))
+
+                elif node_type == "Category":
+                    res = session.run(
+                        "MATCH (p:Product)-[:BELONGS_TO]->(:Category {category_id: $cid}) "
+                        "RETURN p.product_id AS product_id, p.title AS title LIMIT $limit",
+                        cid=node_key, limit=limit,
+                    )
+                    for r in res:
+                        p = add_node("Product", r["product_id"], r["title"])
+                        edges.append(GraphEdge(source=p, target=self_id, type="BELONGS_TO"))
+
+                elif node_type == "User":
+                    res = session.run(
+                        "MATCH (:User {user_id: $uid})-[r:RATED]->(p:Product) "
+                        "RETURN p.product_id AS product_id, p.title AS title "
+                        "ORDER BY r.rating DESC LIMIT $limit",
+                        uid=node_key, limit=limit,
+                    )
+                    for r in res:
+                        p = add_node("Product", r["product_id"], r["title"])
+                        edges.append(GraphEdge(source=self_id, target=p, type="RATED"))
+        except Exception as exc:
+            print(f"[recommender] graph_neighbors failed: {exc}", file=sys.stderr)
+            return GraphData()
+
+        return GraphData(nodes=list(nodes.values()), edges=edges)
 
     def close(self) -> None:
         self._driver.close()
@@ -976,10 +1058,10 @@ LIMIT $limit
     # ── user context from Neo4j ─────────────────────────────────────────────────
 
     def _get_user_context(self, user_id: str) -> dict:
+        """RATED以外のユーザー情報（閲覧履歴・検索履歴等）は参照しない。個人化の根拠は
+        常にこのユーザー自身のRATEDエッジ（およびそこから導かれる属性選好）のみ。"""
         rated: list[dict] = []
-        viewed: list[dict] = []
         preferred_attrs: list[dict] = []
-        recent_queries: list[str] = []
         try:
             with self._driver.session(database=self._neo4j_db) as session:
                 res = session.run(
@@ -989,14 +1071,6 @@ LIMIT $limit
                     uid=user_id,
                 )
                 rated = [{"title": r["title"], "rating": r["rating"]} for r in res]
-
-                res = session.run(
-                    "MATCH (u:User {user_id: $uid})-[v:VIEWED]->(p:Product) "
-                    "RETURN p.title AS title "
-                    "ORDER BY v.timestamp DESC LIMIT 4",
-                    uid=user_id,
-                )
-                viewed = [{"title": r["title"]} for r in res]
 
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product)"
@@ -1011,47 +1085,12 @@ LIMIT $limit
                     {"attr_type": r["attr_type"], "value": r["value"], "freq": r["freq"]}
                     for r in res
                 ]
-
-                res = session.run(
-                    "MATCH (u:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
-                    "WHERE sl.query <> '[home]' "
-                    "RETURN sl.query AS query "
-                    "ORDER BY sl.timestamp DESC LIMIT 5",
-                    uid=user_id,
-                )
-                recent_queries = [r["query"] for r in res]
         except Exception as exc:
             print(f"[recommender] _get_user_context failed: {exc}", file=sys.stderr)
         return {
             "rated": rated,
-            "viewed": viewed,
             "preferred_attrs": preferred_attrs,
-            "recent_queries": recent_queries,
         }
-
-    def _get_dynamic_few_shot(self, user_id: str) -> list[dict]:
-        """Return past (query, cypher) pairs that led to at least one click."""
-        try:
-            with self._driver.session(database=self._neo4j_db) as session:
-                res = session.run(
-                    "MATCH (u:User {user_id: $uid})-[:SEARCHED]->(sl:SearchLog) "
-                    "WHERE sl.cypher IS NOT NULL AND sl.query <> '[home]' "
-                    "WITH u, sl "
-                    "OPTIONAL MATCH (u)-[v:VIEWED]->(:Product) "
-                    "WHERE v.search_id = sl.log_id "
-                    "WITH sl, count(v) AS clicks "
-                    "WHERE clicks > 0 "
-                    "RETURN sl.query AS query, sl.cypher AS cypher, sl.explanation AS explanation "
-                    "ORDER BY clicks DESC, sl.timestamp DESC LIMIT 3",
-                    uid=user_id,
-                )
-                return [
-                    {"query": r["query"], "cypher": r["cypher"], "explanation": r["explanation"]}
-                    for r in res
-                ]
-        except Exception as exc:
-            print(f"[recommender] _get_dynamic_few_shot failed: {exc}", file=sys.stderr)
-            return []
 
     # ── LLM call ────────────────────────────────────────────────────────────────
 

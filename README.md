@@ -49,7 +49,7 @@ REST API（FastAPI）
 |---|---|
 | `User` | `user_id` |
 | `Product` | `product_id`, `title`, `title_ja`, `price`, `avg_rating`, `rating_count`, `description`, `image_url` |
-| `Review` | `review_id`, `title`, `title_ja`, `text`, `text_ja`, `rating`, `timestamp`, `helpful_vote`, `verified` |
+| `Review` | `review_id`, `title`, `title_ja`, `text`, `text_ja`, `rating`, `timestamp`, `helpful_vote` |
 | `Category` | `category_id`, `name`, `level` |
 | `Brand` | `brand_id`, `name` |
 | `Attribute` | `attribute_id`, `attr_type`, `value`, `value_ja`（LLM 抽出、ジャンル非依存） |
@@ -86,9 +86,9 @@ REST API（FastAPI）
 ├── kg_build/              # KG構築パイプライン — データ生成（実行: python kg_build/<name>.py）
 │   ├── select_kcore.py            # 1. k-core によるユーザ・商品選定を決定（データ規模）
 │   ├── build_base_graph.py        # 2. ベースグラフ CSV を構築（Product/User/Review/Category/Brand）
-│   ├── extract_product_attributes.py  # 3a. 属性抽出: ゼロコストのルールベース（メタデータ `details`、ジャンル非依存）+ LLM（title/features/description）を統合
-│   ├── extract_review_mentions.py     # 3b. レビュー本文からの LLM による属性言及抽出
-│   ├── canonicalize_attributes.py     # 4.（任意）LLM による attr_type/value の同義語正規化
+│   ├── propose_attr_vocab.py          # 3. サンプルからattr_type/value語彙の種（シード）を提案（人手レビュー必須）
+│   ├── extract_product_attributes.py  # 4a. 属性抽出: ゼロコストのルールベース（メタデータ `details`、detail_key_map.yaml経由）+ LLM（title/features/description）を統合。attr_type/valueともattr_vocab.yamlの語彙を再利用優先、本当に必要な場合のみ追加
+│   ├── extract_review_mentions.py     # 4b. レビュー本文からのLLMによる属性言及抽出（同じ語彙データベースを共有・成長させる）
 │   ├── build_attribute_graph.py       # 5. 上記の抽出結果を統合 → 属性ノード/エッジ CSV
 │   ├── import_kg_to_neo4j.py          # 6. Bolt 経由ですべてをインポート（ローカル Neo4j または Aura）
 │   ├── backfill_display_fields.py     # 7.（任意）既存ノードに Product.image_url / Product.title_ja / Review.title_ja+text_ja / Attribute.value_ja を追加
@@ -98,6 +98,7 @@ REST API（FastAPI）
 │       ├── llm_json.py                #   Chat/responses の JSON 呼び出し + バッチ＋フォールバックのヘルパー
 │       ├── neo4j_io.py                #   .env 読み込み + Neo4j 接続の解決
 │       ├── csv_io.py                  #   JSONL/CSV の読み書きヘルパー
+│       ├── attr_vocab.py              #   成長するattr_type/value語彙データベース（GrowableVocab）
 │       └── text_utils.py              #   テキストクレンジング／attr_type 正規化／ID ハッシュ化のヘルパー
 ├── eval/                  # 評価 — 稼働中のグラフ + app/api/ を参照。kg_build/ とは独立
 │   └── eval_offline.py            # オフライン leave-one-out 評価（HR@K/NDCG@K を Item-KNN ベースラインと比較）
@@ -191,7 +192,29 @@ python3 kg_build/select_kcore.py --k 14
 #    最も時間のかかるステップである（Video_Games で数分程度）。
 python3 kg_build/build_base_graph.py
 
-# 3. 属性抽出（商品メタデータ + レビュー内の言及）。
+# 3. attr_type/value 語彙の種（シード）を、独立した2経路で提案し2段階で統合する。
+#    ①メタデータ経路: details 辞書のキー・実際の値をLLM抜きで決定的に走査し、その結果
+#      だけを使ってLLMに1回、attr_type/valuesとdetails生キーの対応（detail_key_map.yaml）
+#      を同時に提案させる。
+#    ②サンプル経路: 商品サンプル＋レビューサンプルの自由文だけを使ってLLMに1回、自由文
+#      にしか出てこないattr_typeを提案させる（①の結果には依存しない、完全に独立）。
+#    統合は2段階: まず同名attr_typeのvaluesを機械的に合併（LLM不使用）、その後LLMに1回、
+#    表記違いの重複attr_typeの統合・使い物にならないものの削除・名前や説明やvalueの表記
+#    整理をさせる（新しい値の捏造は禁止）。detail_key_map.yaml もこの最終名に付け替える。
+#    出力される attr_vocab.yaml と
+#    detail_key_map.yaml は必ず人手でレビュー・修正してから次のステップに進むこと。
+#    attr_vocab.yaml は固定リストではなく「成長するデータベース」の初期状態 — 抽出時に
+#    既存の(attr_type, value)組み合わせを再利用優先し、本当に必要な場合だけLLMが新規に
+#    追加できる（追加は同じファイルに書き戻され、以降のバッチ・実行でも再利用される）。
+#    すべてのattr_typeは必ず閉じたvaluesリストを持つ（自由記述の空リストは提案しない）。
+#    1attr_typeあたりのvalue数は --min-values-per-type/--max-values-per-type で制御する。
+python3 kg_build/propose_attr_vocab.py --sample-products 150 --sample-reviews 300 \
+    --min-values-per-type 3 --max-values-per-type 12
+
+# 4. 属性抽出（商品メタデータ + レビュー内の言及）。attr_type・value とも
+#    attr_vocab.yaml の既存の組み合わせを再利用優先し、無ければ追加してデータベースを
+#    成長させる（追加件数はコマンド末尾のサマリに表示されるので、増えすぎていないか
+#    確認すること）。
 #    --product-ids-file を指定すると、ステップ2でベースグラフに実際に選定された
 #    商品にのみ抽出範囲を絞れる — 実際に LLM 呼び出しを行う場合は必ず指定すること。
 #    指定しないと、約1,500件の k-core 商品だけでなく生カタログ全体に対して抽出が
@@ -200,17 +223,14 @@ python3 kg_build/extract_product_attributes.py --resume --product-ids-file kg_ou
 
 #    レビュー内の言及は商品数ではなくレビュー数（デフォルトの k=14 コアで約5.6万件）に
 #    比例してスケールする — 最後まで処理し切るものというより、サンプルに対する
-#    ベストエフォートのエンリッチメントと捉える。--resume で後からサンプルを
+#    ベストエフォートのエンリッチメントと捉える。--max-reviews-per-product（デフォルト50）が
+#    商品ごとにhelpful_vote→rating順の上位レビューだけに絞るので、レビュー数が
+#    極端に多い商品での処理量も自動的に抑えられる。--resume で後からサンプルを
 #    拡張できる:
 python3 kg_build/extract_review_mentions.py --resume --limit 5000 --min-text-len 60 --batch-size 15
 
-# 4.（任意）上記2つの独立した抽出パスによって生じた attr_type/value の同義語を
-#    正規化する（例: "item_form" と "texture"）
-python3 kg_build/canonicalize_attributes.py
-
 # 5. 抽出結果を統合して属性ノード/エッジ CSV を生成する
-#    （ステップ4の正規化マップを適用し、nodes_products.csv に含まれない
-#    商品の属性があれば除外する）
+#    （nodes_products.csv に含まれない商品の属性があれば除外する）
 python3 kg_build/build_attribute_graph.py
 
 # 6. Bolt 経由ですべて（ベースグラフ + 属性、CSV が存在する場合）をインポートする

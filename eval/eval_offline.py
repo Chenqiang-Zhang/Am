@@ -297,7 +297,7 @@ def run_eval(
 
             remove_edges(recommender, uid, t["to_remove"])
             try:
-                _, _, recs, fallback = recommender.recommend_home(uid, limit=max_k)
+                _, recs, fallback = recommender.recommend_home(uid, limit=max_k)
             except Exception as exc:
                 print(f"[{i}/{len(targets)}] {uid}: recommend_home failed: {exc}", file=sys.stderr)
                 recs, fallback = [], True

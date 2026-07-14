@@ -52,7 +52,6 @@ export interface RecommendResponse {
   mode: "search" | "home";
   intent: SearchIntent;
   recommendations: Recommendation[];
-  search_id: string;
   fallback: boolean;
 }
 
@@ -68,12 +67,23 @@ export interface ReviewItem {
   text: string;
   rating: number | null;
   helpful_vote: number | null;
-  verified_purchase: boolean | null;
+  translated: boolean;
+  display_language: "ja" | "en";
 }
 
 export interface ReviewsResponse {
   product_id: string;
   reviews: ReviewItem[];
+  requested_language: "ja" | "en";
+  translated_count: number;
+  fallback_count: number;
+}
+
+// ===== 商品説明文 =====
+export interface DescriptionResponse {
+  product_id: string;
+  description: string | null;
+  translated: boolean;
 }
 
 /** POST /chat のレスポンス */
@@ -84,15 +94,7 @@ export interface ChatResponse {
   preference_summary: string[];
   intent: SearchIntent | null;
   recommendations: Recommendation[];
-  search_id: string | null;
-}
-
-// ===== 行動ログ =====
-/** POST /behavior/view のリクエスト body */
-export interface ViewLogRequest {
-  user_id: string;
-  product_id: string;
-  search_id?: string | null;
+  fallback: boolean;
 }
 
 // ===== デモ用テストユーザー選択 =====
@@ -105,9 +107,33 @@ export interface SampleUsersResponse {
   users: SampleUser[];
 }
 
-// ===== 履歴クリア =====
-/** POST /users/{user_id}/clear_history のレスポンス */
-export interface ClearHistoryResponse {
-  viewed_deleted: number;
-  searches_deleted: number;
+// ===== 推薦理由のグラフ可視化 =====
+export type GraphNodeType = "Product" | "User" | "Attribute" | "Brand" | "Category";
+export type GraphNodeRole = "recommended" | "anchor" | "context";
+
+/** グラフ可視化の1ノード（id は "{type}:{自然キー}" 形式） */
+export interface GraphNode {
+  id: string;
+  type: GraphNodeType;
+  label: string;
+  role?: GraphNodeRole | null;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+/** POST /explain/graph のリクエスト body */
+export interface ExplainGraphRequest {
+  product_id: string;
+  user_id?: string | null;
+  matched_attrs: MatchedAttr[];
+  lang?: "ja" | "en";
 }
