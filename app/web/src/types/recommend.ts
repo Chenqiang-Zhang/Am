@@ -24,6 +24,10 @@ export interface HomeRecommendRequest {
 export interface SearchIntent {
   cypher: string;
   cypher_explanation: string;
+  graph_path: string | null;
+  history_used: string[];
+  filters: string[];
+  ranking: string[];
   applied_conditions: string[];
   condition_source: "llm" | "heuristic_fallback" | "none";
   retrieval_status: "matched" | "matched_after_relaxation" | "no_match" | "fallback_popular";
@@ -54,6 +58,9 @@ export interface Recommendation {
   reason_metrics: ReasonMetrics;
   explanation: string;
   recommendation_source: "dialogue_only" | "dialogue_personalized" | "behavior_only" | "popular";
+  recommendation_strategy: string | null;
+  graph_path: string | null;
+  seed_titles: string[];
 }
 
 export interface ReasonMetrics {

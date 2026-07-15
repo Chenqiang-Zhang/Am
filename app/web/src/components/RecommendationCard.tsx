@@ -153,7 +153,7 @@ function ProductImage({ src, alt, onClick }: { src: string | null; alt: string; 
 
 // ===== ユーザーモード：やさしい「おすすめポイント」 =====
 function UserExplanation({ rec }: { rec: Recommendation }) {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const tags = friendlyTags(rec, lang);
   const sourceLabel = rec.recommendation_source === "dialogue_personalized"
     ? (lang === "ja" ? "対話条件 + あなたの履歴" : "Dialogue match + your history")
@@ -166,6 +166,26 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
   return (
     <div className={styles.user}>
       <span className={styles.source}>{sourceLabel}</span>
+      {rec.explanation && (
+        <div className={styles.reasonPanel}>
+          <div className={styles.reasonHeading}>
+            <span className={styles.reasonIcon} aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M12 3.5c.55 3.08 2.42 4.95 5.5 5.5-3.08.55-4.95 2.42-5.5 5.5-.55-3.08-2.42-4.95-5.5-5.5 3.08-.55 4.95-2.42 5.5-5.5Z"
+                  fill="currentColor"
+                />
+                <path
+                  d="M18.5 14.5c.25 1.39 1.11 2.25 2.5 2.5-1.39.25-2.25 1.11-2.5 2.5-.25-1.39-1.11-2.25-2.5-2.5 1.39-.25 2.25-1.11 2.5-2.5ZM5.5 14c.2 1.11.89 1.8 2 2-1.11.2-1.8.89-2 2-.2-1.11-.89-1.8-2-2 1.11-.2 1.8-.89 2-2Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </span>
+            <span>{t.recommendationReasons}</span>
+          </div>
+          <p className={styles.localizedReason}>{rec.explanation}</p>
+        </div>
+      )}
       {tags.length > 0 && (
         <div className={styles.userTags}>
           {tags.map((t) => (
@@ -183,10 +203,20 @@ function UserExplanation({ rec }: { rec: Recommendation }) {
 // ===== 開発者モード：機械的な根拠データ（ガラス張り） =====
 // 元パス検索: 一致した構造化属性 + グラフ由来の一文説明を主役にする。
 function DevExplanation({ rec }: { rec: Recommendation }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <div className={styles.dev}>
       {rec.explanation && <p className={styles.explanation}>{rec.explanation}</p>}
+      {rec.graph_path && (
+        <Section label={lang === "ja" ? "グラフ経路" : "Graph path"}>
+          <span>{rec.graph_path}</span>
+        </Section>
+      )}
+      {rec.seed_titles.length > 0 && (
+        <Section label={lang === "ja" ? "起点商品" : "History seeds"}>
+          <span>{rec.seed_titles.join(" · ")}</span>
+        </Section>
+      )}
       <Section label={t.matchedAttributes}>
         <AttributeChips attributes={rec.matched_attrs} />
       </Section>

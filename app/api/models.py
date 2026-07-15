@@ -38,6 +38,10 @@ class ViewLogRequest(BaseModel):
 class SearchIntent(BaseModel):
     cypher: str
     cypher_explanation: str
+    graph_path: str | None = None
+    history_used: list[str] = Field(default_factory=list)
+    filters: list[str] = Field(default_factory=list)
+    ranking: list[str] = Field(default_factory=list)
     applied_conditions: list[str] = Field(default_factory=list)
     condition_source: Literal["llm", "heuristic_fallback", "none"] = "none"
     retrieval_status: Literal["matched", "matched_after_relaxation", "no_match", "fallback_popular"] = "matched"
@@ -76,6 +80,9 @@ class Recommendation(BaseModel):
     reason_metrics: ReasonMetrics = Field(default_factory=ReasonMetrics)
     explanation: str
     recommendation_source: str = "dialogue_only"
+    recommendation_strategy: str | None = None
+    graph_path: str | None = None
+    seed_titles: list[str] = Field(default_factory=list)
 
 
 class RecommendResponse(BaseModel):

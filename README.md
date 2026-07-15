@@ -410,11 +410,13 @@ npm run dev
 
 クエリテキストなしの行動ベース推薦（`user_id` は必須、`lang` は上記同様に任意）。`RATED`／
 `VIEWED`／属性履歴のないユーザに対しては LLM を完全にスキップし、人気の高評価商品を Neo4j から直接返す
-（LLM 呼び出しなし。データベースの往復以外に実質的なレイテンシは発生しない）。履歴のある
-ユーザについては、固定の User -> Product -> Attribute -> Product 元パスを実行し、
-結果はサーバ側でキャッシュされる（`user_id`＋`lang`＋`limit` ごとに
-1時間の TTL）— それ以降の呼び出しはそのキャッシュから即座に返る。ユーザが尋ねる前にどのように
-キャッシュが事前に埋められるかについては、下記の `/recommend/home/warm` を参照。
+（LLM 呼び出しなし）。履歴のあるユーザについては、LLM が許可された P1〜P5 のグラフ経路から
+適切な経路を選び、読み取り専用の Cypher を生成する。サーバは出力形式と安全性を検証し、Neo4j `EXPLAIN`
+を通過したクエリだけを実行する。実行後は、最終 Cypher 全体の説明と、起点商品・一致属性に基づく商品ごとの
+推薦理由を生成する。結果は `user_id`＋`lang`＋`limit` ごとに1時間キャッシュする。
+
+設計の全体像、LLM に渡すデータ、P1〜P5、同じ Cypher で商品ごとに理由が異なる理由は
+[`HOME_TEXT2CYPHER_RECOMMENDATION.md`](HOME_TEXT2CYPHER_RECOMMENDATION.md) を参照。キャッシュの事前生成は下記の `/recommend/home/warm` を参照。
 
 ### `POST /recommend/home/warm`
 

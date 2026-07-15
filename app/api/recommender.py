@@ -907,6 +907,113 @@ def _build_search_prompt(
     return "\n\n".join(parts)
 
 
+_HOME_PATH_CATALOG = """\
+## Allowed home-recommendation graph paths
+
+Choose exactly ONE primary path and at most ONE secondary path. Do not invent
+labels, relationship types, or properties outside the supplied graph schema.
+
+P1 — rated-item attribute similarity
+  User-[:RATED]->Seed Product-[:HAS_ATTRIBUTE]->Attribute<-[:HAS_ATTRIBUTE]-Candidate Product
+  Use when the user's highly rated products expose useful catalog attributes.
+
+P2 — peer collaborative filtering
+  User-[:RATED]->Shared Product<-[:RATED]-Peer User-[:RATED]->Candidate Product
+  Use when multiple peers rated both the shared product and candidate at least 4.
+
+P3 — chronological peer transition
+  User-[:RATED]->Seed Product<-[:RATED]-Peer User-[:RATED]->Candidate Product
+  Require the peer's candidate rating timestamp to be later than its seed rating timestamp.
+
+P4 — review-confirmed shared attribute
+  User-[:RATED]->Seed Product-[:HAS_ATTRIBUTE]->Attribute
+      <-[:MENTIONS {sentiment:'positive'}]-Review-[:ABOUT]->Candidate Product
+  Use positive review evidence to confirm an attribute already grounded in a liked seed.
+
+P5 — category or brand affinity
+  User-[:RATED]->Seed Product-[:BELONGS_TO]->Category<-[:BELONGS_TO]-Candidate Product
+  User-[:RATED]->Seed Product-[:MADE_BY]->Brand<-[:MADE_BY]-Candidate Product
+  Use as a backfill path when attribute or peer evidence is sparse.
+"""
+
+
+_HOME_TEXT2CYPHER_FEW_SHOTS = r"""\
+## Home Text2Cypher examples
+
+Example 1 — P1 attribute similarity
+Input: Recommend unseen products similar to this user's recent high ratings.
+Output:
+{"cypher":"MATCH (u:User {user_id: $uid})-[r:RATED]->(seed:Product) WHERE toFloat(r.rating) >= 4 WITH u, seed, r ORDER BY toInteger(r.timestamp) DESC LIMIT 12 MATCH (seed)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:HAS_ATTRIBUTE]-(p:Product) WHERE NOT a.attr_type IN $ignored_attr_types AND NOT (u)-[:RATED|VIEWED]->(p) WITH p, collect(DISTINCT seed.title)[0..6] AS seed_titles, collect(DISTINCT a) AS all_attrs WHERE any(a IN all_attrs WHERE a.attr_type = 'domain_product_type') WITH p, seed_titles, all_attrs, reduce(weight=0.0, a IN all_attrs | weight + CASE a.attr_type WHEN 'domain_franchise' THEN 5.0 WHEN 'domain_platform' THEN 3.0 WHEN 'game_mode' THEN 2.0 WHEN 'gameplay_style' THEN 2.0 WHEN 'genre' THEN 2.0 WHEN 'domain_product_type' THEN 0.5 ELSE 1.0 END) AS evidence_score, [a IN all_attrs WHERE a.attr_type IN ['domain_franchise','domain_platform','game_mode','gameplay_style','genre','domain_product_type']] + [a IN all_attrs WHERE NOT a.attr_type IN ['domain_franchise','domain_platform','game_mode','gameplay_style','genre','domain_product_type']] AS ordered_attrs WITH p, seed_titles, ordered_attrs, evidence_score, size(all_attrs) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.description_ja AS description_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, evidence_score + coalesce(toFloat(p.avg_rating), 3.5) * 0.4 AS score, '' AS explanation, [a IN ordered_attrs[0..8] | {attr_type:a.attr_type, value:a.value, value_ja:a.value_ja}] AS matched_attrs, {condition_matches:0, behavior_matches:shared, transition_peers:0, collaborative_peers:0, shared_rated_attributes:shared, shared_viewed_attributes:0, review_confirmations:0} AS reason_metrics, 'attribute_similarity' AS recommendation_strategy, 'User -> high-rated product -> shared attribute -> candidate product' AS graph_path, seed_titles, 'behavior_only' AS recommendation_source ORDER BY score DESC LIMIT $limit","explanation":"Uses meaningful shared graph attributes from the user's recent high-rated products while preserving the user's product type."}
+
+Example 2 — P2 collaborative filtering
+Input: Recommend products liked by users whose taste overlaps with this user.
+Output:
+{"cypher":"MATCH (u:User {user_id: $uid})-[ur:RATED]->(seed:Product)<-[pr:RATED]-(peer:User)-[cr:RATED]->(p:Product) WHERE toFloat(ur.rating) >= 4 AND toFloat(pr.rating) >= 4 AND toFloat(cr.rating) >= 4 AND peer <> u AND NOT (u)-[:RATED|VIEWED]->(p) WITH p, collect(DISTINCT seed.title)[0..3] AS seed_titles, count(DISTINCT peer) AS peer_count RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.description_ja AS description_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, log(toFloat(peer_count) + 1) * 1.5 + coalesce(toFloat(p.avg_rating), 3.5) * 0.4 AS score, '' AS explanation, [] AS matched_attrs, {condition_matches:0, behavior_matches:peer_count, transition_peers:0, collaborative_peers:peer_count, shared_rated_attributes:0, shared_viewed_attributes:0, review_confirmations:0} AS reason_metrics, 'collaborative_filtering' AS recommendation_strategy, 'User -> shared high-rated product -> similar user -> candidate product' AS graph_path, seed_titles, 'behavior_only' AS recommendation_source ORDER BY score DESC LIMIT $limit","explanation":"Uses high ratings from users who share highly rated products with this user."}
+
+Example 3 — P4 review-confirmed attributes
+Input: Recommend products whose shared attributes are confirmed by positive reviews.
+Output:
+{"cypher":"MATCH (u:User {user_id: $uid})-[r:RATED]->(seed:Product)-[:HAS_ATTRIBUTE]->(a:Attribute)<-[:MENTIONS {sentiment:'positive'}]-(rev:Review)-[:ABOUT]->(p:Product) WHERE toFloat(r.rating) >= 4 AND NOT a.attr_type IN $ignored_attr_types AND NOT (u)-[:RATED|VIEWED]->(p) WITH p, collect(DISTINCT seed.title)[0..3] AS seed_titles, collect(DISTINCT a)[0..8] AS attrs, count(DISTINCT rev) AS confirmations WITH p, seed_titles, attrs, confirmations, size(attrs) AS shared RETURN p.product_id AS product_id, p.title AS title, p.title_ja AS title_ja, p.description AS description, p.description_ja AS description_ja, p.image_url AS image_url, p.price AS price, p.avg_rating AS avg_rating, p.rating_count AS rating_count, toFloat(shared) + log(toFloat(confirmations) + 1) * 1.2 + coalesce(toFloat(p.avg_rating), 3.5) * 0.4 AS score, '' AS explanation, [a IN attrs | {attr_type:a.attr_type, value:a.value, value_ja:a.value_ja}] AS matched_attrs, {condition_matches:0, behavior_matches:shared, transition_peers:0, collaborative_peers:0, shared_rated_attributes:shared, shared_viewed_attributes:0, review_confirmations:confirmations} AS reason_metrics, 'review_confirmed_attribute' AS recommendation_strategy, 'User -> high-rated product -> shared attribute <- positive review -> candidate product' AS graph_path, seed_titles, 'behavior_only' AS recommendation_source ORDER BY score DESC LIMIT $limit","explanation":"Uses meaningful attributes shared with liked products and independently confirmed in positive reviews."}
+"""
+
+
+_HOME_TEXT2CYPHER_RULES = """\
+## Mandatory generation rules
+- Generate one READ-ONLY Neo4j 5 Cypher query. Never use CREATE, MERGE, DELETE,
+  DETACH, SET, REMOVE, DROP, LOAD CSV, FOREACH, or write procedures.
+- Reference the current user only as $uid. Never embed a literal user_id.
+- Use only $uid, $limit, and $ignored_attr_types parameters. Do not invent other parameters.
+- Use only P1-P5. Choose one primary path and no more than one secondary path.
+- Prefer rating >= 4 as the liked-history threshold.
+- Any HAS_ATTRIBUTE path must exclude a.attr_type values in $ignored_attr_types.
+- When the supplied history contains domain_product_type, P1 candidates must
+  share at least one domain_product_type value with a highly rated seed. This
+  prevents game accessories from outranking games solely through platform overlap.
+- Exclude candidates already connected from this user by RATED or VIEWED.
+- Do not hard-filter candidates by guessed attribute values. Traverse from the
+  user's actual history instead.
+- Do not add a positive attr_type whitelist such as `a.attr_type IN [...]` to
+  P1/P4. The shared path must keep domain_product_type observable; exclude only
+  the supplied $ignored_attr_types.
+- Avoid unbounded Cartesian products. Aggregate before combining secondary evidence.
+- The final RETURN must contain these aliases exactly:
+  product_id, title, title_ja, description, description_ja, image_url, price,
+  avg_rating, rating_count, score, explanation, matched_attrs, reason_metrics,
+  recommendation_strategy, graph_path, seed_titles, recommendation_source.
+- matched_attrs must be a list of maps with attr_type, value, and value_ja.
+- reason_metrics must contain condition_matches, behavior_matches,
+  transition_peers, collaborative_peers, shared_rated_attributes,
+  shared_viewed_attributes, and review_confirmations.
+- recommendation_source must be the literal 'behavior_only'.
+- End exactly with ORDER BY score DESC LIMIT $limit.
+- Keep the per-row explanation as an empty string. A separate grounded step
+  explains the final executed query and products after Neo4j succeeds.
+
+Return JSON only:
+{"cypher":"<valid Cypher>","explanation":"<short technical intent>"}
+"""
+
+_HOME_REQUIRED_RETURN_ALIASES = (
+    "product_id",
+    "title",
+    "title_ja",
+    "description",
+    "description_ja",
+    "image_url",
+    "price",
+    "avg_rating",
+    "rating_count",
+    "score",
+    "explanation",
+    "matched_attrs",
+    "reason_metrics",
+    "recommendation_strategy",
+    "graph_path",
+    "seed_titles",
+    "recommendation_source",
+)
+
+
 def _build_home_prompt(
     genre: str,
     user_ctx: dict,
@@ -917,24 +1024,24 @@ def _build_home_prompt(
     """呼び出し元(recommend_home())は履歴が無いユーザーにはLLMを呼ばず直接人気商品を
     返すため、このプロンプトは常に実履歴のあるuser_ctxが渡される前提で組み立てる。"""
     parts = [
-        f"You are a Cypher query generator for a Neo4j {genre} product knowledge graph.\n"
-        "TASK: Generate home-page recommendations shown when the user opens the app (no search query).\n"
-        "Think freely — invent the query approach that best serves the user based on their history.",
+        f"You generate constrained home-recommendation Cypher for a Neo4j {genre} knowledge graph.\n"
+        "The user did not enter a search query. Select a graph path that is grounded in the "
+        "provided rating/view history and returns unseen personalized candidates.",
         f"## Graph Schema\n{_SCHEMA}",
     ]
     if attr_vocab_text:
         parts.append(attr_vocab_text)
-    parts.append(_FEW_SHOT_EXAMPLES)
-    if dynamic_few_shot:
-        parts.append(_format_dynamic_few_shot(dynamic_few_shot))
+    parts.append(_HOME_PATH_CATALOG)
+    parts.append(_HOME_TEXT2CYPHER_FEW_SHOTS)
+    # Search-time dynamic few-shots may target an old graph schema or dialogue
+    # conditions. They are intentionally excluded from the home generator.
     parts.append(_format_user_ctx(user_ctx))
     parts.append(
-        "## Hint\n"
-        "User history exists. Generate a personalized query using $uid.\n"
-        "Exclude products the user already RATED or VIEWED."
+        "## Task\n"
+        "Generate a personalized home query now. Prefer the path whose evidence "
+        "is actually present in the supplied user context."
     )
-    parts.append(_format_output_language(lang))
-    parts.append(_RULES)
+    parts.append(_HOME_TEXT2CYPHER_RULES)
     return "\n\n".join(parts)
 
 
@@ -943,7 +1050,12 @@ def _format_user_ctx(ctx: dict) -> str:
     if ctx.get("rated"):
         lines.append("Rated products (high rating first):")
         for p in ctx["rated"]:
-            lines.append(f"  [{p['rating']:.1f}★] {p['title']}")
+            product_id = p.get("product_id")
+            suffix = f" (product_id={product_id})" if product_id else ""
+            lines.append(f"  [{p['rating']:.1f}★] {p['title']}{suffix}")
+            for attr in p.get("attributes", [])[:8]:
+                if attr.get("attr_type") and attr.get("value"):
+                    lines.append(f"    - {attr['attr_type']}: {attr['value']}")
     if ctx.get("viewed"):
         lines.append("Recently viewed:")
         for p in ctx["viewed"]:
@@ -957,6 +1069,135 @@ def _format_user_ctx(ctx: dict) -> str:
         for q in ctx["recent_queries"]:
             lines.append(f'  "{q}"')
     return "\n".join(lines)
+
+
+def _build_cypher_explanation_prompt(cypher: str, lang: str) -> tuple[str, str]:
+    target = "Japanese" if _normalize_lang(lang) == "ja" else "English"
+    system = f"""\
+You explain the FINAL Cypher query that a recommendation system actually ran.
+Write the UI text in {target}. Explain only behavior visible in the query; never
+describe an intended path that the query did not execute.
+
+Cover these points when present:
+1. which history signals are used,
+2. the graph path traversed,
+3. candidate exclusions or thresholds,
+4. the ranking signals.
+
+Rules:
+- Do not translate Cypher line by line.
+- In the summary, avoid syntax words such as MATCH, WITH, collect, and OPTIONAL MATCH.
+- Render RATED as rating history, VIEWED as viewing history, HAS_ATTRIBUTE as
+  product attributes, and MENTIONS as review mentions.
+- Never say the user purchased a product: the graph records ratings and views.
+- Never expose user identifiers or parameter values.
+- Do not add a franchise, title, filter, or ranking factor absent from the query.
+- A list slice such as [0..6] is a display limit, not an observed count. Never
+  describe its bound as the number of matched attributes or products.
+- summary should be one clear sentence, roughly 60-150 Japanese characters when Japanese.
+
+Return JSON only:
+{{
+  "summary": "...",
+  "graph_path": "User -> ... -> Candidate Product",
+  "history_used": ["..."],
+  "filters": ["..."],
+  "ranking": ["..."]
+}}
+"""
+    return system, f"Explain this final executed Cypher:\n\n{cypher}"
+
+
+def _build_home_reason_prompt(results: list[Recommendation], lang: str) -> tuple[str, str]:
+    target = "Japanese" if _normalize_lang(lang) == "ja" else "English"
+    evidence = []
+    for rec in results:
+        raw_attrs = [
+            {"attr_type": attr.attr_type, "value": attr.value}
+            for attr in rec.matched_attrs[:8]
+        ]
+        platform_values = {
+            attr["value"] for attr in raw_attrs if attr["attr_type"] == "domain_platform"
+        }
+        # Multi-platform evidence is often technically true but produces a
+        # misleading sentence for one concrete SKU. Prefer franchise/gameplay
+        # evidence unless the candidate has one unambiguous normalized platform.
+        if len(platform_values) != 1:
+            raw_attrs = [
+                attr for attr in raw_attrs if attr["attr_type"] != "domain_platform"
+            ]
+        evidence.append(
+            {
+                "product_id": rec.product_id,
+                "candidate_title": rec.display_title or rec.title,
+                "strategy": rec.recommendation_strategy,
+                "graph_path": rec.graph_path,
+                "seed_titles": rec.seed_titles[:3],
+                "matched_attributes": raw_attrs[:6],
+                "reason_metrics": rec.reason_metrics.model_dump(),
+            }
+        )
+    system = f"""\
+You turn executed knowledge-graph evidence into grounded product recommendation
+reasons. Write every reason in {target}.
+
+Rules:
+- Use only the supplied evidence for that product.
+- Mention a seed title or matched series/platform only when explicitly supplied.
+- Prefer franchise, genre, game mode, or gameplay evidence. Mention platform
+  only when one unambiguous normalized platform is supplied.
+- Say rated/highly rated or viewed; never claim the user purchased or played it.
+- Do not expose graph terms, Cypher, internal strategy names, metrics, or user IDs.
+- Prefer one natural sentence per product. Avoid repeating an identical opening.
+- If evidence is sparse, use a conservative statement instead of inventing detail.
+
+Return JSON only:
+{{"reasons":[{{"product_id":"...","explanation":"..."}}]}}
+"""
+    return system, json.dumps({"products": evidence}, ensure_ascii=False)
+
+
+def _string_list(value: Any, max_items: int = 8) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    values: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text and text not in values:
+            values.append(text)
+        if len(values) >= max_items:
+            break
+    return values
+
+
+def _sanitize_home_cypher(cypher: str) -> str:
+    """Remove a common local-LLM overconstraint without changing the chosen path.
+
+    Some models copy the graph vocabulary into a second positive ``attr_type``
+    whitelist even though the prompt explicitly forbids it. Besides reducing
+    recall, they sometimes emit that whitelist as a second WHERE clause. The
+    home contract already supplies the safe negative list, so discard only this
+    redundant positive restriction before validation.
+    """
+    cleaned = re.sub(
+        r"\s+AND\s+\(seed\)-\[:HAS_ATTRIBUTE\]->\(a\)",
+        "",
+        cypher,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s+AND\s+a\.attr_type\s+IN\s*\[[^\]]*\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s+WHERE\s+a\.attr_type\s+IN\s*\[[^\]]*\](?=\s+WITH\b)",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _format_chat_user_profile(ctx: dict | None) -> str:
@@ -1354,6 +1595,13 @@ def _record_to_recommendation(record: Any, lang: str = "en") -> Recommendation:
         reason_metrics=reason_metrics,
         explanation=str(record.get("explanation", "")),
         recommendation_source=str(record.get("recommendation_source") or "popular"),
+        recommendation_strategy=(
+            str(record.get("recommendation_strategy"))
+            if record.get("recommendation_strategy")
+            else None
+        ),
+        graph_path=(str(record.get("graph_path")) if record.get("graph_path") else None),
+        seed_titles=_string_list(record.get("seed_titles"), max_items=3),
     )
 
 
@@ -1629,9 +1877,107 @@ class Recommender:
 
     _HOME_CACHE_TTL_SECONDS = 3600  # RATEDはこのデモでは実行時に変化しないので長めでよい
 
+    def _explain_executed_cypher(
+        self, cypher: str, lang: str, fallback: str = ""
+    ) -> dict[str, Any]:
+        """Explain the final validated Cypher, not the LLM's initial intention."""
+        default_summary = fallback or (
+            "評価・閲覧履歴から知識グラフをたどり、未確認の商品を順位付けしました。"
+            if _normalize_lang(lang) == "ja"
+            else "Traversed the knowledge graph from rating and viewing history to rank unseen products."
+        )
+        try:
+            system, user = _build_cypher_explanation_prompt(cypher, lang)
+            data = self._call_llm(system, user)
+        except Exception as exc:
+            print(f"[recommender] Cypher explanation failed: {exc}", file=sys.stderr)
+            data = {}
+        ja = _normalize_lang(lang) == "ja"
+        history_used = _string_list(data.get("history_used"))
+        if not history_used and re.search(r"\[:RATED", cypher, re.IGNORECASE):
+            history_used.append("評価履歴" if ja else "Rating history")
+        if re.search(r"\[:VIEWED", cypher, re.IGNORECASE) and not any(
+            ("閲覧" in item if ja else "view" in item.lower()) for item in history_used
+        ):
+            history_used.append("閲覧履歴" if ja else "Viewing history")
+        filters = _string_list(data.get("filters"))
+        if not filters and re.search(r"NOT\s*\(u\)-\[:RATED\|VIEWED\]", cypher, re.IGNORECASE):
+            filters.append(
+                "評価・閲覧済みの商品を除外" if ja else "Excludes rated and viewed products"
+            )
+        return {
+            "summary": str(data.get("summary") or default_summary).strip(),
+            "graph_path": (str(data.get("graph_path")).strip() if data.get("graph_path") else None),
+            "history_used": history_used,
+            "filters": filters,
+            "ranking": _string_list(data.get("ranking")),
+        }
+
+    @staticmethod
+    def _fallback_product_reason(rec: Recommendation, lang: str) -> str:
+        ja = _normalize_lang(lang) == "ja"
+        seed = rec.seed_titles[0] if rec.seed_titles else None
+        attr = rec.matched_attrs[0].value if rec.matched_attrs else None
+        metrics = rec.reason_metrics
+        if seed and attr:
+            return (
+                f"『{seed}』を高く評価しており、共通する「{attr}」属性を持つためおすすめです。"
+                if ja
+                else f"Recommended because it shares the {attr} attribute with {seed}, which you rated highly."
+            )
+        if metrics.transition_peers > 0:
+            return (
+                "同じ商品を好むユーザーが、その後に高く評価している候補です。"
+                if ja else "Recommended because users with similar taste rated it highly afterwards."
+            )
+        if metrics.collaborative_peers > 0:
+            return (
+                "あなたと同じ商品を高く評価したユーザーにも支持されている候補です。"
+                if ja else "Recommended because users who share your high ratings also rated it highly."
+            )
+        if metrics.review_confirmations > 0:
+            return (
+                "高評価した商品との共通点が、肯定的なレビューでも確認されている候補です。"
+                if ja else "Recommended because a shared preference is also confirmed by positive reviews."
+            )
+        if seed:
+            return (
+                f"高く評価した『{seed}』から知識グラフをたどって見つけた候補です。"
+                if ja else f"Found by traversing the knowledge graph from {seed}, which you rated highly."
+            )
+        return (
+            "評価・閲覧履歴とのつながりを知識グラフ上で確認できた候補です。"
+            if ja else "Recommended from a knowledge-graph connection to your rating or viewing history."
+        )
+
+    def _generate_home_product_reasons(
+        self, results: list[Recommendation], lang: str
+    ) -> list[Recommendation]:
+        if not results:
+            return results
+        try:
+            system, user = _build_home_reason_prompt(results, lang)
+            data = self._call_llm(system, user)
+            rows = data.get("reasons") if isinstance(data, dict) else None
+        except Exception as exc:
+            print(f"[recommender] product reason generation failed: {exc}", file=sys.stderr)
+            rows = None
+        generated: dict[str, str] = {}
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                product_id = str(row.get("product_id") or "").strip()
+                explanation = str(row.get("explanation") or "").strip()
+                if product_id and explanation:
+                    generated[product_id] = explanation
+        for rec in results:
+            rec.explanation = generated.get(rec.product_id) or self._fallback_product_reason(rec, lang)
+        return results
+
     def _get_or_generate_home(
         self, user_id: str, limit: int, lang: str
-    ) -> tuple[str, str, list[Recommendation]] | None:
+    ) -> tuple[str, str, list[Recommendation], dict[str, Any]] | None:
         """履歴のあるユーザー向けホーム推薦をキャッシュ優先で返す（生成に失敗したらNone）。
 
         recommend_home()（通常の表示・SearchLogに残る）とwarm_home_cache()（タブを
@@ -1640,22 +1986,49 @@ class Recommender:
         cache_key = f"{user_id}:{lang}:{limit}"
         cached = self._home_cache.get(cache_key)
         if cached and (time.time() - cached["cached_at"]) < self._HOME_CACHE_TTL_SECONDS:
-            return cached["cypher"], cached["explanation"], cached["results"]
+            return (
+                cached["cypher"], cached["explanation"], cached["results"],
+                cached.get("explanation_details", {}),
+            )
 
         user_ctx = self._get_user_context(user_id)
         try:
-            cypher, explanation, results, _diagnostics = self._run_metapath_recommendation(
-                "", user_id, limit, lang
+            system_prompt = _build_home_prompt(
+                self._genre, user_ctx, self._get_attr_vocab_text(), lang
+            )
+            cypher, intended_explanation, results = self._generate_cypher_and_execute(
+                system_prompt=system_prompt,
+                user_msg="Generate a personalized home recommendation query from this user's graph history.",
+                limit=limit,
+                exec_params={
+                    "limit": limit,
+                    "uid": user_id,
+                    "ignored_attr_types": _IGNORED_BEHAVIOR_ATTR_TYPES,
+                },
+                has_uid=True,
+                lang=lang,
+                fix_prompt=system_prompt,
+                required_aliases=_HOME_REQUIRED_RETURN_ALIASES,
+                sanitize_home=True,
             )
         except Exception as exc:
-            print(f"[recommender] home meta-path generation failed: {exc}", file=sys.stderr)
+            print(f"[recommender] home Text2Cypher generation failed: {exc}", file=sys.stderr)
             return None
         if not results:
             return None
+        explanation_details = self._explain_executed_cypher(
+            cypher, lang, intended_explanation
+        )
+        explanation = str(explanation_details["summary"])
+        results = self._generate_home_product_reasons(results, lang)
         self._home_cache[cache_key] = {
-            "cypher": cypher, "explanation": explanation, "results": results, "cached_at": time.time(),
+            "cypher": cypher,
+            "explanation": explanation,
+            "explanation_details": explanation_details,
+            "results": results,
+            "cached_at": time.time(),
         }
-        return cypher, explanation, results
+        return cypher, explanation, results, explanation_details
 
     def warm_home_cache(self, user_id: str | None, limit: int = 10, lang: str = "en") -> None:
         """タブを閉じる/バックグラウンドに回した時などに呼ばれるfire-and-forget用途。
@@ -1684,11 +2057,15 @@ class Recommender:
         has_history = bool(user_ctx and (user_ctx.get("rated") or user_ctx.get("viewed") or user_ctx.get("preferred_attrs")))
         generated = self._get_or_generate_home(user_id, limit, normalized_lang) if has_history and user_id else None
         if generated:
-            cypher, explanation, results = generated
+            cypher, explanation, results, explanation_details = generated
             fallback = False
             intent = SearchIntent(
                 cypher=cypher,
                 cypher_explanation=explanation,
+                graph_path=explanation_details.get("graph_path"),
+                history_used=explanation_details.get("history_used", []),
+                filters=explanation_details.get("filters", []),
+                ranking=explanation_details.get("ranking", []),
                 condition_source="none",
                 retrieval_status="matched",
             )
@@ -2009,11 +2386,23 @@ LIMIT $limit
             with self._driver.session(database=self._neo4j_db) as session:
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[r:RATED]->(p:Product) "
-                    "RETURN p.title AS title, r.rating AS rating "
-                    "ORDER BY r.rating DESC, r.timestamp DESC LIMIT 6",
+                    "WHERE toFloat(r.rating) >= 4 "
+                    "WITH p, r ORDER BY toFloat(r.rating) DESC, toInteger(r.timestamp) DESC LIMIT 6 "
+                    "OPTIONAL MATCH (p)-[:HAS_ATTRIBUTE]->(a:Attribute) "
+                    "RETURN p.product_id AS product_id, p.title AS title, r.rating AS rating, "
+                    "collect(DISTINCT {attr_type:a.attr_type, value:a.value, value_ja:a.value_ja})[0..8] "
+                    "AS attributes",
                     uid=user_id,
                 )
-                rated = [{"title": r["title"], "rating": r["rating"]} for r in res]
+                rated = [
+                    {
+                        "product_id": r["product_id"],
+                        "title": r["title"],
+                        "rating": r["rating"],
+                        "attributes": [dict(a) for a in (r["attributes"] or []) if a.get("attr_type")],
+                    }
+                    for r in res
+                ]
 
                 res = session.run(
                     "MATCH (u:User {user_id: $uid})-[v:VIEWED]->(p:Product) "
@@ -2082,7 +2471,9 @@ LIMIT $limit
 
     # ── LLM call ────────────────────────────────────────────────────────────────
 
-    def _call_llm(self, system: str, user: str) -> dict[str, Any]:
+    def _call_llm(
+        self, system: str, user: str, max_tokens: int = 1500
+    ) -> dict[str, Any]:
         resp = _create_json_completion(
             self._llm,
             model=self._model,
@@ -2091,7 +2482,7 @@ LIMIT $limit
                 {"role": "user", "content": user},
             ],
             temperature=self._structured_temperature,
-            max_tokens=1500,
+            max_tokens=max_tokens,
         )
         return _parse_llm_json(resp.choices[0].message.content or "{}")
 
@@ -2391,6 +2782,9 @@ LIMIT $limit
         exec_params: dict[str, Any],
         has_uid: bool = False,
         lang: str = "en",
+        fix_prompt: str | None = None,
+        required_aliases: tuple[str, ...] | None = None,
+        sanitize_home: bool = False,
     ) -> tuple[str, str, list[Recommendation]]:
         """Cypherの生成・検証・実行を1つのリトライループの中で行う。
 
@@ -2399,21 +2793,27 @@ LIMIT $limit
         フォールバックしていた）。全試行を使い切っても結果が得られなければ
         ("", "", []) を返し、呼び出し元が全面フォールバックするための合図とする。
         """
-        data = self._call_llm(system_prompt, user_msg)
+        data = self._call_llm(system_prompt, user_msg, max_tokens=3500)
         cypher: str = data.get("cypher", "").strip()
+        if sanitize_home:
+            cypher = _sanitize_home_cypher(cypher)
         explanation: str = data.get("explanation", "")
-        fix_prompt = _build_fix_prompt(lang)
+        active_fix_prompt = fix_prompt or _build_fix_prompt(lang)
 
         for attempt in range(self._max_attempts):
             is_last = attempt >= self._max_attempts - 1
             try:
-                self._validate_cypher(cypher, limit, has_uid, exec_params)
+                self._validate_cypher(
+                    cypher, limit, has_uid, exec_params, required_aliases=required_aliases
+                )
             except Exception as exc:
                 if is_last:
                     break
                 cypher, explanation = self._request_cypher_fix(
-                    fix_prompt, user_msg, cypher, f"Neo4j error:\n{exc}"
+                    active_fix_prompt, user_msg, cypher, f"Neo4j error:\n{exc}"
                 )
+                if sanitize_home:
+                    cypher = _sanitize_home_cypher(cypher)
                 continue
 
             results = self._execute_and_map(cypher, exec_params, lang)
@@ -2422,24 +2822,31 @@ LIMIT $limit
             if is_last:
                 break
             cypher, explanation = self._request_cypher_fix(
-                fix_prompt, user_msg, cypher,
-                "This query ran without error but matched 0 products. Broaden the "
-                "filters (loosen attribute matches, remove overly specific conditions, "
-                "or widen thresholds) and try again — do not repeat the same query.",
+                active_fix_prompt, user_msg, cypher,
+                "This query ran without error but matched 0 products. Keep the P1-P5 "
+                "contract, but choose another allowed path or remove an unnecessary "
+                "hard filter. Do not invent graph schema or repeat the same query.",
             )
+            if sanitize_home:
+                cypher = _sanitize_home_cypher(cypher)
 
         return "", "", []
 
     def _request_cypher_fix(self, fix_prompt: str, user_msg: str, cypher: str, feedback: str) -> tuple[str, str]:
         fix_user = f"Original request: {user_msg}\n\nCurrent Cypher:\n{cypher}\n\n{feedback}"
         try:
-            fix_data = self._call_llm(fix_prompt, fix_user)
+            fix_data = self._call_llm(fix_prompt, fix_user, max_tokens=3500)
             return fix_data.get("cypher", cypher).strip(), fix_data.get("explanation", "")
         except Exception:
             return cypher, ""
 
     _UID_REF = re.compile(r"\$uid\b")
     _HARDCODED_USER_ID = re.compile(r"user_id\s*[:=]\s*['\"]")
+    _PARAM_REF = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+    _WRITE_CLAUSE = re.compile(
+        r"\b(CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|LOAD\s+CSV|FOREACH)\b",
+        re.IGNORECASE,
+    )
 
     def _validate_cypher(
         self,
@@ -2447,9 +2854,16 @@ LIMIT $limit
         limit: int,
         has_uid: bool = False,
         params: dict[str, Any] | None = None,
+        required_aliases: tuple[str, ...] | None = None,
     ) -> None:
         if not cypher:
             raise ValueError("Empty Cypher query")
+        if len(cypher) > 30000:
+            raise ValueError("Cypher query is unexpectedly long")
+        if self._WRITE_CLAUSE.search(cypher):
+            raise ValueError("Only read-only Cypher is allowed")
+        if re.search(r"\bCALL\s+(dbms|db|apoc)\.", cypher, re.IGNORECASE):
+            raise ValueError("Database procedures are not allowed in generated Cypher")
         if self._HARDCODED_USER_ID.search(cypher):
             raise ValueError(
                 "Query hardcodes a literal user_id string instead of using the $uid "
@@ -2462,6 +2876,24 @@ LIMIT $limit
                 "$uid will not be bound. Rewrite the query without $uid or any pattern "
                 "that requires a specific User node."
             )
+        available_params = {"limit", *(params or {}).keys()}
+        unknown_params = set(self._PARAM_REF.findall(cypher)) - available_params
+        if unknown_params:
+            raise ValueError(f"Cypher references unsupported parameters: {sorted(unknown_params)}")
+        if required_aliases:
+            missing_aliases = [
+                alias
+                for alias in required_aliases
+                if not re.search(rf"\bAS\s+{re.escape(alias)}\b", cypher, re.IGNORECASE)
+            ]
+            if missing_aliases:
+                raise ValueError(f"Cypher is missing required RETURN aliases: {missing_aliases}")
+        if not re.search(
+            r"ORDER\s+BY\s+score\s+DESC\s+LIMIT\s+\$limit\s*;?\s*$",
+            cypher,
+            re.IGNORECASE,
+        ):
+            raise ValueError("Cypher must end with ORDER BY score DESC LIMIT $limit")
         explain_params = {"limit": limit, **(params or {})}
         with self._driver.session(database=self._neo4j_db) as session:
             session.run(f"EXPLAIN {cypher}", **explain_params).consume()

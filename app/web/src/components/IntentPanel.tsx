@@ -12,6 +12,11 @@ export default function IntentPanel({ intent }: Props) {
   const { t, lang } = useI18n();
   const hardConditions = intent.hard_conditions ?? [];
   const softConditions = intent.soft_conditions ?? [];
+  const explanationFacts = [
+    { label: lang === "ja" ? "利用履歴" : "History", values: intent.history_used ?? [] },
+    { label: lang === "ja" ? "除外・条件" : "Filters", values: intent.filters ?? [] },
+    { label: lang === "ja" ? "順位付け" : "Ranking", values: intent.ranking ?? [] },
+  ].filter((item) => item.values.length > 0);
 
   return (
     <section className={styles.panel}>
@@ -19,6 +24,22 @@ export default function IntentPanel({ intent }: Props) {
       <p className={styles.explanation}>
         {intent.cypher_explanation || t.intentWarning}
       </p>
+      {intent.graph_path && (
+        <div className={styles.graphPath}>
+          <span>{lang === "ja" ? "グラフ経路" : "Graph path"}</span>
+          <code>{intent.graph_path}</code>
+        </div>
+      )}
+      {explanationFacts.length > 0 && (
+        <dl className={styles.explanationFacts}>
+          {explanationFacts.map((item) => (
+            <div key={item.label}>
+              <dt>{item.label}</dt>
+              <dd>{item.values.join("・")}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {(hardConditions.length > 0 || softConditions.length > 0) && (
         <div className={styles.conditionGroups}>
           <div>

@@ -23,6 +23,56 @@
   color: var(--color-text);
 }
 
+.graphPath {
+  display: grid;
+  gap: 6px;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-weak);
+}
+
+.graphPath span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.graphPath code {
+  color: var(--color-primary);
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.explanationFacts {
+  display: grid;
+  gap: 7px;
+  margin: var(--space-3) 0 0;
+}
+
+.explanationFacts div {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: var(--space-2);
+}
+
+.explanationFacts dt,
+.explanationFacts dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.explanationFacts dt {
+  color: var(--color-text-muted);
+}
+
+.explanationFacts dd {
+  color: var(--color-text);
+}
+
 .conditionGroups {
   display: grid;
   gap: var(--space-3);

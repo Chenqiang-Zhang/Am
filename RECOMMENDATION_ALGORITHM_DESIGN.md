@@ -1,5 +1,9 @@
 # Recommendation Algorithm Design Slides
 
+> このファイルは固定メタパス案の発表用メモ。
+> `daito/text2cypher-home-explanations` の個人化ホーム推薦については
+> [`HOME_TEXT2CYPHER_RECOMMENDATION.md`](HOME_TEXT2CYPHER_RECOMMENDATION.md) を参照。
+
 ## Slide 1: Feedback on the Meta-Path Proposal
 
 Ochi's meta-path recommendation proposal is a good direction because it makes the knowledge graph responsible for retrieval and explanation, instead of letting the LLM directly control the database query.
