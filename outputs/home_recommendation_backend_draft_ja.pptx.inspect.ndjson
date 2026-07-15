@@ -1,0 +1,154 @@
+{"kind":"deck","id":"pr/1hz51w","name":"Deck"}
+{"kind":"layout","layoutId":"5c2ac3ef-1fe4-4cdc-bb30-ac82e4cdefec","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"6e917c5c-4a29-4f17-ba5e-23b992745325","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/ak5oel","slide":1,"title":"RECOMMENDER SYSTEM / BACKEND","textShapes":14}
+{"kind":"textbox","id":"sh/l0b2pcve","slide":1,"name":"kicker","text":"RECOMMENDER SYSTEM / BACKEND","textPreview":"RECOMMENDER SYSTEM / BACKEND","textChars":28,"textLines":1,"bbox":[50,44,550,24]}
+{"kind":"textbox","id":"sh/yxkjuxwn","slide":1,"name":"headline","text":"ホーム推薦","textPreview":"ホーム推薦","textChars":5,"textLines":1,"bbox":[50,155,800,90]}
+{"kind":"textbox","id":"sh/zytkn2d8","slide":1,"name":"subheadline","text":"検索語がなくても、過去行動と知識グラフから\n次に関心を持ちそうな商品を提示する。","textPreview":"検索語がなくても、過去行動と知識グラフから | 次に関心を持ちそうな商品を提示する。","textChars":40,"textLines":2,"bbox":[54,272,650,104]}
+{"kind":"shape","id":"sh/cvi1s7ex","slide":1,"name":"accent","bbox":[54,410,256,0]}
+{"kind":"textbox","id":"sh/xwb2lcv2","slide":1,"name":"caption","text":"入力：user_id と評価・閲覧履歴　｜　出力：理由付き上位 N 件","textPreview":"入力：user_id と評価・閲覧履歴　｜　出力：理由付き上位 N 件","textChars":35,"textLines":1,"bbox":[54,434,720,28]}
+{"kind":"shape","id":"sh/at0jqxwr","slide":1,"name":"a1","bbox":[790,303,86,34]}
+{"kind":"shape","id":"sh/bu9kj2dc","slide":1,"name":"a2","bbox":[989,303,86,34]}
+{"kind":"shape","id":"sh/wrml4re1","slide":1,"name":"node-user","bbox":[706,248,145,145]}
+{"kind":"shape","id":"sh/hsv2xwvm","slide":1,"name":"node-graph","bbox":[905,248,145,145]}
+{"kind":"shape","id":"sh/t07ep8jm","slide":1,"name":"node-card","bbox":[1104,248,124,145]}
+{"kind":"textbox","id":"sh/sfexg321","slide":1,"name":"user-symbol","text":"U","textPreview":"U","textChars":1,"textLines":1,"bbox":[706,268,145,48]}
+{"kind":"textbox","id":"sh/re5wnilw","slide":1,"name":"user-title","text":"User","textPreview":"User","textChars":4,"textLines":1,"bbox":[720,328,118,25]}
+{"kind":"textbox","id":"sh/6dwvedkb","slide":1,"name":"user-body","text":"RATED / VIEWED","textPreview":"RATED / VIEWED","textChars":14,"textLines":1,"bbox":[712,357,132,18]}
+{"kind":"textbox","id":"sh/5cnel83q","slide":1,"name":"graph-symbol","text":"KG","textPreview":"KG","textChars":2,"textLines":1,"bbox":[905,268,145,48]}
+{"kind":"textbox","id":"sh/4bedc325","slide":1,"name":"graph-title","text":"Neo4j","textPreview":"Neo4j","textChars":5,"textLines":1,"bbox":[920,328,115,25]}
+{"kind":"textbox","id":"sh/ja5wjylk","slide":1,"name":"graph-body","text":"属性・ユーザ関係","textPreview":"属性・ユーザ関係","textChars":8,"textLines":1,"bbox":[913,357,128,18]}
+{"kind":"textbox","id":"sh/i9wvatkz","slide":1,"name":"card-symbol","text":"Top N","textPreview":"Top N","textChars":5,"textLines":1,"bbox":[1104,270,124,34]}
+{"kind":"textbox","id":"sh/p8rexsju","slide":1,"name":"card-title","text":"推薦結果","textPreview":"推薦結果","textChars":4,"textLines":1,"bbox":[1110,328,112,25]}
+{"kind":"textbox","id":"sh/o7ixon29","slide":1,"name":"card-body","text":"理由も返却","textPreview":"理由も返却","textChars":5,"textLines":1,"bbox":[1112,357,108,18]}
+{"kind":"textbox","id":"sh/8nqpgvex","slide":1,"name":"source","text":"実装範囲：app/api/recommender.py の recommend_home() と Neo4j meta-path retrieval","textPreview":"実装範囲：app/api/recommender.py の recommend_home() と Neo4j meta-path retrieval","textChars":74,"textLines":1,"bbox":[54,646,900,18]}
+{"kind":"notes","id":"nt/ak5oel","slide":1,"text":""}
+{"kind":"slide","id":"sl/5s3n0r","slide":2,"title":"01 / ONLINE FLOW","textShapes":16}
+{"kind":"textbox","id":"sh/byd4ruts","slide":2,"name":"kicker-2","text":"01 / ONLINE FLOW","textPreview":"01 / ONLINE FLOW","textChars":16,"textLines":1,"bbox":[42,34,500,22]}
+{"kind":"textbox","id":"sh/czmlkzud","slide":2,"name":"title-2","text":"ホームでは、行動履歴から候補を生成し、理由とともに返す","textPreview":"ホームでは、行動履歴から候補を生成し、理由とともに返す","textChars":27,"textLines":1,"bbox":[42,65,1140,52]}
+{"kind":"textbox","id":"sh/dkvmt4by","slide":2,"name":"subtitle-2","text":"会話の現在条件は使わず、過去の評価・閲覧行動を個人化の材料にする。","textPreview":"会話の現在条件は使わず、過去の評価・閲覧行動を個人化の材料にする。","textChars":33,"textLines":1,"bbox":[42,120,1110,32]}
+{"kind":"shape","id":"sh/2tk3epcb","slide":2,"name":"rule-2","bbox":[42,160,1196,0]}
+{"kind":"textbox","id":"sh/3ut4nutg","slide":2,"name":"footer-2","text":"HOME RECOMMENDATION BACKEND  |  02","textPreview":"HOME RECOMMENDATION BACKEND  |  02","textChars":34,"textLines":1,"bbox":[965,681,270,16]}
+{"kind":"shape","id":"sh/ov2lgfu1","slide":2,"name":"flow-arrow-0","bbox":[219,342,55,26]}
+{"kind":"shape","id":"sh/pwbmpkbm","slide":2,"name":"flow-arrow-1","bbox":[459,342,55,26]}
+{"kind":"shape","id":"sh/ep03a5cz","slide":2,"name":"flow-arrow-2","bbox":[699,342,55,26]}
+{"kind":"shape","id":"sh/fq9kjatk","slide":2,"name":"flow-arrow-3","bbox":[939,342,55,26]}
+{"kind":"shape","id":"sh/7ep4fa5k","slide":2,"name":"flow-0","bbox":[42,260,185,190]}
+{"kind":"textbox","id":"sh/mdg3m5oz","slide":2,"name":"flow-h-0","text":"① 履歴取得","textPreview":"① 履歴取得","textChars":6,"textLines":1,"bbox":[58,285,154,28]}
+{"kind":"shape","id":"sh/9grmh0nq","slide":2,"name":"flow-rule-0","bbox":[58,325,153,0]}
+{"kind":"textbox","id":"sh/8filof65","slide":2,"name":"flow-b-0","text":"RATED / VIEWED\n既見商品も把握","textPreview":"RATED / VIEWED | 既見商品も把握","textChars":22,"textLines":2,"bbox":[58,348,154,58]}
+{"kind":"shape","id":"sh/v294ja5g","slide":2,"name":"flow-1","bbox":[282,260,185,190]}
+{"kind":"textbox","id":"sh/u103q5ov","slide":2,"name":"flow-h-1","text":"② グラフ探索","textPreview":"② グラフ探索","textChars":7,"textLines":1,"bbox":[298,285,154,28]}
+{"kind":"shape","id":"sh/h4rmlknm","slide":2,"name":"flow-rule-1","bbox":[298,325,153,0]}
+{"kind":"textbox","id":"sh/w3ilsf61","slide":2,"name":"flow-b-1","text":"属性共有・類似ユーザ・\n時系列遷移を探索","textPreview":"属性共有・類似ユーザ・ | 時系列遷移を探索","textChars":20,"textLines":2,"bbox":[298,348,154,58]}
+{"kind":"shape","id":"sh/b6547q5c","slide":2,"name":"flow-2","bbox":[522,260,185,190]}
+{"kind":"textbox","id":"sh/a5w3elor","slide":2,"name":"flow-h-2","text":"③ スコアリング","textPreview":"③ スコアリング","textChars":8,"textLines":1,"bbox":[538,285,154,28]}
+{"kind":"shape","id":"sh/e147mt8f","slide":2,"name":"flow-rule-2","bbox":[538,325,153,0]}
+{"kind":"textbox","id":"sh/f2dovyp0","slide":2,"name":"flow-b-2","text":"強い行動根拠を優先し\n品質情報を加算","textPreview":"強い行動根拠を優先し | 品質情報を加算","textChars":18,"textLines":2,"bbox":[538,348,154,58]}
+{"kind":"shape","id":"sh/g3mpo3ql","slide":2,"name":"flow-3","bbox":[762,260,185,190]}
+{"kind":"textbox","id":"sh/14v6xo7q","slide":2,"name":"flow-h-3","text":"④ 結果整形","textPreview":"④ 結果整形","textChars":6,"textLines":1,"bbox":[778,285,154,28]}
+{"kind":"shape","id":"sh/6xk7i983","slide":2,"name":"flow-rule-3","bbox":[778,325,153,0]}
+{"kind":"textbox","id":"sh/rydorepo","slide":2,"name":"flow-b-3","text":"上位 N 件、理由、\n根拠指標を API へ","textPreview":"上位 N 件、理由、 | 根拠指標を API へ","textChars":22,"textLines":2,"bbox":[778,348,154,58]}
+{"kind":"shape","id":"sh/szmpkjq9","slide":2,"name":"flow-4","bbox":[1002,260,185,190]}
+{"kind":"textbox","id":"sh/t0v6to7u","slide":2,"name":"flow-h-4","text":"⑤ 画面表示","textPreview":"⑤ 画面表示","textChars":6,"textLines":1,"bbox":[1018,285,154,28]}
+{"kind":"shape","id":"sh/i9k7e987","slide":2,"name":"flow-rule-4","bbox":[1018,325,153,0]}
+{"kind":"textbox","id":"sh/jatoneps","slide":2,"name":"flow-b-4","text":"推薦カードと\n説明ラベルを表示","textPreview":"推薦カードと | 説明ラベルを表示","textChars":15,"textLines":2,"bbox":[1018,348,154,58]}
+{"kind":"shape","id":"sh/lozatcra","slide":2,"name":"fallback","bbox":[42,506,1196,95]}
+{"kind":"textbox","id":"sh/knq9k7ap","slide":2,"name":"fallback-title","text":"履歴がない／個人化候補が作れない場合","textPreview":"履歴がない／個人化候補が作れない場合","textChars":18,"textLines":1,"bbox":[64,527,370,24]}
+{"kind":"textbox","id":"sh/zmhsr294","slide":2,"name":"fallback-body","text":"個人化を無理に推測せず、評価・評価数に基づく人気商品の推薦へフォールバックする。","textPreview":"個人化を無理に推測せず、評価・評価数に基づく人気商品の推薦へフォールバックする。","textChars":40,"textLines":1,"bbox":[64,560,1030,20]}
+{"kind":"notes","id":"nt/5s3n0r","slide":2,"text":""}
+{"kind":"slide","id":"sl/vz9bve","slide":3,"title":"02 / GRAPH SIGNALS","textShapes":21}
+{"kind":"textbox","id":"sh/gb65or25","slide":3,"name":"kicker-3","text":"02 / GRAPH SIGNALS","textPreview":"02 / GRAPH SIGNALS","textChars":18,"textLines":1,"bbox":[42,34,500,22]}
+{"kind":"textbox","id":"sh/fadovmlk","slide":3,"name":"title-3","text":"4つのグラフ経路が「好み」を異なる角度から捉える","textPreview":"4つのグラフ経路が「好み」を異なる角度から捉える","textChars":24,"textLines":1,"bbox":[42,65,1140,52]}
+{"kind":"textbox","id":"sh/u94nmhkz","slide":3,"name":"subtitle-3","text":"候補は、ユーザと商品の直接履歴だけでなく、属性・他ユーザ・時系列の関係から得る。","textPreview":"候補は、ユーザと商品の直接履歴だけでなく、属性・他ユーザ・時系列の関係から得る。","textChars":40,"textLines":1,"bbox":[42,120,1110,32]}
+{"kind":"shape","id":"sh/pgf61w3m","slide":3,"name":"rule-3","bbox":[42,160,1196,0]}
+{"kind":"textbox","id":"sh/4f6psb21","slide":3,"name":"footer-3","text":"HOME RECOMMENDATION BACKEND  |  03","textPreview":"HOME RECOMMENDATION BACKEND  |  03","textChars":34,"textLines":1,"bbox":[965,681,270,16]}
+{"kind":"shape","id":"sh/3exoz6lg","slide":3,"name":"signal-0","bbox":[42,232,266,330]}
+{"kind":"shape","id":"sh/2do7q1kb","slide":3,"name":"signal-pill-0","bbox":[60,252,70,28]}
+{"kind":"textbox","id":"sh/5kv6pc3i","slide":3,"name":"signal-pill-0-text","text":"PATH 1","textPreview":"PATH 1","textChars":6,"textLines":1,"bbox":[68,258,54,16]}
+{"kind":"textbox","id":"sh/kj25g72x","slide":3,"name":"signal-head-0","text":"高評価商品の属性","textPreview":"高評価商品の属性","textChars":8,"textLines":1,"bbox":[60,301,230,52]}
+{"kind":"shape","id":"sh/e50ryx8r","slide":3,"name":"signal-line-0","bbox":[60,372,230,0]}
+{"kind":"textbox","id":"sh/f698r29c","slide":3,"name":"signal-path-0","text":"User → RATED(≥4) → Product\n→ Attribute → Candidate","textPreview":"User → RATED(≥4) → Product | → Attribute → Candidate","textChars":50,"textLines":2,"bbox":[60,393,230,54]}
+{"kind":"textbox","id":"sh/g7i907qh","slide":3,"name":"signal-body-0","text":"過去に高評価した作品と\n同じ属性を持つ候補","textPreview":"過去に高評価した作品と | 同じ属性を持つ候補","textChars":21,"textLines":2,"bbox":[60,474,230,44]}
+{"kind":"shape","id":"sh/1srqtsr2","slide":3,"name":"signal-1","bbox":[342,232,266,330]}
+{"kind":"shape","id":"sh/2t0r2x8n","slide":3,"name":"signal-pill-1","bbox":[360,252,70,28]}
+{"kind":"textbox","id":"sh/3u98v298","slide":3,"name":"signal-pill-1-text","text":"PATH 2","textPreview":"PATH 2","textChars":6,"textLines":1,"bbox":[368,258,54,16]}
+{"kind":"textbox","id":"sh/ovi947qt","slide":3,"name":"signal-head-1","text":"最近閲覧した商品の属性","textPreview":"最近閲覧した商品の属性","textChars":11,"textLines":1,"bbox":[360,301,230,52]}
+{"kind":"shape","id":"sh/pwbqxcre","slide":3,"name":"signal-line-1","bbox":[360,372,230,0]}
+{"kind":"textbox","id":"sh/qxkr6h8z","slide":3,"name":"signal-path-1","text":"User → VIEWED → Product\n→ Attribute → Candidate","textPreview":"User → VIEWED → Product | → Attribute → Candidate","textChars":47,"textLines":2,"bbox":[360,393,230,54]}
+{"kind":"textbox","id":"sh/byt8zm94","slide":3,"name":"signal-body-1","text":"直近の探索意図に近い\n候補を補強","textPreview":"直近の探索意図に近い | 候補を補強","textChars":16,"textLines":2,"bbox":[360,474,230,44]}
+{"kind":"shape","id":"sh/72t8nm5c","slide":3,"name":"signal-2","bbox":[642,232,266,330]}
+{"kind":"shape","id":"sh/m1k7uhor","slide":3,"name":"signal-pill-2","bbox":[660,252,70,28]}
+{"kind":"textbox","id":"sh/94vqpwni","slide":3,"name":"signal-pill-2-text","text":"PATH 3","textPreview":"PATH 3","textChars":6,"textLines":1,"bbox":[668,258,54,16]}
+{"kind":"textbox","id":"sh/83mpwr6x","slide":3,"name":"signal-head-2","text":"類似ユーザの評価","textPreview":"類似ユーザの評価","textChars":8,"textLines":1,"bbox":[660,301,230,52]}
+{"kind":"shape","id":"sh/zyt8j25g","slide":3,"name":"signal-line-2","bbox":[660,372,230,0]}
+{"kind":"textbox","id":"sh/yxk7qxov","slide":3,"name":"signal-path-2","text":"User → liked Product ← Peer\n→ highly rated Candidate","textPreview":"User → liked Product ← Peer | → highly rated Candidate","textChars":52,"textLines":2,"bbox":[660,393,230,54]}
+{"kind":"textbox","id":"sh/l0bqlcn6","slide":3,"name":"signal-body-2","text":"評価傾向が近い人が\n高評価した候補","textPreview":"評価傾向が近い人が | 高評価した候補","textChars":17,"textLines":2,"bbox":[660,474,230,44]}
+{"kind":"shape","id":"sh/0z2ps761","slide":3,"name":"signal-3","bbox":[942,232,266,330]}
+{"kind":"shape","id":"sh/bu9of254","slide":3,"name":"signal-pill-3","bbox":[960,252,70,28]}
+{"kind":"textbox","id":"sh/qt07mxoj","slide":3,"name":"signal-pill-3-text","text":"PATH 4","textPreview":"PATH 4","textChars":6,"textLines":1,"bbox":[968,258,54,16]}
+{"kind":"textbox","id":"sh/gzy5w3mh","slide":3,"name":"signal-head-3","text":"次に選ばれる遷移","textPreview":"次に選ばれる遷移","textChars":8,"textLines":1,"bbox":[960,301,230,52]}
+{"kind":"shape","id":"sh/107mp832","slide":3,"name":"signal-line-3","bbox":[960,372,230,0]}
+{"kind":"textbox","id":"sh/edgnut4b","slide":3,"name":"signal-path-3","text":"recent liked Product ← Peer\n→ later rated Candidate","textPreview":"recent liked Product ← Peer | → later rated Candidate","textChars":51,"textLines":2,"bbox":[960,393,230,54]}
+{"kind":"textbox","id":"sh/fep4nylw","slide":3,"name":"signal-body-3","text":"似た行動の後に選ばれた\n候補を強く評価","textPreview":"似た行動の後に選ばれた | 候補を強く評価","textChars":19,"textLines":2,"bbox":[960,474,230,44]}
+{"kind":"textbox","id":"sh/o3y503mt","slide":3,"name":"exclude","text":"共通ルール：すでに RATED または VIEWED の商品は候補から除外する。","textPreview":"共通ルール：すでに RATED または VIEWED の商品は候補から除外する。","textChars":40,"textLines":1,"bbox":[42,615,920,23]}
+{"kind":"notes","id":"nt/vz9bve","slide":3,"text":""}
+{"kind":"slide","id":"sl/zdoij8","slide":4,"title":"03 / RANKING & EXPLANATION","textShapes":20}
+{"kind":"textbox","id":"sh/6hwb6ls3","slide":4,"name":"kicker-4","text":"03 / RANKING & EXPLANATION","textPreview":"03 / RANKING & EXPLANATION","textChars":26,"textLines":1,"bbox":[42,34,500,22]}
+{"kind":"textbox","id":"sh/tkna1gru","slide":4,"name":"title-4","text":"順位は、行動根拠を中心に、商品品質で安定化させる","textPreview":"順位は、行動根拠を中心に、商品品質で安定化させる","textChars":24,"textLines":1,"bbox":[42,65,1140,52]}
+{"kind":"textbox","id":"sh/sjet8ba9","slide":4,"name":"subtitle-4","text":"スコアは固定の重み付き式で算出し、最も強い根拠を推薦理由として返す。","textPreview":"スコアは固定の重み付き式で算出し、最も強い根拠を推薦理由として返す。","textChars":34,"textLines":1,"bbox":[42,120,1110,32]}
+{"kind":"shape","id":"sh/jelsb69s","slide":4,"name":"rule-4","bbox":[42,160,1196,0]}
+{"kind":"textbox","id":"sh/idcb21s7","slide":4,"name":"footer-4","text":"HOME RECOMMENDATION BACKEND  |  04","textPreview":"HOME RECOMMENDATION BACKEND  |  04","textChars":34,"textLines":1,"bbox":[965,681,270,16]}
+{"kind":"textbox","id":"sh/5gnadgri","slide":4,"name":"left-label","text":"相対的な寄与","textPreview":"相対的な寄与","textChars":6,"textLines":1,"bbox":[42,214,270,22]}
+{"kind":"textbox","id":"sh/4fet4bad","slide":4,"name":"rank-label-0","text":"次に選ばれる遷移","textPreview":"次に選ばれる遷移","textChars":8,"textLines":1,"bbox":[42,261,235,20]}
+{"kind":"shape","id":"sh/vqls7m9g","slide":4,"name":"rank-bar-0","bbox":[285,255,420,32]}
+{"kind":"textbox","id":"sh/upcbyhsv","slide":4,"name":"rank-detail-0","text":"最も強い行動シグナル","textPreview":"最も強い行動シグナル","textChars":10,"textLines":1,"bbox":[719,262,210,18]}
+{"kind":"textbox","id":"sh/sr6tszuh","slide":4,"name":"rank-label-1","text":"類似ユーザの高評価","textPreview":"類似ユーザの高評価","textChars":9,"textLines":1,"bbox":[42,319,235,20]}
+{"kind":"shape","id":"sh/tszu14bm","slide":4,"name":"rank-bar-1","bbox":[285,313,305,32]}
+{"kind":"textbox","id":"sh/6pobq9cb","slide":4,"name":"rank-detail-1","text":"協調フィルタリング","textPreview":"協調フィルタリング","textChars":9,"textLines":1,"bbox":[604,320,210,18]}
+{"kind":"textbox","id":"sh/rqxczetw","slide":4,"name":"rank-label-2","text":"高評価商品との属性共有","textPreview":"高評価商品との属性共有","textChars":11,"textLines":1,"bbox":[42,377,235,20]}
+{"kind":"shape","id":"sh/4n6tozu5","slide":4,"name":"rank-bar-2","bbox":[285,371,230,32]}
+{"kind":"textbox","id":"sh/5ofux4bq","slide":4,"name":"rank-detail-2","text":"長期的な好み","textPreview":"長期的な好み","textChars":6,"textLines":1,"bbox":[529,378,210,18]}
+{"kind":"textbox","id":"sh/i1obmpcz","slide":4,"name":"rank-label-3","text":"最近閲覧との属性共有","textPreview":"最近閲覧との属性共有","textChars":10,"textLines":1,"bbox":[42,435,235,20]}
+{"kind":"shape","id":"sh/j2xcvutk","slide":4,"name":"rank-bar-3","bbox":[285,429,180,32]}
+{"kind":"textbox","id":"sh/ojad03ap","slide":4,"name":"rank-detail-3","text":"短期的な関心","textPreview":"短期的な関心","textChars":6,"textLines":1,"bbox":[479,436,210,18]}
+{"kind":"textbox","id":"sh/pkju9obu","slide":4,"name":"rank-label-4","text":"レビュー裏付け・商品評価","textPreview":"レビュー裏付け・商品評価","textChars":12,"textLines":1,"bbox":[42,493,235,20]}
+{"kind":"shape","id":"sh/xgfudo3y","slide":4,"name":"rank-bar-4","bbox":[285,487,132,32]}
+{"kind":"textbox","id":"sh/cf6tkj2t","slide":4,"name":"rank-detail-4","text":"信頼性の補強","textPreview":"信頼性の補強","textChars":6,"textLines":1,"bbox":[431,494,210,18]}
+{"kind":"shape","id":"sh/bexcbel8","slide":4,"name":"reason-card","bbox":[805,219,410,335]}
+{"kind":"textbox","id":"sh/ad4bitkn","slide":4,"name":"reason-label","text":"API が返す推薦根拠（例）","textPreview":"API が返す推薦根拠（例）","textChars":14,"textLines":1,"bbox":[832,247,340,22]}
+{"kind":"textbox","id":"sh/pcvu9o32","slide":4,"name":"reason-title","text":"最近の好みに近い流れで\n次に選ばれやすい候補です","textPreview":"最近の好みに近い流れで | 次に選ばれやすい候補です","textChars":24,"textLines":2,"bbox":[832,288,350,64]}
+{"kind":"shape","id":"sh/obmtgj2h","slide":4,"name":"reason-rule","bbox":[832,373,355,0]}
+{"kind":"textbox","id":"sh/nads7elw","slide":4,"name":"reason-metrics","text":"transition_peers    35\ncollaborative_peers 78\nshared_attributes    5","textPreview":"transition_peers    35 | collaborative_peers 78 | shared_attributes    5","textChars":68,"textLines":3,"bbox":[832,398,300,80]}
+{"kind":"textbox","id":"sh/294be9kb","slide":4,"name":"reason-caption","text":"reason_metrics により、UI 側でも\n推薦理由を確認できる。","textPreview":"reason_metrics により、UI 側でも | 推薦理由を確認できる。","textChars":37,"textLines":2,"bbox":[832,496,330,44]}
+{"kind":"textbox","id":"sh/18va5436","slide":4,"name":"note","text":"注：棒の長さは説明用の相対表現。実装では log 変換を含む固定の重み付きスコアを使用する。","textPreview":"注：棒の長さは説明用の相対表現。実装では log 変換を含む固定の重み付きスコアを使用する。","textChars":46,"textLines":1,"bbox":[42,622,940,18]}
+{"kind":"notes","id":"nt/zdoij8","slide":4,"text":""}
+{"kind":"slide","id":"sl/j69lac","slide":5,"title":"04 / OPERATION","textShapes":18}
+{"kind":"textbox","id":"sh/lwfe9c7e","slide":5,"name":"kicker-5","text":"04 / OPERATION","textPreview":"04 / OPERATION","textChars":14,"textLines":1,"bbox":[42,34,500,22]}
+{"kind":"textbox","id":"sh/y9ovex83","slide":5,"name":"title-5","text":"ホーム推薦は、閲覧のたびに更新され、次回表示を先読みできる","textPreview":"ホーム推薦は、閲覧のたびに更新され、次回表示を先読みできる","textChars":29,"textLines":1,"bbox":[42,65,1140,52]}
+{"kind":"textbox","id":"sh/zaxw72po","slide":5,"name":"subtitle-5","text":"ユーザ行動を蓄積しながら、応答速度と安全なフォールバックを両立する。","textPreview":"ユーザ行動を蓄積しながら、応答速度と安全なフォールバックを両立する。","textChars":34,"textLines":1,"bbox":[42,120,1110,32]}
+{"kind":"shape","id":"sh/8zqxkrq5","slide":5,"name":"rule-5","bbox":[42,160,1196,0]}
+{"kind":"textbox","id":"sh/90zedw7q","slide":5,"name":"footer-5","text":"HOME RECOMMENDATION BACKEND  |  05","textPreview":"HOME RECOMMENDATION BACKEND  |  05","textChars":34,"textLines":1,"bbox":[965,681,270,16]}
+{"kind":"shape","id":"sh/mx8fih8z","slide":5,"name":"op-a1","bbox":[278,335,58,26]}
+{"kind":"shape","id":"sh/nyhwbmpk","slide":5,"name":"op-a2","bbox":[578,335,58,26]}
+{"kind":"shape","id":"sh/w3qxor61","slide":5,"name":"op-a3","bbox":[878,335,58,26]}
+{"kind":"shape","id":"sh/x4jehw7m","slide":5,"name":"op-0","bbox":[42,254,236,188]}
+{"kind":"textbox","id":"sh/donil07y","slide":5,"name":"op-num-0","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[61,275,48,28]}
+{"kind":"textbox","id":"sh/s3ehsvqd","slide":5,"name":"op-head-0","text":"商品を閲覧","textPreview":"商品を閲覧","textChars":5,"textLines":1,"bbox":[61,323,196,27]}
+{"kind":"textbox","id":"sh/r250jqps","slide":5,"name":"op-body-0","text":"VIEWED を記録\nSearchLog と紐付け","textPreview":"VIEWED を記録 | SearchLog と紐付け","textChars":25,"textLines":2,"bbox":[61,365,198,40]}
+{"kind":"shape","id":"sh/q1wzql87","slide":5,"name":"op-1","bbox":[342,254,236,188]}
+{"kind":"textbox","id":"sh/1s7ip07u","slide":5,"name":"op-num-1","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[361,275,48,28]}
+{"kind":"textbox","id":"sh/0rehwvq9","slide":5,"name":"op-head-1","text":"行動を蓄積","textPreview":"行動を蓄積","textChars":5,"textLines":1,"bbox":[361,323,196,27]}
+{"kind":"textbox","id":"sh/fq50napo","slide":5,"name":"op-body-1","text":"評価・閲覧・属性を\nNeo4j から取得","textPreview":"評価・閲覧・属性を | Neo4j から取得","textChars":20,"textLines":2,"bbox":[361,365,198,40]}
+{"kind":"shape","id":"sh/epwzu58j","slide":5,"name":"op-2","bbox":[642,254,236,188]}
+{"kind":"textbox","id":"sh/hw3ydg7q","slide":5,"name":"op-num-2","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[661,275,48,28]}
+{"kind":"textbox","id":"sh/gvuhkbq5","slide":5,"name":"op-head-2","text":"次回を先読み","textPreview":"次回を先読み","textChars":6,"textLines":1,"bbox":[661,323,196,27]}
+{"kind":"textbox","id":"sh/8fyh0by1","slide":5,"name":"op-body-2","text":"タブ離脱時に\nホーム推薦をキャッシュ","textPreview":"タブ離脱時に | ホーム推薦をキャッシュ","textChars":18,"textLines":2,"bbox":[661,365,198,40]}
+{"kind":"shape","id":"sh/9g7itgzm","slide":5,"name":"op-3","bbox":[942,254,236,188]}
+{"kind":"textbox","id":"sh/mdwzy1gv","slide":5,"name":"op-num-3","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[961,275,48,28]}
+{"kind":"textbox","id":"sh/7ep0r6hg","slide":5,"name":"op-head-3","text":"即時に表示","textPreview":"即時に表示","textChars":5,"textLines":1,"bbox":[961,323,196,27]}
+{"kind":"textbox","id":"sh/w3yh4vyx","slide":5,"name":"op-body-3","text":"個人化結果、または\n人気商品を返却","textPreview":"個人化結果、または | 人気商品を返却","textChars":17,"textLines":2,"bbox":[961,365,198,40]}
+{"kind":"shape","id":"sh/h47ix0fi","slide":5,"name":"close","bbox":[42,510,1196,84]}
+{"kind":"textbox","id":"sh/uhgz2lg7","slide":5,"name":"close-head","text":"設計上の要点","textPreview":"設計上の要点","textChars":6,"textLines":1,"bbox":[64,531,180,22]}
+{"kind":"textbox","id":"sh/vip0vqxc","slide":5,"name":"close-body","text":"明示的な検索語がないホームでは、履歴を中心に推薦する。履歴が不足する場合は、無関係な個人化を避けて人気商品へ戻す。","textPreview":"明示的な検索語がないホームでは、履歴を中心に推薦する。履歴が不足する場合は、無関係な個人化を避けて人気商品へ戻す。","textChars":57,"textLines":1,"bbox":[250,530,925,40]}
+{"kind":"notes","id":"nt/j69lac","slide":5,"text":""}
