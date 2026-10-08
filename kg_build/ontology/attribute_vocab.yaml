@@ -1,0 +1,180 @@
+attributes:
+  color:
+    values:
+    - black
+    - white
+    - red
+    - blue
+    - green
+    - gold
+    - silver
+    - purple
+    - pink
+    - gray
+    - yellow
+    - camo
+    - clear
+    - multicolor
+    - other
+    - electric_blue
+    - metallic_blue
+    - galactic_purple
+    - piano_black
+  difficulty:
+    values:
+    - easy
+    - normal
+    - hard
+    - very_hard
+    - adaptive
+  franchise:
+    values:
+    - shovel_knight
+    - kingdom_hearts
+  gameplay_style:
+    values:
+    - botanical_battle
+    - side_scroller
+  genre:
+    values:
+    - action
+    - action_adventure
+    - adventure
+    - rpg
+    - jrpg
+    - strategy
+    - simulation
+    - sports
+    - racing
+    - fighting
+    - shooter
+    - fps
+    - platformer
+    - puzzle
+    - horror
+    - survival_horror
+    - party
+    - music
+    - educational
+    - nba
+    - rhythm_game
+    - survival_horror_action
+    - wrestling
+    - multiplayer
+    - action_shooter
+    - first_person_shooter
+    - exploration
+    - survival
+    - rock
+    - western
+    - life_simulation
+    - action_rpg
+    - tower_defense
+    - sports_game
+    - dark_fantasy
+    - tactical_rpg
+    - football
+  graphics:
+    values: []
+  language:
+    values:
+    - english
+    - spanish
+    - french
+    - german
+    - italian
+    - japanese
+  multiplayer_type:
+    values:
+    - single_player
+    - multiplayer
+    - local_multiplayer
+    - online_multiplayer
+    - co_op
+    - local_co_op
+    - online_co_op
+    - competitive
+  online_support:
+    values:
+    - supported
+    - required
+    - optional
+    - not_supported
+  platform:
+    values:
+    - nintendo_switch
+    - wii_u
+    - wii
+    - nintendo_3ds
+    - nintendo_ds
+    - playstation_5
+    - playstation_4
+    - playstation_3
+    - playstation_2
+    - playstation_vita
+    - xbox_series
+    - xbox_one
+    - xbox_360
+    - pc
+    - mobile
+    - multi_platform
+    - nintendo_wii
+    - sony_psp
+    - nintendo_2ds
+    - playstation
+    - xbox_series_x_s
+    - nintendo_wii_u
+    - gamecube
+    - gameboy_advance
+    - xbox
+    - playstation_portable
+    - nintendo_gamecube
+    - genesis
+  play_mode:
+    values:
+    - single_player
+    - multiplayer
+    - co_op
+    - competitive
+    - campaign
+    - story_mode
+    - open_world
+    - sandbox
+    - arcade
+    - survival
+    - online
+    - local
+    - online_multiplayer
+    - offline_multiplayer
+  player_count:
+    values: []
+  price:
+    values: []
+  product_kind:
+    values:
+    - game
+    - console
+    - controller
+    - accessory
+    - gift_card
+    - downloadable_content
+    - storage
+    - bundle
+    - power_disc_pack
+    - game_console
+  release_date:
+    values: []
+  size:
+    values:
+    - 1_pack
+    - 2_pack
+    - 3_pack
+    - 500gb
+    - 825gb
+    - 1tb
+    - 2tb
+    - other
+    - 16gb
+    - 128gb
+  story:
+    values: []

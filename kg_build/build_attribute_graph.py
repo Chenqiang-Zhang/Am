@@ -4,9 +4,6 @@ Convert LLM extraction outputs to Neo4j import CSVs.
 Reads:
   product_attributes.jsonl     (from extract_product_attributes.py)
   review_mentions.jsonl        (from extract_review_mentions.py)
-  attribute_canonical_map.json (optional, hand-authored — attr_type/value are already
-                                 closed at extraction time via attr_vocab.yaml, so this
-                                 is only for a manual one-off cleanup pass if ever needed)
   nodes_products.csv           (from build_base_graph.py; used to drop attributes for
                                  products outside the current scale.max_meta selection)
 
@@ -16,15 +13,16 @@ Writes:
   rel_mentions.csv              -- Review  -[MENTIONS]->      Attribute
 
 attribute_id = SHA1(attr_type|value), shared across HAS_ATTRIBUTE and MENTIONS
-for the same (attr_type, value) pair.
+for the same (attr_type, value) pair. attr_type/value are already reasonably
+canonical at this point — both extraction scripts match against (and grow)
+the same shared ontology/attribute_vocab.yaml, so no separate post-hoc
+canonicalization pass is needed here.
 """
 from __future__ import annotations
 
 import argparse
 import csv
-import json
 from pathlib import Path
-from typing import Any
 
 from utils.csv_io import read_jsonl, write_csv
 from utils.text_utils import sha1_id
@@ -32,20 +30,6 @@ from utils.text_utils import sha1_id
 
 def attr_id(attr_type: str, value: str) -> str:
     return sha1_id("attr", f"{attr_type}|{value}")
-
-
-def load_canonical_map(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"attr_type_map": {}, "value_map": {}}
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
-    return {"attr_type_map": data.get("attr_type_map", {}), "value_map": data.get("value_map", {})}
-
-
-def canonicalize(t: str, v: str, canon: dict[str, Any]) -> tuple[str, str]:
-    t2 = canon["attr_type_map"].get(t, t)
-    v2 = canon["value_map"].get(t2, {}).get(v, v)
-    return t2, v2
 
 
 def load_valid_product_ids(nodes_products_path: Path) -> set[str] | None:
@@ -68,7 +52,6 @@ def build_attribute_csvs(
     review_mentions_path: Path,
     output_dir: Path,
     min_confidence: float,
-    canon: dict[str, Any],
     valid_product_ids: set[str] | None,
 ) -> dict[str, int]:
     attribute_nodes: dict[str, dict] = {}
@@ -95,7 +78,6 @@ def build_attribute_csvs(
                 confidence = float(attr.get("confidence", 0.0))
                 if not t or not v or confidence < min_confidence:
                     continue
-                t, v = canonicalize(t, v, canon)
                 aid = attr_id(t, v)
                 attribute_nodes.setdefault(aid, {"attribute_id": aid, "attr_type": t, "value": v})
                 has_attribute_edges.append({
@@ -123,7 +105,6 @@ def build_attribute_csvs(
                     continue
                 if sentiment not in {"positive", "negative", "neutral"}:
                     sentiment = "neutral"
-                t, v = canonicalize(t, v, canon)
                 aid = attr_id(t, v)
                 attribute_nodes.setdefault(aid, {"attribute_id": aid, "attr_type": t, "value": v})
                 mentions_edges.append({
@@ -164,11 +145,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, help="Directory to write CSVs")
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument(
-        "--canonical-map", type=Path,
-        help="Path to attribute_canonical_map.json (optional, hand-authored manual cleanup map). "
-             "Auto-detected in attributes_dir if omitted; skipped entirely if absent.",
-    )
-    parser.add_argument(
         "--nodes-products", type=Path,
         help="Path to nodes_products.csv (from build_base_graph.py), used to drop attributes for "
              "products outside the current scale.max_meta selection. Auto-detected in output_dir "
@@ -195,12 +171,7 @@ def main() -> None:
     product_attrs_path = args.product_attrs or (attrs_dir / "product_attributes.jsonl")
     review_mentions_path = args.review_mentions or (attrs_dir / "review_mentions.jsonl")
     min_confidence = args.min_confidence if args.min_confidence is not None else float(llm_cfg.get("min_confidence", 0.6))
-    canonical_map_path = args.canonical_map or (attrs_dir / "attribute_canonical_map.json")
     nodes_products_path = args.nodes_products or (out_dir / "nodes_products.csv")
-
-    canon = load_canonical_map(canonical_map_path)
-    if canon["attr_type_map"] or canon["value_map"]:
-        print(f"Applying canonicalization map from {canonical_map_path}")
 
     valid_product_ids = load_valid_product_ids(nodes_products_path)
     if valid_product_ids is not None:
@@ -210,7 +181,7 @@ def main() -> None:
 
     print(f"Building attribute CSVs in {out_dir}...")
     counts = build_attribute_csvs(
-        product_attrs_path, review_mentions_path, out_dir, min_confidence, canon, valid_product_ids
+        product_attrs_path, review_mentions_path, out_dir, min_confidence, valid_product_ids
     )
 
     print()

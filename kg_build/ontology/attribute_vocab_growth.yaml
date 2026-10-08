@@ -1,0 +1,61 @@
+attributes:
+  color:
+    values:
+    - electric_blue
+    - metallic_blue
+    - galactic_purple
+    - piano_black
+  franchise:
+    values:
+    - shovel_knight
+    - kingdom_hearts
+  gameplay_style:
+    values:
+    - botanical_battle
+    - side_scroller
+  genre:
+    values:
+    - nba
+    - rhythm_game
+    - survival_horror_action
+    - wrestling
+    - multiplayer
+    - action_shooter
+    - first_person_shooter
+    - exploration
+    - survival
+    - rock
+    - western
+    - life_simulation
+    - action_rpg
+    - tower_defense
+    - sports_game
+    - dark_fantasy
+    - tactical_rpg
+    - football
+  platform:
+    values:
+    - nintendo_wii
+    - sony_psp
+    - nintendo_2ds
+    - playstation
+    - xbox_series_x_s
+    - nintendo_wii_u
+    - gamecube
+    - gameboy_advance
+    - xbox
+    - playstation_portable
+    - nintendo_gamecube
+    - genesis
+  play_mode:
+    values:
+    - online_multiplayer
+    - offline_multiplayer
+  product_kind:
+    values:
+    - power_disc_pack
+    - game_console
+  size:
+    values:
+    - 16gb
+    - 128gb

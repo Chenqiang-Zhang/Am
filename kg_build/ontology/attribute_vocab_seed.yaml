@@ -1,0 +1,142 @@
+# 人手で定義した (attr_type, value) の初期シード。attribute_vocab.yaml の
+# 起点となった原本であり、パイプラインはこのファイルを一切読み書きしない
+# （読み書きするのは attribute_vocab.yaml のみ）。後から見比べられるよう、
+# 「最初に何を定義していたか」を凍結した参照用スナップショットとして残す。
+# 実行中にLLMが新規追加した分は attribute_vocab_growth.yaml に記録される。
+
+attributes:
+  platform:
+    values:
+      - nintendo_switch
+      - wii_u
+      - wii
+      - nintendo_3ds
+      - nintendo_ds
+      - playstation_5
+      - playstation_4
+      - playstation_3
+      - playstation_2
+      - playstation_vita
+      - xbox_series
+      - xbox_one
+      - xbox_360
+      - pc
+      - mobile
+      - multi_platform
+  product_kind:
+    values:
+      - game
+      - console
+      - controller
+      - accessory
+      - gift_card
+      - downloadable_content
+      - storage
+      - bundle
+  genre:
+    values:
+      - action
+      - action_adventure
+      - adventure
+      - rpg
+      - jrpg
+      - strategy
+      - simulation
+      - sports
+      - racing
+      - fighting
+      - shooter
+      - fps
+      - platformer
+      - puzzle
+      - horror
+      - survival_horror
+      - party
+      - music
+      - educational
+  franchise:
+    values: []
+  play_mode:
+    values:
+      - single_player
+      - multiplayer
+      - co_op
+      - competitive
+      - campaign
+      - story_mode
+      - open_world
+      - sandbox
+      - arcade
+      - survival
+      - online
+      - local
+  multiplayer_type:
+    values:
+      - single_player
+      - multiplayer
+      - local_multiplayer
+      - online_multiplayer
+      - co_op
+      - local_co_op
+      - online_co_op
+      - competitive
+  player_count:
+    values: []
+  online_support:
+    values:
+      - supported
+      - required
+      - optional
+      - not_supported
+  difficulty:
+    values:
+      - easy
+      - normal
+      - hard
+      - very_hard
+      - adaptive
+  gameplay_style:
+    values: []
+  graphics:
+    values: []
+  story:
+    values: []
+  language:
+    values:
+      - english
+      - spanish
+      - french
+      - german
+      - italian
+      - japanese
+  release_date:
+    values: []
+  price:
+    values: []
+  size:
+    values:
+      - 1_pack
+      - 2_pack
+      - 3_pack
+      - 500gb
+      - 825gb
+      - 1tb
+      - 2tb
+      - other
+  color:
+    values:
+      - black
+      - white
+      - red
+      - blue
+      - green
+      - gold
+      - silver
+      - purple
+      - pink
+      - gray
+      - yellow
+      - camo
+      - clear
+      - multicolor
+      - other

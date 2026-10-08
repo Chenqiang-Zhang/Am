@@ -78,9 +78,25 @@ def chat_json_call(
                 )
                 usage = normalize_usage(getattr(resp, "usage", {}))
             else:
+                # response_schema があれば OpenAI 互換の structured outputs
+                # （vLLM の guided decoding）で構造まで強制する。スキーマに
+                # 従わないモデル（例: Qwen3.5 が products キーを省く）でも
+                # 期待する形の JSON を返させるため。未対応環境では json_object
+                # にフォールバックする。
+                if response_schema is not None:
+                    fmt = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": schema_name,
+                            "schema": response_schema,
+                            "strict": True,
+                        },
+                    }
+                else:
+                    fmt = {"type": "json_object"}
                 resp = client.chat.completions.create(
                     model=model, messages=messages,
-                    response_format={"type": "json_object"},
+                    response_format=fmt,
                     temperature=temperature, max_tokens=max_output_tokens,
                 )
                 raw = resp.choices[0].message.content or "{}"

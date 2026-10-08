@@ -221,8 +221,15 @@ def build_client(
 
 
 def provider_from_config(llm_cfg: dict) -> tuple[str, str | None, str | None]:
-    """Extract (provider, model, base_url) from config dict."""
-    provider = str(llm_cfg.get("provider", "gemini"))
-    model    = llm_cfg.get("model") or None
-    base_url = llm_cfg.get("base_url") or None
+    """Extract LLM settings, with environment variables taking precedence.
+
+    ``config.yaml`` holds portable defaults.  A deployment can override only the
+    values it needs through ``LLM_PROVIDER``, ``LLM_MODEL``, and
+    ``LLM_BASE_URL`` (for example, a Kubera vLLM endpoint) without changing a
+    tracked file.
+    """
+    load_env_file()
+    provider = os.environ.get("LLM_PROVIDER") or str(llm_cfg.get("provider", "gemini"))
+    model = os.environ.get("LLM_MODEL") or llm_cfg.get("model") or None
+    base_url = os.environ.get("LLM_BASE_URL") or llm_cfg.get("base_url") or None
     return provider, model, base_url
