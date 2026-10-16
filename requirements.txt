@@ -1,0 +1,6 @@
+neo4j
+openai
+google-genai
+fastapi
+uvicorn[standard]
+numpy

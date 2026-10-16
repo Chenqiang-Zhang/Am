@@ -1,0 +1,26 @@
+# Local datasets and generated graph exports
+data/
+docs/
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Notebook and editor noise
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# Frontend (app/web/) build artifacts and dependencies
+app/web/node_modules/
+app/web/dist/
+app/web/*.local
+
+.npm-cache/
+
+# Local secrets
+.env
+*.env

@@ -1,0 +1,65 @@
+
+:root {
+  --color-bg: #0b0d14;  --color-surface: #151822;  --color-surface-2: #1d212e;  --color-border: #2a2f40;  --color-text: #eef1f8;  --color-text-muted: #8b90a8;  --color-primary: #8b5cf6;  --color-primary-hover: #a78bfa;
+  --color-primary-weak: rgba(139, 92, 246, 0.16);
+  --color-accent: #22d3ee;  --color-gold: #fbbf24;  --color-gold-light: rgba(251, 191, 36, 0.14);
+  --color-warning-bg: rgba(251, 146, 60, 0.14);
+  --color-warning-border: rgba(251, 146, 60, 0.4);
+  --color-warning-text: #fdba74;
+  --color-danger-bg: rgba(248, 113, 113, 0.14);
+  --color-danger-border: rgba(248, 113, 113, 0.4);
+  --color-danger-text: #fca5a5;
+  --color-star: #fbbf24;
+
+  --color-bar: var(--color-accent);
+  --color-bar-track: #262b3a;
+
+  --radius: 10px;  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 0 1px rgba(139, 92, 246, 0.3), 0 10px 32px rgba(139, 92, 246, 0.22);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-sans: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  line-height: 1.65;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input,
+select {
+  font: inherit;
+}

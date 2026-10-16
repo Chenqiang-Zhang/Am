@@ -1,0 +1,39 @@
+services:
+  neo4j-live:
+    image: neo4j:5-community
+    labels:
+      owner: ${USER:-unknown}
+    ports:
+      - "${LIVE_NEO4J_HTTP_PORT:-7474}:7474"
+      - "${LIVE_NEO4J_BOLT_PORT:-7687}:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${LIVE_NEO4J_PASSWORD:?set LIVE_NEO4J_PASSWORD in .env}
+    volumes:
+      - neo4j-live-data:/data
+
+  neo4j-ucsd:
+    image: neo4j:5-community
+    labels:
+      owner: ${USER:-unknown}
+    ports:
+      - "${UCSD_NEO4J_HTTP_PORT:-7475}:7474"
+      - "${UCSD_NEO4J_BOLT_PORT:-7688}:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${UCSD_NEO4J_PASSWORD:?set UCSD_NEO4J_PASSWORD in .env}
+    volumes:
+      - neo4j-ucsd-data:/data
+
+  ollama:
+    image: ollama/ollama
+    profiles: ["llm"]
+    labels:
+      owner: ${USER:-unknown}
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  ollama-models:
+  neo4j-live-data:
+  neo4j-ucsd-data:

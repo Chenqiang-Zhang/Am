@@ -1,0 +1,9 @@
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${OLLAMA_GPU_DEVICE:?set OLLAMA_GPU_DEVICE to a GPU UUID}"]
+              capabilities: [gpu]
