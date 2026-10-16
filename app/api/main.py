@@ -69,6 +69,6 @@ def get_sample_players(
 
 @app.get("/games/{appid}/reviews", response_model=ReviewsResponse)
 def get_game_reviews(
-    appid: str, limit: int = Query(default=5, ge=1, le=20), reader: GraphReader = Depends(get_graph_reader)
+    appid: str, limit: int = Query(default=100, ge=1, le=5000), reader: GraphReader = Depends(get_graph_reader)
 ) -> ReviewsResponse:
     return ReviewsResponse(appid=appid, reviews=[ReviewItem(**row) for row in reader.top_reviews(appid, limit)])

@@ -57,7 +57,6 @@ export default function PageHeader({
       </div>
       <div className={styles.headerText}>
         <h1 className={styles.title}>{t.appTitle}</h1>
-        <p className={styles.subtitle}>{t.appSubtitle}</p>
       </div>
       <div className={styles.tabs}>
         <div className={styles.segmented}>

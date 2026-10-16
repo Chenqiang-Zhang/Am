@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { Recommendation } from "../types/recommend";
 import { useI18n } from "../i18n";
 import ReviewList from "./ReviewList";
-import RecommendRate from "./RecommendRate";
 import ReasonChips from "./ReasonChips";
 import styles from "./RecommendationCard.module.css";
 
@@ -35,15 +34,9 @@ export default function RecommendationCard({ rec, rank, devMode }: Props) {
               {rec.name}
             </a>
           </h3>
-          {devMode && (
-            <span className={styles.score} title="score">
-              {rec.score.toFixed(2)}
-            </span>
-          )}
         </div>
 
         <div className={styles.meta}>
-          <RecommendRate rate={rec.recommend_rate} count={rec.review_count} />
           <span className={rec.price != null ? styles.price : styles.priceUnknown}>
             {formatPrice(rec, t.free, t.priceUnknown)}
           </span>

@@ -7,7 +7,6 @@ interface Dict {
   tabRecommend: string;
   recommendForPlayer: string;
   recommendAnonymous: string;
-  appSubtitle: string;
   greeting: string;
   devView: string;
   anonymous: string;
@@ -25,7 +24,6 @@ interface Dict {
   recommendations: (count: number) => string;
   reasons: string;
   reasonKinds: Record<"tag" | "aspect" | "game" | "studio", string>;
-  recommendRate: (rate: number, count: number) => string;
   priceUnknown: string;
   free: string;
   showDescription: string;
@@ -50,8 +48,7 @@ const ja: Dict = {
   tabChat: "チャット",
   tabRecommend: "おすすめ",
   recommendForPlayer: "選んだプレイヤーの履歴から、遊んでいないゲームをおすすめします。",
-  recommendAnonymous: "履歴がないので、人気のゲームを表示しています。右上でプレイヤーを選ぶと、その履歴からおすすめします。",
-  appSubtitle: "会話しながら、あなたにぴったりのゲームをご提案します。",
+  recommendAnonymous: "履歴がないので、遊んだプレイヤーが多い順に表示しています。右上でプレイヤーを選ぶと、その履歴からおすすめします。",
   greeting: "こんにちは！どんなゲームをお探しですか？",
   devView: "開発者ビュー",
   anonymous: "履歴なし（匿名）",
@@ -69,7 +66,6 @@ const ja: Dict = {
   recommendations: (count) => `おすすめ（${count}件）`,
   reasons: "根拠",
   reasonKinds: { tag: "タグ", aspect: "観点", game: "遊んだゲーム", studio: "開発元" },
-  recommendRate: (rate, count) => `おすすめ率 ${Math.round(rate * 100)}%（レビュー${count.toLocaleString()}件）`,
   priceUnknown: "価格未登録",
   free: "無料",
   showDescription: "ゲームの説明を見る",
@@ -94,8 +90,7 @@ const en: Dict = {
   tabChat: "Chat",
   tabRecommend: "Recommended",
   recommendForPlayer: "Games this player has not played yet, based on their play history.",
-  recommendAnonymous: "No history, so popular games are shown. Pick a player at the top right to get recommendations from their history.",
-  appSubtitle: "We'll suggest games for you through a short chat.",
+  recommendAnonymous: "No history, so games are shown by number of players. Pick a player at the top right to get recommendations from their history.",
   greeting: "Hi! What kind of game are you looking for?",
   devView: "Developer view",
   anonymous: "No history (anonymous)",
@@ -113,7 +108,6 @@ const en: Dict = {
   recommendations: (count) => `Recommendations (${count})`,
   reasons: "Reasons",
   reasonKinds: { tag: "Tag", aspect: "Aspect", game: "Played", studio: "Studio" },
-  recommendRate: (rate, count) => `${Math.round(rate * 100)}% recommended (${count.toLocaleString()} reviews)`,
   priceUnknown: "No price",
   free: "Free",
   showDescription: "Show description",

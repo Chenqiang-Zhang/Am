@@ -12,7 +12,7 @@ CANDIDATES_PER_PATH = 100
 PATH_WEIGHTS = {"tag": 1.0, "peer": 1.0, "studio": 0.5}
 PATH_SCORE_FIELDS = {"tag": "score", "peer": "peer_count", "studio": "score"}
 
-POPULAR_EXPLANATION: dict[Lang, str] = {"ja": "人気のゲーム", "en": "Popular game"}
+POPULAR_EXPLANATION: dict[Lang, str] = {"ja": "遊んだプレイヤーが多いゲーム", "en": "Played by many players"}
 
 
 def recommend_games(

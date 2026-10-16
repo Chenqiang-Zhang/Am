@@ -21,7 +21,7 @@ export default function ReviewList({ appid, reviewCount }: Props) {
     if (status !== "idle") return;
     setStatus("loading");
     try {
-      const data = await fetchReviews(appid, 5);
+      const data = await fetchReviews(appid, reviewCount);
       setReviews(data.reviews);
       setStatus("done");
     } catch {

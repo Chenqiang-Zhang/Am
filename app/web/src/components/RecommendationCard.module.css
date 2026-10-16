@@ -93,13 +93,6 @@
   overflow: hidden;
 }
 
-.score {
-  flex: 0 0 auto;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--color-accent);
-  font-variant-numeric: tabular-nums;
-}
 
 .meta {
   display: flex;
