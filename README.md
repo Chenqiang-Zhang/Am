@@ -40,7 +40,7 @@
 │           ├── main.tsx, App.tsx, i18n.tsx, index.css
 │           ├── api/client.ts      API 呼び出し（fetch はここだけ）
 │           ├── types/recommend.ts API の型（app/api/models.py に対応）
-│           ├── pages/ChatPage.tsx 会話とおすすめの表示
+│           ├── pages/             ChatPage.tsx（会話）、RecommendPage.tsx（おすすめ）
 │           └── components/        チャット、カード、レビュー、選択肢など（CSS Modules）
 ├── eval/                  オフライン評価（8節）
 │   ├── metrics.py         指標

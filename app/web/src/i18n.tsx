@@ -3,6 +3,10 @@ import type { Lang } from "./types/recommend";
 
 interface Dict {
   appTitle: string;
+  tabChat: string;
+  tabRecommend: string;
+  recommendForPlayer: string;
+  recommendAnonymous: string;
   appSubtitle: string;
   greeting: string;
   devView: string;
@@ -43,6 +47,10 @@ interface Dict {
 
 const ja: Dict = {
   appTitle: "ゲームコンシェルジュ",
+  tabChat: "チャット",
+  tabRecommend: "おすすめ",
+  recommendForPlayer: "選んだプレイヤーの履歴から、遊んでいないゲームをおすすめします。",
+  recommendAnonymous: "履歴がないので、人気のゲームを表示しています。右上でプレイヤーを選ぶと、その履歴からおすすめします。",
   appSubtitle: "会話しながら、あなたにぴったりのゲームをご提案します。",
   greeting: "こんにちは！どんなゲームをお探しですか？",
   devView: "開発者ビュー",
@@ -83,6 +91,10 @@ const ja: Dict = {
 
 const en: Dict = {
   appTitle: "Game Concierge",
+  tabChat: "Chat",
+  tabRecommend: "Recommended",
+  recommendForPlayer: "Games this player has not played yet, based on their play history.",
+  recommendAnonymous: "No history, so popular games are shown. Pick a player at the top right to get recommendations from their history.",
   appSubtitle: "We'll suggest games for you through a short chat.",
   greeting: "Hi! What kind of game are you looking for?",
   devView: "Developer view",

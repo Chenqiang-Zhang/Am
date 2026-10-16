@@ -6,29 +6,26 @@ import ChatBubble from "../components/ChatBubble";
 import HeroIllustration from "../components/HeroIllustration";
 import QuickReplies from "../components/QuickReplies";
 import RecommendationList from "../components/RecommendationList";
-import HelpModal from "../components/HelpModal";
-import TestUserSelect, { useStoredPlayerId } from "../components/TestUserSelect";
+import PageHeader, { type PageControls } from "../components/PageHeader";
 import styles from "./ChatPage.module.css";
 
 const LIMIT = 8;
 
 type Status = "idle" | "loading" | "error";
 
-interface Props {
+interface Props extends PageControls {
   heroEntrance?: boolean;
 }
 
-export default function ChatPage({ heroEntrance = false }: Props) {
-  const { t, lang, setLang } = useI18n();
+export default function ChatPage({ heroEntrance = false, ...controls }: Props) {
+  const { playerId, devMode } = controls;
+  const { t, lang } = useI18n();
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [options, setOptions] = useState<string[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [devMode, setDevMode] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [playerId, setPlayerId] = useStoredPlayerId();
 
   async function send(text: string) {
     const content = text.trim();
@@ -72,48 +69,7 @@ export default function ChatPage({ heroEntrance = false }: Props) {
 
   return (
     <div className={styles.page}>
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
-      <header className={styles.header}>
-        <div className={styles.headerControls}>
-          <button
-            type="button"
-            className={styles.helpBtn}
-            onClick={() => setHelpOpen(true)}
-            aria-label="help"
-          >
-            ?
-          </button>
-          <div className={styles.langToggle}>
-            <button
-              type="button"
-              className={lang === "ja" ? styles.langActive : styles.langBtn}
-              onClick={() => setLang("ja")}
-            >
-              日本語
-            </button>
-            <button
-              type="button"
-              className={lang === "en" ? styles.langActive : styles.langBtn}
-              onClick={() => setLang("en")}
-            >
-              EN
-            </button>
-          </div>
-          <label className={styles.devToggle}>
-            <input
-              type="checkbox"
-              checked={devMode}
-              onChange={(e) => setDevMode(e.target.checked)}
-            />
-            {t.devView}
-          </label>
-          <TestUserSelect playerId={playerId} onChange={setPlayerId} />
-        </div>
-        <div className={styles.headerText}>
-          <h1 className={styles.title}>{t.appTitle}</h1>
-          <p className={styles.subtitle}>{t.appSubtitle}</p>
-        </div>
-      </header>
+      <PageHeader {...controls} />
 
       <section className={styles.conversation}>
         {conversation.length === 0 && <HeroIllustration entering={heroEntrance} />}

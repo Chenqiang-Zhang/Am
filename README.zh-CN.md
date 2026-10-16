@@ -40,7 +40,7 @@
 │           ├── main.tsx, App.tsx, i18n.tsx, index.css
 │           ├── api/client.ts      API 调用（fetch 只写在这里）
 │           ├── types/recommend.ts API 的类型（对应 app/api/models.py）
-│           ├── pages/ChatPage.tsx 对话与推荐的显示
+│           ├── pages/             ChatPage.tsx（对话）、RecommendPage.tsx（推荐）
 │           └── components/        聊天、卡片、评论、选项等（CSS Modules）
 ├── eval/                  离线评估（第 8 节）
 │   ├── metrics.py         指标

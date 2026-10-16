@@ -20,7 +20,7 @@ const STEPS_JA = [
   {
     icon: "🎮",
     title: "プレイヤーを選ぶ",
-    body: "右上でプレイヤーを選ぶと、そのプレイヤーの遊んだ履歴を踏まえて答えます。",
+    body: "右上でプレイヤーを選ぶと、そのプレイヤーの履歴を踏まえてチャットが答えます。「おすすめ」タブでは、履歴から遊んでいないゲームを一覧にします。",
   },
   {
     icon: "🔄",
@@ -43,7 +43,7 @@ const STEPS_EN = [
   {
     icon: "🎮",
     title: "Pick a player",
-    body: "Choose a player at the top right and answers take that player's play history into account.",
+    body: "Choose a player at the top right and the chat takes that player's play history into account. The Recommended tab lists games the player has not played yet.",
   },
   {
     icon: "🔄",

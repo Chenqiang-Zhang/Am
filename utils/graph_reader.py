@@ -155,7 +155,7 @@ class GraphReader:
             "MATCH (p:Player)-[pl:PLAYED]->(:Game) "
             "WITH p, count(pl) AS played_count WHERE played_count >= 3 "
             "RETURN p.player_id AS player_id, played_count "
-            "ORDER BY played_count DESC LIMIT $limit",
+            "ORDER BY player_id LIMIT $limit",
             limit=limit,
         )
 
