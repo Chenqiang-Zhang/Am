@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
+import { ApiError } from "./api/client";
 
 // ============================================================================
 // 軽量i18n（日本語／英語）。重いライブラリは使わず、文字列辞書＋Contextで実現。
@@ -8,7 +9,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 
 export type Lang = "ja" | "en";
 
-interface Dict {
+export interface Dict {
   appTitle: string;
   appSubtitle: string;
   personalizedTool: string;
@@ -55,6 +56,14 @@ interface Dict {
   intentHeading: string;
   intentWarning: string;
   showCypher: string;
+  retry: string;
+  homeRefreshing: string;
+  errorNetwork: string;
+  errorTimeout: string;
+  /** {status} をHTTPステータスに置き換える */
+  errorHttp: string;
+  errorInvalidResponse: string;
+  errorUnknown: string;
 }
 
 const ja: Dict = {
@@ -104,6 +113,13 @@ const ja: Dict = {
   intentHeading: "システムの解釈 (Intent)",
   intentWarning: "検索条件の説明を取得できませんでした。",
   showCypher: "実行されたクエリを見る",
+  retry: "もう一度送信",
+  homeRefreshing: "おすすめを更新中…",
+  errorNetwork: "APIに接続できませんでした。バックエンドが起動しているか確認してください。",
+  errorTimeout: "AIの応答に時間がかかっています。しばらくしてからもう一度お試しください。",
+  errorHttp: "APIエラー ({status})",
+  errorInvalidResponse: "APIから想定外の応答が返されました。",
+  errorUnknown: "エラーが発生しました。",
 };
 
 const en: Dict = {
@@ -153,6 +169,13 @@ const en: Dict = {
   intentHeading: "System interpretation (Intent)",
   intentWarning: "Couldn't retrieve an explanation for the search.",
   showCypher: "Show the executed query",
+  retry: "Send again",
+  homeRefreshing: "Updating recommendations…",
+  errorNetwork: "Couldn't connect to the API. Please check that the backend is running.",
+  errorTimeout: "The AI is taking a while to respond. Please try again in a moment.",
+  errorHttp: "API error ({status})",
+  errorInvalidResponse: "The API returned an unexpected response.",
+  errorUnknown: "Something went wrong.",
 };
 
 const DICTS: Record<Lang, Dict> = { ja, en };
@@ -178,4 +201,26 @@ export function useI18n(): Ctx {
   const ctx = useContext(LangContext);
   if (!ctx) throw new Error("useI18n must be used within LangProvider");
   return ctx;
+}
+
+/**
+ * client.ts が投げた例外を、現在の言語の利用者向け文言にする。
+ * 状態にはエラーオブジェクトのまま持ち、描画時にこれを通すことで言語切替にも追従する。
+ */
+export function formatApiError(error: unknown, t: Dict): string {
+  if (!(error instanceof ApiError)) return t.errorUnknown;
+  switch (error.kind) {
+    case "network":
+      return t.errorNetwork;
+    case "timeout":
+      return t.errorTimeout;
+    case "invalid_response":
+      return t.errorInvalidResponse;
+    case "http": {
+      const base = t.errorHttp.replace("{status}", String(error.status));
+      return error.detail ? `${base}: ${error.detail}` : base;
+    }
+    default:
+      return t.errorUnknown;
+  }
 }

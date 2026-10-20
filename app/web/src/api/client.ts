@@ -21,22 +21,120 @@ import type {
 const BASE = "/api";
 const CHAT_TIMEOUT_MS = 45_000;
 
-/** API 呼び出しの失敗を表す例外（画面側で status を出し分けられるよう保持） */
+/**
+ * 失敗の種類。表示文言はここでは決めず、画面側が i18n.tsx の formatApiError() で
+ * 現在の言語に変換する（言語を切り替えると表示中のエラーも追従する）。
+ *   network: バックエンドに到達できない / timeout: 応答待ちが上限を超えた /
+ *   aborted: 呼び出し側が signal で取り消した（画面には出さない） /
+ *   http: 2xx以外のステータス / invalid_response: 応答がJSONとして読めない
+ */
+export type ApiErrorKind = "network" | "timeout" | "aborted" | "http" | "invalid_response";
+
+/** API 呼び出しの失敗を表す例外（画面側で kind/status を出し分けられるよう保持） */
 export class ApiError extends Error {
+  kind: ApiErrorKind;
   status: number;
-  constructor(status: number, message: string) {
-    super(message);
+  /** FastAPI の detail を1行の文字列にしたもの（無ければ null） */
+  detail: string | null;
+  constructor(kind: ApiErrorKind, status = 0, detail: string | null = null) {
+    // message は開発者向け（ログ用）。利用者向けの文言は formatApiError() を使う。
+    super(`${kind}${status ? ` (${status})` : ""}${detail ? `: ${detail}` : ""}`);
     this.name = "ApiError";
+    this.kind = kind;
     this.status = status;
+    this.detail = detail;
   }
+}
+
+/** 呼び出し側の取り消し（signal.abort()）による失敗か。画面側はこれを無視する。 */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof ApiError && error.kind === "aborted";
+}
+
+/**
+ * FastAPI の detail を表示用の文字列にする。HTTPException は文字列（またはdict）だが、
+ * バリデーションエラー(422)は [{loc, msg, type}, ...] の配列で返る。
+ */
+function formatDetail(detail: unknown): string | null {
+  if (detail == null || detail === "") return null;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (!item || typeof item !== "object") return String(item);
+      const { loc, msg } = item as { loc?: unknown; msg?: unknown };
+      const text = typeof msg === "string" ? msg : JSON.stringify(item);
+      // loc の先頭は "body" / "query" などの場所名なので省き、フィールド名だけ残す。
+      const field = Array.isArray(loc) ? loc.slice(1).join(".") : "";
+      return field ? `${field}: ${text}` : text;
+    });
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  return JSON.stringify(detail);
+}
+
+async function readDetail(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.json()) as { detail?: unknown };
+    return formatDetail(body?.detail);
+  } catch {
+    return null; /* JSON でないレスポンスは無視 */
+  }
+}
+
+interface RequestOptions {
+  /** 呼び出し側からの取り消し（新しいリクエストで古いものを捨てる時など） */
+  signal?: AbortSignal;
+  /** 応答本文の読み込みまで含めた待ち時間の上限 */
+  timeoutMs?: number;
+}
+
+/**
+ * fetch → ステータス確認 → JSON 解析までを1か所にまとめ、どの段階の失敗も ApiError に揃える。
+ */
+async function request<T>(path: string, init: RequestInit = {}, opts: RequestOptions = {}): Promise<T> {
+  const { signal, timeoutMs } = opts;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let timedOut = false;
+  const timeoutId =
+    timeoutMs === undefined
+      ? undefined
+      : window.setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
+
+  let res: Response | null = null;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, signal: controller.signal });
+    if (!res.ok) throw new ApiError("http", res.status, await readDetail(res));
+    return (await res.json()) as T;
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiError(timedOut ? "timeout" : "aborted");
+    if (error instanceof ApiError) throw error;
+    // fetch 自体の失敗はネットワーク到達不可（バックエンド未起動など）、
+    // 応答後の失敗は本文が JSON として読めなかったもの。
+    throw res === null ? new ApiError("network") : new ApiError("invalid_response", res.status);
+  } finally {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+function postJson<T>(path: string, body: unknown, opts?: RequestOptions): Promise<T> {
+  return request<T>(
+    path,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    opts,
+  );
 }
 
 /** バックエンド疎通確認（GET /health） */
 export async function health(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE}/health`);
-    if (!res.ok) return false;
-    const data = (await res.json()) as { status?: string };
+    const data = await request<{ status?: string }>("/health");
     return data.status === "ok";
   } catch {
     return false;
@@ -44,62 +142,13 @@ export async function health(): Promise<boolean> {
 }
 
 /** 推薦取得（POST /recommend） */
-export async function recommend(
-  req: RecommendRequest,
-): Promise<RecommendResponse> {
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/recommend`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
-    });
-  } catch {
-    // ネットワーク到達不可（バックエンド未起動など）
-    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
-  }
-
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { detail?: string };
-      detail = body.detail ? `: ${body.detail}` : "";
-    } catch {
-      /* JSON でないレスポンスは無視 */
-    }
-    throw new ApiError(res.status, `APIエラー (${res.status})${detail}`);
-  }
-
-  return (await res.json()) as RecommendResponse;
+export function recommend(req: RecommendRequest, signal?: AbortSignal): Promise<RecommendResponse> {
+  return postJson<RecommendResponse>("/recommend", req, { signal });
 }
 
 /** 履歴ベースの初期推薦（POST /recommend/home） */
-export async function recommendHome(
-  req: HomeRecommendRequest,
-): Promise<RecommendResponse> {
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/recommend/home`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
-    });
-  } catch {
-    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
-  }
-
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { detail?: string };
-      detail = body.detail ? `: ${body.detail}` : "";
-    } catch {
-      /* JSON でないレスポンスは無視 */
-    }
-    throw new ApiError(res.status, `APIエラー (${res.status})${detail}`);
-  }
-
-  return (await res.json()) as RecommendResponse;
+export function recommendHome(req: HomeRecommendRequest, signal?: AbortSignal): Promise<RecommendResponse> {
+  return postJson<RecommendResponse>("/recommend/home", req, { signal });
 }
 
 /**
@@ -123,79 +172,66 @@ export function warmHomeCache(req: HomeRecommendRequest): void {
 }
 
 /** 対話型推薦の1ターン（POST /chat） */
-export async function chat(
+export function chat(
   messages: ChatMessage[],
   limit = 10,
   lang: "ja" | "en" = "ja",
   userId?: string | null,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
-  let res: Response;
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-  try {
-    res = await fetch(`${BASE}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, limit, lang, user_id: userId ?? null }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new ApiError(0, "AIの応答に時間がかかっています。しばらくしてからもう一度お試しください。");
-    }
-    throw new ApiError(0, "APIに接続できませんでした。バックエンドが起動しているか確認してください。");
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-  if (!res.ok) {
-    throw new ApiError(res.status, `APIエラー (${res.status})`);
-  }
-  return (await res.json()) as ChatResponse;
+  return postJson<ChatResponse>(
+    "/chat",
+    { messages, limit, lang, user_id: userId ?? null },
+    { signal, timeoutMs: CHAT_TIMEOUT_MS },
+  );
 }
 
 /** デモ用テストユーザー一覧（GET /users/sample） */
-export async function sampleUsers(limit = 10): Promise<SampleUsersResponse> {
-  const res = await fetch(`${BASE}/users/sample?limit=${limit}`);
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as SampleUsersResponse;
+export function sampleUsers(limit = 10, signal?: AbortSignal): Promise<SampleUsersResponse> {
+  return request<SampleUsersResponse>(`/users/sample?limit=${limit}`, {}, { signal });
 }
 
 /** 商品レビュー取得（GET /products/{id}/reviews） */
-export async function fetchReviews(
+export function fetchReviews(
   productId: string,
   limit = 5,
   lang: "ja" | "en" = "en",
+  signal?: AbortSignal,
 ): Promise<ReviewsResponse> {
-  const res = await fetch(`${BASE}/products/${productId}/reviews?limit=${limit}&lang=${lang}`);
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as ReviewsResponse;
+  return request<ReviewsResponse>(
+    `/products/${encodeURIComponent(productId)}/reviews?limit=${limit}&lang=${lang}`,
+    {},
+    { signal },
+  );
 }
 
 /** 商品説明文取得（GET /products/{id}/description） */
-export async function fetchDescription(
+export function fetchDescription(
   productId: string,
   lang: "ja" | "en" = "en",
+  signal?: AbortSignal,
 ): Promise<DescriptionResponse> {
-  const res = await fetch(`${BASE}/products/${productId}/description?lang=${lang}`);
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as DescriptionResponse;
+  return request<DescriptionResponse>(
+    `/products/${encodeURIComponent(productId)}/description?lang=${lang}`,
+    {},
+    { signal },
+  );
 }
 
 /** 推薦フィードバック送信（POST /recommendations/{id}/feedback） */
-export async function sendFeedback(
+export function sendFeedback(
   productId: string,
   helpful: boolean,
   userId: string | null,
   searchId: string | null,
   lang: "ja" | "en" = "ja",
 ): Promise<FeedbackResponse> {
-  const res = await fetch(`${BASE}/recommendations/${productId}/feedback`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, search_id: searchId, helpful, lang }),
+  return postJson<FeedbackResponse>(`/recommendations/${encodeURIComponent(productId)}/feedback`, {
+    user_id: userId,
+    search_id: searchId,
+    helpful,
+    lang,
   });
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as FeedbackResponse;
 }
 
 /** 商品閲覧ログ（POST /behavior/view）。失敗しても画面には影響させない（fire-and-forget）。 */
@@ -215,10 +251,8 @@ export async function logView(req: ViewLogRequest): Promise<void> {
  * このユーザーのRATED以外の永続データ（VIEWED行動ログ・SearchLog検索履歴）を削除する
  * （POST /users/{user_id}/clear_history）。RATED（データセット由来の評価履歴）は対象外。
  */
-export async function clearHistory(userId: string): Promise<ClearHistoryResponse> {
-  const res = await fetch(`${BASE}/users/${encodeURIComponent(userId)}/clear_history`, {
+export function clearHistory(userId: string): Promise<ClearHistoryResponse> {
+  return request<ClearHistoryResponse>(`/users/${encodeURIComponent(userId)}/clear_history`, {
     method: "POST",
   });
-  if (!res.ok) throw new ApiError(res.status, `APIエラー (${res.status})`);
-  return (await res.json()) as ClearHistoryResponse;
 }

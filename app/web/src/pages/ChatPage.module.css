@@ -299,6 +299,21 @@
   font-size: 13px;
 }
 
+.retryBtn {
+  margin-left: var(--space-3);
+  padding: 2px var(--space-3);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-danger-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.retryBtn:hover {
+  border-color: currentColor;
+}
+
 .inputBar {
   display: flex;
   gap: var(--space-2);
@@ -375,6 +390,15 @@
   flex-direction: column;
   gap: var(--space-4);
   animation: fadeIn 0.4s ease both;
+}
+
+/* 再取得中は前回の結果を薄く残す。.results の fadeIn が opacity を固定するので filter で薄める。 */
+.results {
+  transition: filter 0.2s ease;
+}
+
+.stale {
+  filter: opacity(0.55);
 }
 
 @keyframes fadeIn {
