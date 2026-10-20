@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { chat, clearHistory, recommendHome, warmHomeCache, ApiError } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import { chat, clearHistory, isAbortError, recommendHome, warmHomeCache } from "../api/client";
 import type { ChatMessage, Recommendation, SearchIntent } from "../types/recommend";
-import { useI18n } from "../i18n";
+import { formatApiError, useI18n, type Lang } from "../i18n";
 import ChatBubble from "../components/ChatBubble";
 import HeroIllustration from "../components/HeroIllustration";
 import QuickReplies from "../components/QuickReplies";
@@ -25,6 +25,12 @@ interface Result {
   provisional: boolean;
 }
 
+// 再取得中も前回の結果を表示し続けるので、どのユーザー向けの結果かを結果側に持たせる
+// （ユーザー切替直後に、古い結果への閲覧ログ等を新しいユーザーへ付けないため）。
+interface HomeResult extends Result {
+  userId: string | null;
+}
+
 type Status = "idle" | "loading" | "error";
 
 // 対話型推薦ページ。会話で希望を聞き取り → 十分になったら推薦する。
@@ -39,10 +45,18 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [options, setOptions] = useState<string[]>([]);
   const [dialogueResult, setDialogueResult] = useState<Result | null>(null);
-  const [homeResult, setHomeResult] = useState<Result | null>(null);
+  const [homeResult, setHomeResult] = useState<HomeResult | null>(null);
   const [status, setStatus] = useState<Status>("idle");
-  const [dialogueError, setDialogueError] = useState<string | null>(null);
-  const [homeError, setHomeError] = useState<string | null>(null);
+  // エラーは文言ではなく例外のまま持ち、描画時に formatApiError() で現在の言語にする。
+  const [dialogueError, setDialogueError] = useState<unknown>(null);
+  const [homeError, setHomeError] = useState<unknown>(null);
+  // 送信中、または送信に失敗したユーザー発話。応答を受け取るまで conversation には
+  // 確定させない（失敗後に次を送ってもuserターンが連続しないように）。失敗時は吹き出しを
+  // 残したまま、再試行ボタンで同じ発話を送り直せる。
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  // 進行中の /chat。最初からやり直す・ユーザー/一般モード切替・言語切替で取り消し、
+  // 古い応答が新しい状態を上書きしないようにする。
+  const chatRequestRef = useRef<AbortController | null>(null);
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -61,16 +75,18 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
 
   // 個人化推薦ツールを開いているときだけホーム推薦を取得する。対話型推薦の結果とは
   // 状態を分け、片方のAPI応答がもう片方の表示を上書きしないようにする。
+  // 条件が変わったら前回のリクエストは取り消す。再取得中も前回の結果は消さずに
+  // 薄く表示しておき、一覧が一瞬空になってちらつかないようにする。
   useEffect(() => {
     if (selectedTool !== "personalized") return;
-    let cancelled = false;
+    const controller = new AbortController();
+    const requestUserId = personalizedUserId;
     (async () => {
       setHomeLoading(true);
       setHomeError(null);
-      setHomeResult(null);
       try {
-        const r = await recommendHome({ user_id: personalizedUserId, limit: LIMIT, lang });
-        if (cancelled) return;
+        const r = await recommendHome({ user_id: requestUserId, limit: LIMIT, lang }, controller.signal);
+        if (controller.signal.aborted) return;
         setHomeResult({
           recommendations: r.recommendations,
           preference_summary: [],
@@ -78,16 +94,18 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
           searchId: r.search_id,
           fallback: r.fallback,
           provisional: false,
+          userId: requestUserId,
         });
       } catch (e) {
-        if (cancelled) return;
-        setHomeError(e instanceof ApiError ? e.message : "Error");
+        if (controller.signal.aborted || isAbortError(e)) return;
+        setHomeError(e);
       } finally {
-        if (!cancelled) setHomeLoading(false);
+        if (!controller.signal.aborted) setHomeLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
+      setHomeLoading(false);
     };
   }, [selectedTool, personalizedUserId, lang, homeReloadKey]);
 
@@ -111,24 +129,38 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
     };
   }, [selectedTool, personalizedUserId, lang]);
 
-  async function send(text: string) {
-    const content = text.trim();
-    if (!content || status === "loading") return;
+  // 画面を離れる時は応答待ちの /chat も取り消す。
+  useEffect(() => () => chatRequestRef.current?.abort(), []);
 
-    const next: ChatMessage[] = [...conversation, { role: "user", content }];
-    setConversation(next);
-    setInput("");
-    setOptions([]);
+  function cancelChat() {
+    chatRequestRef.current?.abort();
+    chatRequestRef.current = null;
+  }
+
+  // history（確定済みの会話）に content を足して1ターン送る。後から始まった送信や
+  // cancelChat() で chatRequestRef が差し替わっていたら、その応答は捨てる。
+  async function requestChat(history: ChatMessage[], content: string, requestLang: Lang) {
+    cancelChat();
+    const controller = new AbortController();
+    chatRequestRef.current = controller;
+    const next: ChatMessage[] = [...history, { role: "user", content }];
+    setPendingMessage(content);
     setDialogueError(null);
     setStatus("loading");
 
     try {
       // 対話型推薦は選択ユーザーの評価・閲覧履歴を使わない。
-      const r = await chat(next, LIMIT, lang, null);
+      const r = await chat(next, LIMIT, requestLang, null, controller.signal);
+      if (chatRequestRef.current !== controller) return;
+      chatRequestRef.current = null;
       if (r.action === "ask") {
         setConversation([...next, { role: "assistant", content: r.question ?? "" }]);
         setOptions(r.options);
+      } else {
+        setConversation(next);
+        setOptions([]);
       }
+      setPendingMessage(null);
       setDialogueResult({
         recommendations: r.recommendations,
         preference_summary: r.preference_summary,
@@ -139,14 +171,43 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
       });
       setStatus("idle");
     } catch (e) {
-      setDialogueError(e instanceof ApiError ? e.message : "Error");
+      if (chatRequestRef.current !== controller || isAbortError(e)) return;
+      chatRequestRef.current = null;
+      // pendingMessage は残す（吹き出し＋再試行ボタン）。conversation は送信前のまま。
+      setDialogueError(e);
       setStatus("error");
     }
   }
 
+  function send(text: string) {
+    const content = text.trim();
+    if (!content || status === "loading") return;
+    setInput("");
+    // 失敗した発話が残っていても、それは確定済みの会話に含めず新しい発話で置き換える。
+    void requestChat(conversation, content, lang);
+  }
+
+  function retry() {
+    if (pendingMessage === null || status === "loading") return;
+    void requestChat(conversation, pendingMessage, lang);
+  }
+
+  // 応答待ちの間に言語が切り替わったら、古い言語の応答は捨てて同じ発話を新しい言語で
+  // 送り直す（応答が届いていない間はまだ会話に確定していないので、送り直しても重複しない）。
+  const lastLangRef = useRef(lang);
+  useEffect(() => {
+    if (lastLangRef.current === lang) return;
+    lastLangRef.current = lang;
+    if (chatRequestRef.current && pendingMessage !== null) {
+      void requestChat(conversation, pendingMessage, lang);
+    }
+  }, [lang]);
+
   function resetDialogue() {
+    cancelChat();
     setConversation([]);
     setOptions([]);
+    setPendingMessage(null);
     setDialogueResult(null);
     setDialogueError(null);
     setInput("");
@@ -184,7 +245,6 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
     try {
       await clearHistory(userId);
       resetDialogue();
-      setHomeResult(null);
       refreshHome();
       window.alert(t.clearHistoryDone);
     } catch {
@@ -301,13 +361,13 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
               <p>{t.personalizedLead}</p>
             </div>
             <button type="button" onClick={refreshHome} disabled={homeLoading}>
-              {t.refreshRecommendations}
+              {homeLoading && homeResult ? t.homeRefreshing : t.refreshRecommendations}
             </button>
           </section>
 
-          {homeError && (
+          {homeError != null && (
             <div className={styles.error} role="alert">
-              {homeError}
+              {formatApiError(homeError, t)}
             </div>
           )}
 
@@ -318,12 +378,15 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
           )}
 
           {homeResult && (
-            <section className={styles.results}>
+            <section
+              className={homeLoading ? `${styles.results} ${styles.stale}` : styles.results}
+              aria-busy={homeLoading}
+            >
               {devMode && homeResult.intent && <IntentPanel intent={homeResult.intent} />}
               <RecommendationList
                 items={homeResult.recommendations}
                 devMode={devMode}
-                userId={personalizedUserId}
+                userId={homeResult.userId}
                 searchId={homeResult.searchId}
                 fallback={homeResult.fallback}
               />
@@ -333,19 +396,27 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
       ) : (
         <>
           <section className={styles.conversation}>
-            {conversation.length === 0 && <HeroIllustration entering={heroEntrance} />}
+            {conversation.length === 0 && pendingMessage === null && (
+              <HeroIllustration entering={heroEntrance} />
+            )}
             <ChatBubble role="assistant" content={t.greeting} />
             {conversation.map((m, i) => (
               <ChatBubble key={i} role={m.role} content={m.content} />
             ))}
+            {pendingMessage !== null && <ChatBubble role="user" content={pendingMessage} />}
             {loading && <ChatBubble role="assistant" content="" loading />}
+            {dialogueError != null && (
+              <div className={styles.error} role="alert">
+                {formatApiError(dialogueError, t)}
+                {pendingMessage !== null && (
+                  <button type="button" className={styles.retryBtn} onClick={retry}>
+                    {t.retry}
+                  </button>
+                )}
+              </div>
+            )}
             {!loading && options.length > 0 && (
               <QuickReplies options={options} onPick={send} allowOther disabled={loading} />
-            )}
-            {dialogueError && (
-              <div className={styles.error} role="alert">
-                {dialogueError}
-              </div>
             )}
           </section>
 
@@ -362,8 +433,9 @@ export default function ChatPage({ selectedTool, onToolChange, heroEntrance = fa
             <button className={styles.send} type="submit" disabled={loading || !input.trim()}>
               {t.send}
             </button>
-            {conversation.length > 0 && (
-              <button className={styles.reset} type="button" onClick={resetDialogue} disabled={loading}>
+            {/* 応答待ちでも押せる（resetDialogue が進行中の /chat を取り消す）。 */}
+            {(conversation.length > 0 || pendingMessage !== null) && (
+              <button className={styles.reset} type="button" onClick={resetDialogue}>
                 {t.reset}
               </button>
             )}
