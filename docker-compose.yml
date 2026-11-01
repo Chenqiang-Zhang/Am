@@ -1,11 +1,22 @@
+x-python-service: &python-service
+  build:
+    context: .
+    labels:
+      owner: ${USER:-unknown}
+  labels:
+    owner: ${USER:-unknown}
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  working_dir: /workspace
+  environment:
+    HOME: /tmp
+  volumes:
+    - .:/workspace
+
 services:
   neo4j-live:
     image: neo4j:5-community
     labels:
       owner: ${USER:-unknown}
-    ports:
-      - "${LIVE_NEO4J_HTTP_PORT:-7474}:7474"
-      - "${LIVE_NEO4J_BOLT_PORT:-7687}:7687"
     environment:
       NEO4J_AUTH: neo4j/${LIVE_NEO4J_PASSWORD:?set LIVE_NEO4J_PASSWORD in .env}
     volumes:
@@ -15,23 +26,46 @@ services:
     image: neo4j:5-community
     labels:
       owner: ${USER:-unknown}
-    ports:
-      - "${UCSD_NEO4J_HTTP_PORT:-7475}:7474"
-      - "${UCSD_NEO4J_BOLT_PORT:-7688}:7687"
     environment:
       NEO4J_AUTH: neo4j/${UCSD_NEO4J_PASSWORD:?set UCSD_NEO4J_PASSWORD in .env}
     volumes:
       - neo4j-ucsd-data:/data
 
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
     profiles: ["llm"]
     labels:
       owner: ${USER:-unknown}
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-8}
     volumes:
       - ollama-models:/root/.ollama
+
+  app:
+    <<: *python-service
+    profiles: ["tools"]
+
+  api:
+    <<: *python-service
+    profiles: ["app"]
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
+
+  web:
+    image: node:20-slim
+    profiles: ["app"]
+    labels:
+      owner: ${USER:-unknown}
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /workspace/app/web
+    environment:
+      HOME: /tmp
+      API_PROXY_TARGET: http://api:8000
+    volumes:
+      - .:/workspace
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:5173"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
 
 volumes:
   ollama-models:

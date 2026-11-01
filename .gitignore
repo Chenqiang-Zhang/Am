@@ -24,3 +24,7 @@ app/web/*.local
 # Local secrets
 .env
 *.env
+CLAUDE.md
+.gitignore
+eval/evaluate_aspects.py
+eval/aspect_gold.json

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 
 set -a
 source .env
@@ -32,5 +32,6 @@ if [ "$BUILD_LLM_PROVIDER" = local ]; then
   "${compose[@]}" exec -T ollama ollama pull "$BUILD_LLM_MODEL"
 fi
 
-python -m kg.build --graph live "$@"
-python -m kg.build --graph ucsd "$@"
+"${compose[@]}" build app
+"${compose[@]}" run --rm app python -m kg.build --graph live "$@"
+"${compose[@]}" run --rm app python -m kg.build --graph ucsd "$@"
