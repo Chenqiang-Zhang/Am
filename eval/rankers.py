@@ -22,10 +22,18 @@ def build_popularity_ranker(play_records: list[PlayRecord]) -> Ranker:
     player_counts: dict[str, int] = defaultdict(int)
     for _, appid, _ in play_records:
         player_counts[appid] += 1
-    appids_by_popularity = sorted(player_counts, key=lambda appid: player_counts[appid], reverse=True)
 
     def rank(player_id: str, top_k: int, hidden_appids: set[str]) -> list[str]:
-        visible_appids = appids_by_player[player_id] - hidden_appids
+        own_appids = appids_by_player[player_id]
+        visible_appids = own_appids - hidden_appids
+        counts_without_player: dict[str, int] = {}
+        for appid, count in player_counts.items():
+            if appid in own_appids:
+                count -= 1
+            counts_without_player[appid] = count
+        appids_by_popularity = sorted(
+            counts_without_player, key=lambda appid: counts_without_player[appid], reverse=True
+        )
         return [appid for appid in appids_by_popularity if appid not in visible_appids][:top_k]
 
     return rank
@@ -42,17 +50,17 @@ def build_item_knn_ranker(play_records: list[PlayRecord]) -> Ranker:
     for player_id, appid, _ in play_records:
         played_matrix[player_row[player_id], appid_column[appid]] = 1.0
     co_play_counts = played_matrix.T @ played_matrix
-    norms = np.sqrt(np.diag(co_play_counts))
-    similarity = co_play_counts / np.maximum(np.outer(norms, norms), 1e-9)
+    play_counts = np.diag(co_play_counts).copy()
 
     def rank(player_id: str, top_k: int, hidden_appids: set[str]) -> list[str]:
+        own_vector = played_matrix[player_row[player_id]]
         visible_appids = appids_by_player[player_id] - hidden_appids
-        played_vector = np.zeros(len(appids), dtype=np.float32)
-        for appid in visible_appids:
-            played_vector[appid_column[appid]] = 1.0
-        scores = played_vector @ similarity
-        for appid in visible_appids:
-            scores[appid_column[appid]] = -np.inf
+        visible_columns = [appid_column[appid] for appid in visible_appids]
+        norms = np.sqrt(play_counts - own_vector)
+        rows = co_play_counts[visible_columns] - np.outer(own_vector[visible_columns], own_vector)
+        similarity = rows / np.maximum(np.outer(norms[visible_columns], norms), 1e-9)
+        scores = similarity.sum(axis=0)
+        scores[visible_columns] = -np.inf
         return [appids[column] for column in np.argsort(-scores)[:top_k]]
 
     return rank

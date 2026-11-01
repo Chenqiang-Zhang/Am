@@ -20,7 +20,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
-    reader = GraphReader()
+    reader = GraphReader("ucsd")
     play_records = reader.all_play_records()
     tag_ids_by_game = reader.tag_ids_by_game()
     appids_by_player = group_appids_by_player(play_records)
