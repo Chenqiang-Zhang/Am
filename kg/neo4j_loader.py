@@ -1,10 +1,10 @@
-import json
 from typing import Any
 
 from neo4j import GraphDatabase, Session
 
 from utils import settings
 
+from .aspect_extraction import SEED_ASPECTS
 from .files import graph_data_dir, read_jsonl
 
 BATCH_SIZE = 1000
@@ -38,8 +38,9 @@ def load_graph(graph_name: str) -> None:
     reviews = list(read_jsonl(directory / "reviews.jsonl"))
     play_records = list(read_jsonl(directory / "played.jsonl"))
     mentions = list(read_jsonl(directory / "mentions.jsonl"))
-    aspects_path = directory / "aspects.json"
-    aspects = json.loads(aspects_path.read_text()) if aspects_path.exists() else []
+    aspect_rows = []
+    for aspect, name_ja in SEED_ASPECTS.items():
+        aspect_rows.append({"aspect": aspect, "name_ja": name_ja})
 
     game_tags = [dict(tag, appid=game["appid"]) for game in games for tag in game["tags"]]
     game_studios = [dict(studio, appid=game["appid"]) for game in games for studio in game["studios"]]
@@ -96,8 +97,8 @@ def load_graph(graph_name: str) -> None:
         )
         run_in_batches(
             session,
-            "UNWIND $rows AS row MERGE (a:Aspect {aspect_id: row.aspect}) SET a.name = row.aspect",
-            [{"aspect": aspect} for aspect in aspects],
+            "UNWIND $rows AS row MERGE (a:Aspect {aspect_id: row.aspect}) SET a.name = row.aspect, a.name_ja = row.name_ja",
+            aspect_rows,
         )
         run_in_batches(
             session,

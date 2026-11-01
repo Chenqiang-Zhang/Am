@@ -8,21 +8,22 @@
 .
 ├── README.md, README.zh-CN.md
 ├── .env.example           环境变量一览（复制为 .env 使用）
-├── docker-compose.yml     Neo4j（实时用、UCSD 用）、本地 LLM（Ollama）
+├── docker-compose.yml     Neo4j（实时用、UCSD 用）、本地 LLM（Ollama）、Python 运行（app）、API、界面
+├── Dockerfile             Python 运行用镜像
 ├── docker-compose.gpu.yml 为本地 LLM 分配 GPU 的设置
+├── build_all.sh           启动 Neo4j 和 Ollama，并按默认设置构建实时和 UCSD 的图
 ├── requirements.txt
 ├── utils/                 后端与评估共用的部件
 │   ├── settings.py        读取环境变量
 │   ├── llm_client.py      LLM 客户端
 │   └── graph_reader.py    Neo4j 读取（Cypher 只写在这里）
-├── scripts/
-│   └── build_all.sh       启动 Neo4j 和 Ollama，并按默认设置构建实时和 UCSD 的图
 ├── kg/                    图的构建（第 5 节）
 │   ├── build.py           运行（--graph ucsd|live）
 │   ├── ucsd_download.py   下载 UCSD 的文件
 │   ├── ucsd_source.py     从 UCSD 文件生成游戏・玩家・评论
 │   ├── steam_source.py    从 Steam API 生成游戏・玩家・评论
 │   ├── aspect_extraction.py  观点抽取（LLM）
+│   ├── aspect_few_shot.json  抽取提示词中的示例（9 条）
 │   ├── neo4j_loader.py    保存到 Neo4j
 │   └── ids.py, files.py, http_client.py, constants.py   ID 生成、文件・HTTP 处理、常量
 ├── app/
@@ -54,11 +55,11 @@
 ### 准备 Neo4j
 
 ```bash
-cp .env.example .env                    # 填入密码（8 位以上）、PLAYER_ID_SALT、LLM 的密钥
-docker compose up -d                    # 实时用 Neo4j（7687）和 UCSD 用 Neo4j（7688）
+cp .env.example .env                    # 填入密码（8 位以上）、PLAYER_ID_SALT、LOCAL_UID / LOCAL_GID（`id -u` 和 `id -g` 的值）、LLM 的密钥
+docker compose up -d                    # 实时用 Neo4j 和 UCSD 用 Neo4j
 ```
 
-Neo4j Browser：实时用为 `http://localhost:7474`，UCSD 用为 `http://localhost:7475`。用户名 `neo4j`，密码为 `.env` 中的值。使用 Aura 等服务时，改写 `.env` 中的 `*_NEO4J_URI`。
+Neo4j 和 Ollama 不公开端口。在 compose 的网络内，用服务名（`neo4j-live`、`neo4j-ucsd`、`ollama`）连接。查看内容用 `docker compose exec neo4j-live cypher-shell -u neo4j -p <密码>`（UCSD 用为 `neo4j-ucsd`）。使用 Aura 等服务时，改写 `.env` 中的 `*_NEO4J_URI`。
 
 ### 本地 LLM（图构建用）
 
@@ -70,14 +71,15 @@ OLLAMA_GPU_DEVICE=<GPU 的 UUID> docker compose -f docker-compose.yml -f docker-
 docker compose --profile llm exec ollama ollama pull qwen2.5:7b-instruct   # 获取模型（仅首次）
 ```
 
+NVIDIA 驱动低于 550 时，最新的 Ollama 无法使用 GPU，会改用 CPU 运行。此时在 `.env` 的 `OLLAMA_VERSION` 中指定旧版本（已确认可用：`0.11.11`，驱动 535）。
+
 ### 图的构建
 
-按默认设置，一次性执行从 Neo4j 和 Ollama 的启动到实时和 UCSD 的图的构建。
+按默认设置，一次性执行从 Neo4j 和 Ollama 的启动到实时和 UCSD 的图的构建。Python 命令在 `docker compose run --rm app` 中执行。
 
 ```bash
-pip install -r requirements.txt
-scripts/build_all.sh                    # 默认：前 100 款
-scripts/build_all.sh --games 300        # 指定数量（最多 3,000）
+./build_all.sh                    # 默认：前 100 款
+./build_all.sh --games 300        # 指定数量（最多 3,000）
 ```
 
 在 `.env` 的 `OLLAMA_GPU_DEVICE` 中填入 GPU 的 UUID，Ollama 就会使用该 GPU。`BUILD_LLM_PROVIDER` 不是 `local` 时，不启动 Ollama。
@@ -85,38 +87,34 @@ scripts/build_all.sh --games 300        # 指定数量（最多 3,000）
 按步骤执行：
 
 ```bash
-python -m kg.build --graph live                     # 获取 → 观点抽取 → 保存到 Neo4j
-python -m kg.build --graph ucsd                     # 下载 → 获取 → 观点抽取 → 保存到 Neo4j
-python -m kg.build --graph live --games 20          # 指定游戏数量（默认 100）
-python -m kg.build --graph live --steps load        # 指定步骤（download / collect / aspects / load）
-python -m kg.build --graph live --steps aspects --workers 8   # 并行进行观点抽取
+docker compose run --rm app python -m kg.build --graph live                     # 获取 → 观点抽取 → 保存到 Neo4j
+docker compose run --rm app python -m kg.build --graph ucsd                     # 下载 → 获取 → 观点抽取 → 保存到 Neo4j
+docker compose run --rm app python -m kg.build --graph live --games 20          # 指定游戏数量（默认 100）
+docker compose run --rm app python -m kg.build --graph live --steps load        # 指定步骤（download / collect / aspects / load）
+docker compose run --rm app python -m kg.build --graph live --steps aspects --workers 8   # 并行进行观点抽取
 ```
 
-保存位置为 `.env` 中的 `LIVE_NEO4J_*` 和 `UCSD_NEO4J_*`。LLM 分别设置：对话・推荐用（`CHAT_LLM_*`）和图构建的观点抽取用（`BUILD_LLM_*`）。`*_LLM_PROVIDER` 从 `gemini`、`deepseek`、`groq`、`openai`、`local` 中选择，API 密钥填入 `GEMINI_API_KEY` 等。使用本地 LLM（Ollama、vLLM 等与 OpenAI 兼容的服务）时，填入 `*_LLM_PROVIDER=local`、`*_LLM_BASE_URL`（例：`http://localhost:11434/v1`）、`*_LLM_MODEL`。获取的结果以 JSONL 保存到 `data/<ucsd|live>/`，可以从中途恢复。
+保存位置为 `.env` 中的 `LIVE_NEO4J_*` 和 `UCSD_NEO4J_*`。LLM 分别设置：对话・推荐用（`CHAT_LLM_*`）和图构建的观点抽取用（`BUILD_LLM_*`）。`*_LLM_PROVIDER` 从 `gemini`、`deepseek`、`groq`、`openai`、`local` 中选择，API 密钥填入 `GEMINI_API_KEY` 等。使用本地 LLM（Ollama、vLLM 等与 OpenAI 兼容的服务）时，填入 `*_LLM_PROVIDER=local`、`*_LLM_BASE_URL`（例：`http://ollama:11434/v1`）、`*_LLM_MODEL`。获取的结果以 JSONL 保存到 `data/<ucsd|live>/`，可以从中途恢复。
 
 ### 启动应用
 
 ```bash
-uvicorn app.api.main:app --reload      # 后端  http://localhost:8000
-
-cd app/web
-npm install
-npm run dev                            # UI  http://localhost:5173
+docker compose up -d api web           # 后端和 UI  http://localhost:5173
 ```
 
-使用的图由 `.env` 中的 `GRAPH`（`live` 或 `ucsd`）选择。UI 的 dev 服务器会把 `/api/*` 代理到 `http://localhost:8000`（`vite.config.ts`）。
+使用的图由 `.env` 中的 `GRAPH`（`live` 或 `ucsd`）选择。UI 的 dev 服务器会把 `/api/*` 代理到 API 容器（`http://api:8000`，`vite.config.ts` 的 `API_PROXY_TARGET`）。只公开 UI 的端口，且仅限服务器的 `127.0.0.1`。从本机 PC 查看时，使用 SSH 端口转发（`ssh -L 5173:localhost:5173 <服务器>`）。
 
 ## 3. 数据
 
 ### 3.1 构成
 
-创建两个使用相同 schema（第 4 节）的数据库。分别运行在不同的 Neo4j 实例（Docker 容器，端口不同）上，不合并。
+创建两个使用相同 schema（第 4 节）的数据库。分别运行在不同的 Neo4j 实例（Docker 容器）上，不合并。
 
 | | UCSD 数据库 | 实时数据库 |
 |---|---|---|
 | 输入 | UCSD 公开数据集（3.2） | Steam 的 API（3.3） |
 | 目标游戏 | 拥有者数最多的前 N 款（默认 100） | 评论数最多的前 N 款（默认 100） |
-| `Player`・`PLAYED` | 导入（玩过目标游戏的用户的 25%） | 导入（评论作者） |
+| `Player`・`PLAYED` | 导入（玩过目标游戏的用户。比例为 `UCSD_PLAYER_PERCENT`，默认 100%） | 导入（评论作者） |
 | 导入方式 | 批量 | 仅批量（不做定期更新） |
 
 两个数据库中，`Player` 的标识符（steamid、个人资料名）都以加盐哈希的形式保存（4.4）。不显示在界面上。
@@ -132,7 +130,7 @@ npm run dev                            # UI  http://localhost:5173
 导入：
 
 - **游戏**：从 `australian_users_items` 统计拥有者数，选出前 N 款（默认 100）。游戏的属性取自 `steam_games`。
-- **`Player`・`PLAYED`**：在 `australian_users_items` 中，玩过至少 1 款目标游戏（`playtime_forever` > 0）的用户里，导入按 `player_id` 的哈希选出的 25%（可复现）。`PLAYED` 为该用户玩过的目标游戏（`hours` > 0）。
+- **`Player`・`PLAYED`**：在 `australian_users_items` 中，玩过至少 1 款目标游戏（`playtime_forever` > 0）的用户里，导入按 `player_id` 的哈希选出的比例（`kg/constants.py` 的 `UCSD_PLAYER_PERCENT`，默认 100%，可复现）。`PLAYED` 为该用户玩过的目标游戏（`hours` > 0）。
 - **`Review`**：`australian_user_reviews` 中，目标游戏・目标用户的评论。
 
 数据由 `kg.build` 下载到 `data/ucsd/`（不纳入 git）。UCSD 的页面没有使用条件的说明，只要求引用论文（Kang & McAuley, ICDM 2018 等）。
@@ -171,7 +169,7 @@ npm run dev                            # UI  http://localhost:5173
 | `Studio` | `studio_id`（键）, `name` | 开发商与发行商 |
 | `Review` | `review_id`（键）, `text`, `recommended`, `votes_up`, `created_at` | `recommended` 为“推荐”（真）／“不推荐”（假） |
 | `Player` | `player_id`（键） | steamid（或个人资料名）的加盐哈希 |
-| `Aspect` | `aspect_id`（键）, `name` | 评论中谈论的评价观点。准备初始集合，没有合适的观点时由 LLM 添加（4.3） |
+| `Aspect` | `aspect_id`（键）, `name`, `name_ja` | 评论中谈论的评价观点。固定的 20 个（4.3） |
 
 **`Tag` 的子标签**
 
@@ -202,7 +200,7 @@ npm run dev                            # UI  http://localhost:5173
 ### 4.3 观点（`Aspect`）
 
 - 观点由 LLM 从评论正文中抽取。
-- 初始集合如下。
+- 观点固定为以下 20 个。
 
 | 类别 | 观点 |
 |---|---|
@@ -211,7 +209,8 @@ npm run dev                            # UI  http://localhost:5173
 | 画面・音效 | `graphics`, `sound_music`, `atmosphere` |
 | 品质・价值 | `performance`, `stability`, `value_for_money` |
 
-- 现有观点都不适用时，由 LLM 添加新观点。名称使用英文・小写・下划线。添加的观点在之后的抽取中也作为现有观点使用。
+- 观点固定为这 20 个。LLM 返回列表之外的观点时，予以丢弃。
+- 日文名（`name_ja`）使用固定译名（`kg/aspect_extraction.py` 的 `SEED_ASPECTS`）。
 - 观点是用来查找“提及”的辅助手段。不区分好评还是差评，需要判断时，阅读提及该观点的评论正文。
 
 ### 4.4 键的生成规则
@@ -281,7 +280,7 @@ npm run dev                            # UI  http://localhost:5173
 | 1 | 游戏的选取 | 按 `australian_users_items` 的拥有者数取前 N 款（默认 100） | 用 `Query` 取列表，按 `GetItems` 的评论数取前 N 款（默认 100） |
 | 2 | 导入游戏・标签・开发商 | `steam_games` | `GetItems`、`GetTagList`、`appdetails` |
 | 3 | 导入评论 | `australian_user_reviews`（目标游戏・目标用户） | `GetAppReviews`（每款游戏前 15 条＋最新 5 条） |
-| 4 | 导入 `Player`・`PLAYED` | 玩过目标游戏的用户的 25%（由 `player_id` 的哈希决定） | 评论作者 |
+| 4 | 导入 `Player`・`PLAYED` | 玩过目标游戏的用户（比例为 `UCSD_PLAYER_PERCENT`，默认 100%，由 `player_id` 的哈希决定） | 评论作者 |
 | 5 | 观点抽取 | 共通 | 共通 |
 | 6 | 导入 Neo4j | 共通 | 共通 |
 
@@ -290,12 +289,14 @@ npm run dev                            # UI  http://localhost:5173
 3. **导入评论**：生成 `Review` 和 `ABOUT` 的原始数据。实时部分起初少量获取，测量同一个 `steamid` 出现在多款游戏中的比例后再增加。
 4. **导入 `Player`・`PLAYED`**：用加盐哈希生成 `player_id`（盐为环境变量）。`PLAYED` 只生成玩过的（`hours` > 0）。`WROTE` 生成评论与 `Player` 对应的部分。
 5. **观点抽取**：把评论正文交给 LLM，让它选出适用的观点。结果成为 `MENTIONS`。
-   - 观点列表从 4.3 的初始集合开始。没有适用的观点时，由 LLM 添加新观点，并在之后的抽取中使用。
-   - 添加的观点保存到文件（`aspects.json`），跨运行沿用。
+   - 观点固定为 4.3 的 20 个。列表之外的观点，予以丢弃。
    - 抽取结果按评论保存到文件，可以从中途恢复。
+   - 评论逐条传给 LLM。提示词中包含观点的含义和示例（9 条，`kg/aspect_few_shot.json`）。没有返回结果的评论，记录为无观点。
+   - 抽取对象为 30 个字符以上的评论，每个游戏最多 10 条。按有用票数从多到少，相同则按长度从长到短选取。
+   - 用 `--workers N` 同时向 LLM 传入 N 条。Ollama 一侧的并发数由 `.env` 的 `OLLAMA_NUM_PARALLEL` 决定（默认 8）。
 6. **导入 Neo4j**：用 `MERGE` 导入步骤 1～5 的结果（JSONL）。先创建约束和索引（4.7）。
 
-生成物（JSONL、`aspects.json`）放在 `data/<ucsd|live>/`，不纳入 git。
+生成物（JSONL）放在 `data/<ucsd|live>/`，不纳入 git。
 
 ## 6. 检索・对话
 
@@ -329,4 +330,7 @@ K 取 10、20、50。逐用户计算，再对全部用户取平均。
 
 ### 8.3 评估的运行
 
-`python -m eval.evaluate --users N --k 10 20 50`。对每个用户，隐藏其玩过的游戏中的 1 款，测量该游戏是否进入前 K 名。
+`docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50`。对每个用户，隐藏其玩过的游戏中的 1 款，测量该游戏是否进入前 K 名。
+
+- 使用的图，无论 `.env` 的 `GRAPH` 如何，始终为 UCSD。
+- 热门度排序和 Item-KNN，在构建时排除被评估用户自身的记录（避免被隐藏的 1 款计入热门度或相似度）。

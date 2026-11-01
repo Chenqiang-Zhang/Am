@@ -110,6 +110,7 @@ def collect_ucsd(game_count: int) -> None:
     write_jsonl(directory / "played.jsonl", play_records)
 
     review_records = []
+    seen_review_ids = set()
     for user in read_gzip_records(directory / "australian_user_reviews.json.gz"):
         player_id = hashed_id_by_raw_id.get(user["user_id"])
         if player_id is None:
@@ -117,9 +118,13 @@ def collect_ucsd(game_count: int) -> None:
         for review in user.get("reviews", []):
             if review["item_id"] not in target_appid_set or not review.get("review"):
                 continue
+            review_id = hash_id(player_id, review["item_id"], review.get("posted", ""))
+            if review_id in seen_review_ids:
+                continue
+            seen_review_ids.add(review_id)
             review_records.append(
                 {
-                    "review_id": hash_id(player_id, review["item_id"], review.get("posted", "")),
+                    "review_id": review_id,
                     "appid": review["item_id"],
                     "player_id": player_id,
                     "text": review["review"],

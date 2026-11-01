@@ -8,21 +8,22 @@
 .
 ├── README.md, README.zh-CN.md
 ├── .env.example           環境変数の一覧（.env にコピーして使う）
-├── docker-compose.yml     Neo4j（ライブ用、UCSD 用）、ローカル LLM（Ollama）
+├── docker-compose.yml     Neo4j（ライブ用、UCSD 用）、ローカル LLM（Ollama）、Python の実行（app）、API、画面
+├── Dockerfile             Python の実行用イメージ
 ├── docker-compose.gpu.yml ローカル LLM に GPU を割り当てる設定
+├── build_all.sh           Neo4j と Ollama を起動し、ライブと UCSD のグラフを既定の設定で構築する
 ├── requirements.txt
 ├── utils/                 バックエンドと評価で共有する部品
 │   ├── settings.py        環境変数の読み込み
 │   ├── llm_client.py      LLM クライアント
 │   └── graph_reader.py    Neo4j の読み出し（Cypher はここだけ）
-├── scripts/
-│   └── build_all.sh       Neo4j と Ollama を起動し、ライブと UCSD のグラフを既定の設定で構築する
 ├── kg/                    グラフの構築（5節）
 │   ├── build.py           実行（--graph ucsd|live）
 │   ├── ucsd_download.py   UCSD のファイルのダウンロード
 │   ├── ucsd_source.py     UCSD のファイルから、ゲーム・プレイヤー・レビューを作る
 │   ├── steam_source.py    Steam API から、ゲーム・プレイヤー・レビューを作る
 │   ├── aspect_extraction.py  観点の抽出（LLM）
+│   ├── aspect_few_shot.json  抽出のプロンプトに入れる例（9 件）
 │   ├── neo4j_loader.py    Neo4j への保存
 │   └── ids.py, files.py, http_client.py, constants.py   ID の生成、ファイル・HTTP の処理、定数
 ├── app/
@@ -54,11 +55,11 @@
 ### Neo4j の用意
 
 ```bash
-cp .env.example .env                    # パスワード（8 文字以上）、PLAYER_ID_SALT、LLM のキーを入れる
-docker compose up -d                    # ライブ用 Neo4j（7687）と UCSD 用 Neo4j（7688）
+cp .env.example .env                    # パスワード（8 文字以上）、PLAYER_ID_SALT、LOCAL_UID / LOCAL_GID（`id -u` と `id -g` の値）、LLM のキーを入れる
+docker compose up -d                    # ライブ用 Neo4j と UCSD 用 Neo4j
 ```
 
-Neo4j Browser は、ライブ用が `http://localhost:7474`、UCSD 用が `http://localhost:7475`。ユーザ名 `neo4j`、パスワードは `.env` の値。Aura などを使う場合は、`.env` の `*_NEO4J_URI` を書き換える。
+Neo4j と Ollama は、ポートを公開しない。compose のネットワークの中から、サービス名（`neo4j-live`、`neo4j-ucsd`、`ollama`）で接続する。中身を見るには、`docker compose exec neo4j-live cypher-shell -u neo4j -p <パスワード>`（UCSD 用は `neo4j-ucsd`）。Aura などを使う場合は、`.env` の `*_NEO4J_URI` を書き換える。
 
 ### ローカル LLM（グラフ構築用）
 
@@ -70,14 +71,15 @@ OLLAMA_GPU_DEVICE=<GPU の UUID> docker compose -f docker-compose.yml -f docker-
 docker compose --profile llm exec ollama ollama pull qwen2.5:7b-instruct   # モデルの取得（初回のみ）
 ```
 
+NVIDIA ドライバが 550 未満だと、最新の Ollama は GPU を使えず、CPU で動く。その場合は、`.env` の `OLLAMA_VERSION` に古い版（動作確認済み: `0.11.11`、ドライバ 535）を指定する。
+
 ### グラフの構築
 
-既定の設定で、Neo4j と Ollama の起動から、ライブと UCSD のグラフの構築までを、まとめて実行する。
+既定の設定で、Neo4j と Ollama の起動から、ライブと UCSD のグラフの構築までを、まとめて実行する。Python のコマンドは、`docker compose run --rm app` の中で実行する。
 
 ```bash
-pip install -r requirements.txt
-scripts/build_all.sh                    # 既定: 上位 100 本
-scripts/build_all.sh --games 300        # 本数を指定（最大 3,000）
+./build_all.sh                    # 既定: 上位 100 本
+./build_all.sh --games 300        # 本数を指定（最大 3,000）
 ```
 
 `.env` の `OLLAMA_GPU_DEVICE` に GPU の UUID を入れると、Ollama がその GPU を使う。`BUILD_LLM_PROVIDER` が `local` 以外なら、Ollama は起動しない。
@@ -85,38 +87,34 @@ scripts/build_all.sh --games 300        # 本数を指定（最大 3,000）
 手順ごとに実行する場合:
 
 ```bash
-python -m kg.build --graph live                     # 取得 → 観点の抽出 → Neo4j に保存
-python -m kg.build --graph ucsd                     # ダウンロード → 取得 → 観点の抽出 → Neo4j に保存
-python -m kg.build --graph live --games 20          # ゲームの本数を指定（既定 100）
-python -m kg.build --graph live --steps load        # 手順を指定（download / collect / aspects / load）
-python -m kg.build --graph live --steps aspects --workers 8   # 観点の抽出を並列で行う
+docker compose run --rm app python -m kg.build --graph live                     # 取得 → 観点の抽出 → Neo4j に保存
+docker compose run --rm app python -m kg.build --graph ucsd                     # ダウンロード → 取得 → 観点の抽出 → Neo4j に保存
+docker compose run --rm app python -m kg.build --graph live --games 20          # ゲームの本数を指定（既定 100）
+docker compose run --rm app python -m kg.build --graph live --steps load        # 手順を指定（download / collect / aspects / load）
+docker compose run --rm app python -m kg.build --graph live --steps aspects --workers 8   # 観点の抽出を並列で行う
 ```
 
-保存先は `.env` の `LIVE_NEO4J_*` と `UCSD_NEO4J_*`。LLM は、対話・おすすめ用（`CHAT_LLM_*`）と、グラフ構築の観点抽出用（`BUILD_LLM_*`）を、別々に設定する。`*_LLM_PROVIDER` は `gemini`、`deepseek`、`groq`、`openai`、`local` から選び、API キーは `GEMINI_API_KEY` などに入れる。ローカルの LLM（Ollama、vLLM など、OpenAI 互換のサーバ）を使う場合は、`*_LLM_PROVIDER=local`、`*_LLM_BASE_URL`（例：`http://localhost:11434/v1`）、`*_LLM_MODEL` を入れる。取得した結果は `data/<ucsd|live>/` に JSONL で保存され、途中から再開できる。
+保存先は `.env` の `LIVE_NEO4J_*` と `UCSD_NEO4J_*`。LLM は、対話・おすすめ用（`CHAT_LLM_*`）と、グラフ構築の観点抽出用（`BUILD_LLM_*`）を、別々に設定する。`*_LLM_PROVIDER` は `gemini`、`deepseek`、`groq`、`openai`、`local` から選び、API キーは `GEMINI_API_KEY` などに入れる。ローカルの LLM（Ollama、vLLM など、OpenAI 互換のサーバ）を使う場合は、`*_LLM_PROVIDER=local`、`*_LLM_BASE_URL`（例：`http://ollama:11434/v1`）、`*_LLM_MODEL` を入れる。取得した結果は `data/<ucsd|live>/` に JSONL で保存され、途中から再開できる。
 
 ### アプリの起動
 
 ```bash
-uvicorn app.api.main:app --reload      # バックエンド  http://localhost:8000
-
-cd app/web
-npm install
-npm run dev                            # UI  http://localhost:5173
+docker compose up -d api web           # バックエンドと UI  http://localhost:5173
 ```
 
-使うグラフは `.env` の `GRAPH`（`live` または `ucsd`）で選ぶ。UI の dev サーバは `/api/*` を `http://localhost:8000` にプロキシする（`vite.config.ts`）。
+使うグラフは `.env` の `GRAPH`（`live` または `ucsd`）で選ぶ。UI の dev サーバは `/api/*` を、API のコンテナ（`http://api:8000`）にプロキシする（`vite.config.ts` の `API_PROXY_TARGET`）。ポートを公開するのは、UI だけで、サーバの `127.0.0.1` に限る。手元の PC から見るには、SSH のポート転送（`ssh -L 5173:localhost:5173 <サーバ>`）を使う。
 
 ## 3. データ
 
 ### 3.1 構成
 
-同じスキーマ（4節）のデータベースを2つ作る。別々の Neo4j インスタンス（Docker コンテナ、ポートを分ける）で動かし、統合はしない。
+同じスキーマ（4節）のデータベースを2つ作る。別々の Neo4j インスタンス（Docker コンテナ）で動かし、統合はしない。
 
 | | UCSD データベース | ライブデータベース |
 |---|---|---|
 | 入力 | UCSD の公開データセット（3.2） | Steam の API（3.3） |
 | 対象ゲーム | 所有者数の多い上位 N 本（既定 100） | レビュー数の多い上位 N 本（既定 100） |
-| `Player`・`PLAYED` | 載せる（対象ゲームを遊んだユーザの 25%） | 載せる（レビュー投稿者） |
+| `Player`・`PLAYED` | 載せる（対象ゲームを遊んだユーザ。割合は `UCSD_PLAYER_PERCENT`、既定 100%） | 載せる（レビュー投稿者） |
 | 取り込み | 一括 | 一括のみ（定期更新はしない） |
 
 どちらのデータベースも、`Player` の識別子（steamid、プロフィール名）は、ソルト付きハッシュにして保存する（4.4）。画面には出さない。
@@ -132,7 +130,7 @@ npm run dev                            # UI  http://localhost:5173
 取り込み:
 
 - **ゲーム**: `australian_users_items` から所有者数を集計し、上位 N 本（既定 100）を選ぶ。ゲームの属性は、`steam_games` から取る。
-- **`Player`・`PLAYED`**: `australian_users_items` で、対象ゲームを1本でも遊んだことがある（`playtime_forever` > 0）ユーザのうち、`player_id` のハッシュで決めた 25% を取り込む（再現できる）。`PLAYED` は、そのユーザの、対象ゲームの遊んだもの（`hours` > 0）。
+- **`Player`・`PLAYED`**: `australian_users_items` で、対象ゲームを1本でも遊んだことがある（`playtime_forever` > 0）ユーザのうち、`player_id` のハッシュで決めた割合（`kg/constants.py` の `UCSD_PLAYER_PERCENT`、既定 100%）を取り込む（再現できる）。`PLAYED` は、そのユーザの、対象ゲームの遊んだもの（`hours` > 0）。
 - **`Review`**: `australian_user_reviews` の、対象ゲーム・対象ユーザのレビュー。
 
 データは `kg.build` が `data/ucsd/` にダウンロードする（git の対象外）。UCSD のページには、利用条件の記載はなく、論文の引用が求められている（Kang & McAuley, ICDM 2018 ほか）。
@@ -171,7 +169,7 @@ npm run dev                            # UI  http://localhost:5173
 | `Studio` | `studio_id`（キー）, `name` | 開発元と販売元 |
 | `Review` | `review_id`（キー）, `text`, `recommended`, `votes_up`, `created_at` | `recommended` は「おすすめする」（真）／「おすすめしない」（偽） |
 | `Player` | `player_id`（キー） | steamid（またはプロフィール名）のソルト付きハッシュ |
-| `Aspect` | `aspect_id`（キー）, `name` | レビューで語られる評価の観点。初期セットを用意し、当てはまるものがなければ LLM が追加する（4.3） |
+| `Aspect` | `aspect_id`（キー）, `name`, `name_ja` | レビューで語られる評価の観点。固定の 20 個（4.3） |
 
 **`Tag` のサブラベル**
 
@@ -202,7 +200,7 @@ npm run dev                            # UI  http://localhost:5173
 ### 4.3 観点（`Aspect`）
 
 - 観点は、レビュー本文から LLM が抽出する。
-- 初期セットは次のとおり。
+- 観点は次の 20 個に固定する。
 
 | 区分 | 観点 |
 |---|---|
@@ -211,7 +209,8 @@ npm run dev                            # UI  http://localhost:5173
 | 見た目・音 | `graphics`, `sound_music`, `atmosphere` |
 | 品質・価値 | `performance`, `stability`, `value_for_money` |
 
-- 既存の観点のどれにも当てはまらない場合に、LLM が新しい観点を追加する。名前は英語・小文字・アンダースコアとする。追加された観点は、以降の抽出でも既存の観点として使う。
+- 観点は、この 20 個に固定する。LLM が、一覧にない観点を返しても、捨てる。
+- 日本語名（`name_ja`）は、固定の訳語を付ける（`kg/aspect_extraction.py` の `SEED_ASPECTS`）。
 - 観点は、言及を探すための補助である。好意的か否定的かは持たず、判断が必要なときは、言及しているレビューの本文を読む。
 
 ### 4.4 キーの生成規則
@@ -282,7 +281,7 @@ npm run dev                            # UI  http://localhost:5173
 | 1 | ゲームの選定 | `australian_users_items` の所有者数で上位 N 本（既定 100） | `Query` で一覧、`GetItems` のレビュー数で上位 N 本（既定 100） |
 | 2 | ゲーム・タグ・開発元の取り込み | `steam_games` | `GetItems`、`GetTagList`、`appdetails` |
 | 3 | レビューの取り込み | `australian_user_reviews`（対象ゲーム・対象ユーザ） | `GetAppReviews`（ゲームごとに上位 15 件＋最新 5 件） |
-| 4 | `Player`・`PLAYED` の取り込み | 対象ゲームを遊んだユーザの 25%（`player_id` のハッシュで決める） | レビューの投稿者 |
+| 4 | `Player`・`PLAYED` の取り込み | 対象ゲームを遊んだユーザ（割合は `UCSD_PLAYER_PERCENT`、既定 100%。`player_id` のハッシュで決める） | レビューの投稿者 |
 | 5 | 観点の抽出 | 共通 | 共通 |
 | 6 | Neo4j への取り込み | 共通 | 共通 |
 
@@ -291,12 +290,14 @@ npm run dev                            # UI  http://localhost:5173
 3. **レビューの取り込み**: `Review` と `ABOUT` の元データを作る。ライブは、最初は少量とし、同じ `steamid` が複数のゲームに現れる割合を測ってから増やす。
 4. **`Player`・`PLAYED` の取り込み**: `player_id` を、ソルト付きハッシュで作る（ソルトは環境変数）。`PLAYED` は、遊んだもの（`hours` > 0）だけを作る。`WROTE` は、レビューと `Player` が対応するものを作る。
 5. **観点の抽出**: レビュー本文を LLM に渡し、当てはまる観点を選ばせる。結果は `MENTIONS` になる。
-   - 観点の一覧は、4.3 の初期セットから始める。当てはまるものがなければ、LLM が新しい観点を追加し、以降の抽出で使う。
-   - 追加された観点は、ファイル（`aspects.json`）に保存し、実行をまたいで引き継ぐ。
+   - 観点は、4.3 の 20 個に固定する。一覧にない観点は、捨てる。
    - 抽出結果はレビューごとにファイルへ保存し、途中から再開できる。
+   - レビューは、1 件ずつ LLM に渡す。プロンプトには、観点の意味と、例（9 件、`kg/aspect_few_shot.json`）を入れる。結果が返らなかったレビューは、観点なしとして記録する。
+   - 抽出の対象は、30 文字以上のレビューのうち、1 ゲームあたり 10 件までとする。役立ち票の多い順、同じなら長い順に選ぶ。
+   - `--workers N` で、N 件を同時に LLM へ渡す。Ollama 側の同時処理数は、`.env` の `OLLAMA_NUM_PARALLEL`（既定 8）。
 6. **Neo4j への取り込み**: 手順 1〜5 の結果（JSONL）を `MERGE` で取り込む。先に制約とインデックス（4.7）を作る。
 
-生成物（JSONL、`aspects.json`）は `data/<ucsd|live>/` に置き、git の対象外にする。
+生成物（JSONL）は `data/<ucsd|live>/` に置き、git の対象外にする。
 
 ## 6. 検索・対話
 
@@ -330,4 +331,7 @@ K は 10、20、50 とする。ユーザごとに求め、全ユーザで平均�
 
 ### 8.3 評価の実行
 
-`python -m eval.evaluate --users N --k 10 20 50`。ユーザごとに、遊んだゲームから 1 本を隠し、そのゲームが上位 K 件に入るかを測る。
+`docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50`。ユーザごとに、遊んだゲームから 1 本を隠し、そのゲームが上位 K 件に入るかを測る。
+
+- 使うグラフは、`.env` の `GRAPH` に関わらず、常に UCSD とする。
+- 人気順と Item-KNN は、評価するユーザ自身の記録を除いて作る（隠した 1 本が、人気や類似度に入らないようにする）。
