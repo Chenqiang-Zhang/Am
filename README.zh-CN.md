@@ -330,7 +330,7 @@ K 取 10、20、50。逐用户计算，再对全部用户取平均。
 
 ### 8.3 评估的运行
 
-`docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50`。对每个用户，隐藏其玩过的游戏中的 1 款，测量该游戏是否进入前 K 名。
+`docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R`。对每个用户，隐藏其玩过的游戏中的 1 款，测量该游戏是否进入前 K 名。`--runs` 次（默认 5），每次重新选择用户和被隐藏的游戏，各指标以 平均 ± 标准差 显示。
 
 - 使用的图，无论 `.env` 的 `GRAPH` 如何，始终为 UCSD。
 - 热门度排序和 Item-KNN，在构建时排除被评估用户自身的记录（避免被隐藏的 1 款计入热门度或相似度）。
