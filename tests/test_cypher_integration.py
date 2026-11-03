@@ -53,7 +53,8 @@ def reader(tmp_path_factory):
         markers = session.run(f"MATCH (n:{MARKER_LABEL}) RETURN count(n) AS n").single()["n"]
         if nodes and not markers:
             pytest.fail(f"{connection['uri']} holds data this test did not create; refusing to delete it")
-        session.run("MATCH (n) DETACH DELETE n").consume()
+        session.run("MATCH ()-[r]->() CALL { WITH r DELETE r } IN TRANSACTIONS OF 10000 ROWS").consume()
+        session.run("MATCH (n) CALL { WITH n DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume()
         session.run(f"CREATE (:{MARKER_LABEL})").consume()
 
         directory = tmp_path_factory.mktemp("graph")
