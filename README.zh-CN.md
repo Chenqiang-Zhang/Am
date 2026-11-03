@@ -304,7 +304,69 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 ## 7. 面向特定用户的静态推荐
 
-暂定的设计。
+从用户玩过的游戏出发，沿图上的路径生成推荐。只使用固定的、带参数的只读 Cypher，不使用 LLM（`app/api/static_recommend.py`）。
+
+### 7.1 记号
+
+| 记号 | 含义 |
+|---|---|
+| u | 生成推荐的用户 |
+| s | 种子。u 玩过的游戏（评估时去掉被隐藏的游戏） |
+| g | 候选。u 没有玩过的所有游戏（包括评估时被隐藏的游戏） |
+| w_s | 种子的权重。`ln(1 + s 的游玩时长)` |
+| deg(g) | 玩过 g 的玩家数（不含 u） |
+| co(s, g) | s 和 g 都玩过的玩家数（不含 u） |
+
+人数一律不计入 u。评估时被隐藏游戏的 `PLAYED` 也不计入，因此结果与从图中删除这条边时相同。
+
+### 7.2 各路径的分数
+
+| 路径 | 经过的路径 | 分数 S(g) |
+|---|---|---|
+| 共玩（`peer`） | s ← `PLAYED` ← 其他玩家 → `PLAYED` → g | `Σ_s w_s · co(s, g) / √(deg(s) · deg(g))` |
+| 标签（`tag`） | s → `HAS_TAG` → 标签 ← `HAS_TAG` ← g | `Σ_t weight(t) / √n(g)` |
+| 开发商・发行商（`studio`） | s → `DEVELOPED_BY` / `PUBLISHED_BY` → `Studio` ← g | `Σ_s w_s · r / ln(2 + m)` |
+| 热门（`popular`） | 其他玩家 → `PLAYED` → g | `ln(1 + deg(g))` |
+
+- 共玩：种子取游玩时长最长的前 10 款（标签和开发商・发行商使用全部种子）。不设共同游戏数的下限（共同玩过 1 款也计入）。若 w_s 取 1 且使用全部种子，则与不含 u 的 Item-KNN（余弦相似度之和）相同。
+- 标签：
+  - 使用类型和用户标签，不使用功能（`Feature`）。使用的边为 `rank` 不超过 10 或没有 `rank` 的边；weight 的 IDF 和“g 是否带有该标签”的判断使用同一组边。
+  - 名称相同的类型和用户标签（如 `genre:action` 与 `usertag:action`，即 `tag_id` 中 `:` 之后的部分相同）视为同一个标签。
+  - `weight(t) = pref(t) · ln(N / df(t))`。pref(t) 为带有 t 的种子的 w_s 之和，N 为全部游戏数，df(t) 为带有 t 的游戏数。使用 weight 最大的前 30 个标签。
+  - n(g) 为 g 带有的标签数（按同样的规则计数）。
+- 开发商・发行商：
+  - 若该公司开发了 s 和 g 两者（`DEVELOPED_BY`），r 为 1.0，否则（任一方仅为发行）为 0.5。m 为该公司开发或发行的游戏数。
+  - 对每个候选，1 款种子只计 1 次。共有多个公司时，使用 `w_s · r / ln(2 + m)` 最大的那个。
+
+### 7.3 合计与排序
+
+`score(g) = Σ_路径 λ_路径 · S_路径(g) / max S_路径`
+
+- 每条路径先除以候选中的最大值，再乘以权重 λ 后相加。λ 取共玩 1.0、标签 1.0、开发商・发行商 0.5、热门 0.1（在验证用户上调整之前的值）。λ 为 0 时，不使用该路径。
+- 按 score 从大到小排列，相同则按 appid 升序（小数点后 12 位相同即视为相同）。对同一用户，每次返回相同的结果。
+- 任何路径都没有分数的游戏，在数量不足时，按玩过的人数从多到少（相同则按 appid）补在后面。
+- 没有玩过的游戏的用户（评估时全部被隐藏），只按热门排序。不指定 `player_id` 时，按 `played_count` 从多到少排列。
+
+### 7.4 依据与说明文
+
+每条推荐附上产生分数的路径实例（`evidence`）和各路径的分数（`contributions`，合计等于 `score`）。实例按贡献从大到小，每条路径最多 3 条，`share` 为其在分数中所占的比例。
+
+| 路径 | 实例（`evidence`） | 说明文示例（英文界面） |
+|---|---|---|
+| 共玩 | 种子与 co(s, g) | 12 other players who played Portal 2 also played this game |
+| 标签 | 标签，以及带有该标签的种子（w_s 最大的那款） | Shares Puzzle, Physics with Portal 2; Sandbox with Terraria |
+| 开发商・发行商 | 公司、种子、双方的角色（开发商还是发行商）、m | Developed by Valve, the developer of Half-Life 2 |
+| 热门 | deg(g) | Played by 340 other players |
+
+- 说明文只根据热门以外贡献最大的路径的实例生成，不写实例中没有的名称或数字。每个标签都附上带有该标签的种子。公司注明是开发商还是发行商。只有热门的实例时，才以热门为理由。
+- `eval/explanation_check.py` 用另外编写的只读 Cypher 核对依据中的人数、标签归属和公司角色，并给出核对通过的比例（依据有效率）。
+
+### 7.5 实现
+
+- 每个用户、每条路径执行 1 条 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各查询同时返回分数和产生该分数的实例。
+- `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
+- 种子的权重（ln(1 + 游玩时长) 或 1）、共玩的种子数（10 款或全部）以及 λ，在验证用户上决定（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`）。
+- 改进前的方法（v0）为了比较，保留在 `app/api/static_recommend_v0.py`（`python -m eval.evaluate --rankers ... graph_v0`）。
 
 ## 8. 离线评估
 
