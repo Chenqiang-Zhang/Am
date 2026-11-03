@@ -27,7 +27,7 @@ def strip_html(text: str | None) -> str | None:
 
 
 def display_tag_labels(tags: list[TagLabel], lang: Lang) -> list[str]:
-    ordered = sorted(tags, key=lambda tag: (tag["rank"] is not None, tag["rank"] or 0))
+    ordered = sorted(tags, key=lambda tag: (tag["rank"] is not None, tag["rank"] or 0, tag["name"]))
     labels = [pick_language(tag["name"], tag["name_ja"], lang) or tag["name"] for tag in ordered]
     return list(dict.fromkeys(labels))[:DISPLAY_TAG_LIMIT]
 

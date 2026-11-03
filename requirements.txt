@@ -4,3 +4,5 @@ google-genai
 fastapi
 uvicorn[standard]
 numpy
+pytest
+httpx

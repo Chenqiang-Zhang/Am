@@ -53,7 +53,7 @@ def recommend_games(
             weighted_scores.setdefault(appid, {})[path] = PATH_WEIGHTS[path] * candidate[score_field] / highest_score
             candidate_by_path.setdefault(appid, {})[path] = candidate
 
-    ranked_appids = sorted(weighted_scores, key=lambda appid: sum(weighted_scores[appid].values()), reverse=True)
+    ranked_appids = sorted(weighted_scores, key=lambda appid: (-sum(weighted_scores[appid].values()), appid))
     recommendations = []
     for appid in ranked_appids[:limit]:
         strongest_path = max(weighted_scores[appid], key=lambda path: weighted_scores[appid][path])
@@ -66,7 +66,9 @@ def recommend_games(
 def describe_reason(path: str, candidate: dict[str, Any], lang: Lang) -> tuple[list[Reason], str]:
     is_japanese = lang == "ja"
     if path == "tag":
-        top_matches = sorted(candidate["hits"], key=lambda match: match["weight"], reverse=True)[:REASON_TAG_LIMIT]
+        top_matches = sorted(candidate["hits"], key=lambda match: (-match["weight"], match["tag"], match["via"]))[
+            :REASON_TAG_LIMIT
+        ]
         tag_labels = [pick_language(match["tag"], match["tag_ja"], lang) or match["tag"] for match in top_matches]
         joined_labels = "、".join(tag_labels) if is_japanese else ", ".join(tag_labels)
         source_game = top_matches[0]["via"]

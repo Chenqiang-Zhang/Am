@@ -133,7 +133,7 @@ class GraphReader:
     def popular_games(self, limit: int) -> list[GameRow]:
         rows = self.query(
             f"MATCH (g:Game) RETURN {GAME_COLUMNS} "
-            "ORDER BY played_count DESC, review_count DESC LIMIT $limit",
+            "ORDER BY played_count DESC, review_count DESC, appid ASC LIMIT $limit",
             limit=limit,
         )
         return [with_recommend_rate(row) for row in rows]
@@ -164,7 +164,7 @@ class GraphReader:
             "MATCH (:Player {player_id: $player_id})-[pl:PLAYED]->(g:Game) "
             "WHERE NOT g.appid IN $hide "
             "RETURN g.appid AS appid, g.name AS name, pl.hours AS hours, "
-            "coalesce(pl.hours_2w, 0) AS hours_2w ORDER BY hours DESC",
+            "coalesce(pl.hours_2w, 0) AS hours_2w ORDER BY hours DESC, appid ASC",
             player_id=player_id,
             hide=hide_appids,
         )
@@ -175,12 +175,12 @@ class GraphReader:
             "UNWIND $played AS pl "
             "MATCH (g:Game {appid: pl.appid})-[ht:HAS_TAG]->(t:Tag) "
             "WHERE ht.rank IS NULL OR ht.rank <= $max_rank "
-            "WITH total, t, g, pl ORDER BY pl.hours DESC "
+            "WITH total, t, g, pl ORDER BY pl.hours DESC, g.appid ASC "
             "WITH total, t, sum(log(1 + pl.hours)) AS pref, head(collect(g.name)) AS via "
             "WITH t, via, pref * log(toFloat(total) / size([(t)<-[:HAS_TAG]-() | 1])) AS weight "
             "WHERE weight > 0 "
             "RETURN t.tag_id AS tag_id, t.name AS name, t.name_ja AS name_ja, weight, via "
-            "ORDER BY weight DESC LIMIT $limit",
+            "ORDER BY weight DESC, tag_id ASC LIMIT $limit",
             played=played,
             max_rank=TAG_MAX_RANK,
             limit=limit,
@@ -191,9 +191,10 @@ class GraphReader:
             "UNWIND $prefs AS pf "
             "MATCH (t:Tag {tag_id: pf.tag_id})<-[ht:HAS_TAG]-(g:Game) "
             "WHERE (ht.rank IS NULL OR ht.rank <= $max_rank) AND NOT g.appid IN $played_appids "
+            "WITH g, t, pf ORDER BY pf.weight DESC, t.tag_id ASC "
             "WITH g, sum(pf.weight) AS score, "
             "collect({tag: t.name, tag_ja: t.name_ja, via: pf.via, weight: pf.weight}) AS hits "
-            "ORDER BY score DESC LIMIT $limit "
+            "ORDER BY score DESC, g.appid ASC LIMIT $limit "
             f"RETURN {GAME_COLUMNS}, score, hits",
             prefs=prefs,
             played_appids=played_appids,
@@ -209,11 +210,14 @@ class GraphReader:
             "UNWIND $seeds AS pl "
             "MATCH (seed:Game {appid: pl.appid})<-[:PLAYED]-(peer:Player) "
             "WHERE peer.player_id <> $player_id "
-            "WITH peer, count(seed) AS shared, head(collect(seed.name)) AS via "
+            "WITH peer, seed, pl ORDER BY pl.hours DESC, seed.appid ASC "
+            "WITH peer, count(seed) AS shared, "
+            "head(collect({name: seed.name, appid: seed.appid, hours: pl.hours})) AS via "
             "WHERE shared >= $min_shared "
             "MATCH (peer)-[:PLAYED]->(g:Game) WHERE NOT g.appid IN $played_appids "
-            "WITH g, count(peer) AS peer_count, head(collect(via)) AS via "
-            "ORDER BY peer_count DESC LIMIT $limit "
+            "WITH g, peer, via ORDER BY via.hours DESC, via.appid ASC "
+            "WITH g, count(peer) AS peer_count, head(collect(via.name)) AS via "
+            "ORDER BY peer_count DESC, g.appid ASC LIMIT $limit "
             f"RETURN {GAME_COLUMNS}, peer_count, via",
             player_id=player_id,
             seeds=seeds,
@@ -227,11 +231,12 @@ class GraphReader:
         rows = self.query(
             "UNWIND $played AS pl "
             "MATCH (seed:Game {appid: pl.appid})-[:DEVELOPED_BY|PUBLISHED_BY]->(s:Studio) "
-            "WITH s, seed, pl ORDER BY pl.hours DESC "
+            "WITH s, seed, pl ORDER BY pl.hours DESC, seed.appid ASC "
             "WITH s, sum(log(1 + pl.hours)) AS weight, head(collect(seed.name)) AS via "
             "MATCH (s)<-[:DEVELOPED_BY|PUBLISHED_BY]-(g:Game) WHERE NOT g.appid IN $played_appids "
+            "WITH g, s, weight, via ORDER BY weight DESC, s.studio_id ASC "
             "WITH g, max(weight) AS score, head(collect(s.name)) AS studio, head(collect(via)) AS via "
-            "ORDER BY score DESC LIMIT $limit "
+            "ORDER BY score DESC, g.appid ASC LIMIT $limit "
             f"RETURN {GAME_COLUMNS}, score, studio, via",
             played=played,
             played_appids=played_appids,
