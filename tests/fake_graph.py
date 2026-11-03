@@ -131,6 +131,13 @@ GAMES: list[dict[str, Any]] = [
         "tags": [("feature", "Single-player", None)],
         "studios": [("Lima Dev", "developer")],
     },
+    {
+        "appid": "130",
+        "name": "Mike",
+        "price": 7.99,
+        "tags": [("genre", "Indie", None), ("usertag", "Puzzle", 1), ("usertag", "Indie", 2)],
+        "studios": [("Indie Co", "developer"), ("Big Pub", "publisher")],
+    },
 ]
 
 # (player_id, appid, hours, hours_2w)
@@ -149,6 +156,7 @@ PLAYS: list[tuple[str, str, float, float]] = [
     ("p3", "20", 3.0, 0.0),
     ("p3", "40", 8.0, 0.0),
     ("p3", "90", 1.0, 0.0),
+    ("p3", "130", 2.0, 0.0),
     ("p4", "30", 60.0, 0.0),
     ("p4", "60", 25.0, 0.0),
     ("p4", "80", 4.0, 0.0),
@@ -420,6 +428,190 @@ class FakeGraphReader:
             )
         rows.sort(key=lambda row: (-row["score"], row["appid"]))
         return self.answer(rows[:limit])
+
+    # ---- static recommendation paths (M3), written from the formulas ------------------------------
+
+    def others(self, player_id: str, appid: str) -> set[str]:
+        return self.players_by_game[appid] - {player_id}
+
+    def co_play_scores(self, player_id, seeds, played_appids, evidence_limit):
+        self.calls.append("co_play_scores")
+        rows = []
+        for appid in self.games:
+            if appid in played_appids:
+                continue
+            instances = []
+            for seed in seeds:
+                co_players = len(self.others(player_id, seed["appid"]) & self.others(player_id, appid))
+                if not co_players:
+                    continue
+                seed_players = len(self.others(player_id, seed["appid"]))
+                game_players = len(self.others(player_id, appid))
+                instances.append(
+                    {
+                        "appid": seed["appid"],
+                        "name": self.games[seed["appid"]]["name"],
+                        "weight": seed["weight"],
+                        "co_players": co_players,
+                        "seed_players": seed_players,
+                        "term": seed["weight"] * co_players / math.sqrt(seed_players * game_players),
+                    }
+                )
+            if instances:
+                instances.sort(key=lambda item: (-item["term"], item["appid"]))
+                rows.append(
+                    {
+                        "appid": appid,
+                        "score": sum(item["term"] for item in instances),
+                        "game_players": len(self.others(player_id, appid)),
+                        "seed_count": len(instances),
+                        "seeds": instances[:evidence_limit],
+                    }
+                )
+        rows.sort(key=lambda row: (-row["score"], row["appid"]))
+        return self.answer(rows)
+
+    def concepts(self, appid: str) -> set[str]:
+        """Merged tag names of a game: no Feature tags, only edges used for matching."""
+        return {
+            current_tag_id.split(":", 1)[1]
+            for current_tag_id, kind, _, rank in self.tag_edges(appid)
+            if kind != "feature" and (rank is None or rank <= TAG_MAX_RANK)
+        }
+
+    def concept_label(self, concept: str) -> tuple[str, str | None]:
+        """Name of the concept's tag with the smallest tag_id (the genre when there is one)."""
+        candidates = sorted(
+            (current_tag_id, name)
+            for appid in self.games
+            for current_tag_id, kind, name, _ in self.tag_edges(appid)
+            if kind != "feature" and current_tag_id.split(":", 1)[1] == concept
+        )
+        name = candidates[0][1]
+        return name, tag_ja(name)
+
+    def tag_concept_scores(self, seeds, played_appids, concept_limit, evidence_limit):
+        self.calls.append("tag_concept_scores")
+        total = len(self.games)
+        concepts_by_game = {appid: self.concepts(appid) for appid in self.games}
+        preference: dict[str, float] = defaultdict(float)
+        via: dict[str, tuple[float, str]] = {}
+        for seed in seeds:
+            for concept in concepts_by_game[seed["appid"]]:
+                preference[concept] += seed["weight"]
+                via[concept] = min(via.get(concept, (math.inf, "")), (-seed["weight"], seed["appid"]))
+        weights = {}
+        for concept, pref in preference.items():
+            document_frequency = sum(1 for appid in self.games if concept in concepts_by_game[appid])
+            weight = pref * math.log(total / document_frequency)
+            if weight > 0:
+                weights[concept] = weight
+        kept = sorted(weights, key=lambda concept: (-weights[concept], concept))[:concept_limit]
+        rows = []
+        for appid in self.games:
+            if appid in played_appids:
+                continue
+            own = concepts_by_game[appid]
+            instances = []
+            for concept in kept:
+                if concept in own:
+                    name, name_ja = self.concept_label(concept)
+                    seed_appid = via[concept][1]
+                    instances.append(
+                        {
+                            "concept": concept,
+                            "name": name,
+                            "name_ja": name_ja,
+                            "weight": weights[concept],
+                            "seed_appid": seed_appid,
+                            "seed_name": self.games[seed_appid]["name"],
+                            "term": weights[concept] / math.sqrt(len(own)),
+                        }
+                    )
+            if instances:
+                instances.sort(key=lambda item: (-item["term"], item["concept"]))
+                rows.append(
+                    {
+                        "appid": appid,
+                        "score": sum(item["term"] for item in instances),
+                        "concept_count": len(own),
+                        "match_count": len(instances),
+                        "matches": instances[:evidence_limit],
+                    }
+                )
+        rows.sort(key=lambda row: (-row["score"], row["appid"]))
+        return self.answer(rows)
+
+    def studio_roles(self, appid: str) -> dict[str, str]:
+        """studio_id -> "developer" if the game has DEVELOPED_BY to it, else "publisher"."""
+        roles: dict[str, str] = {}
+        for current_studio_id, _, role in self.studio_edges(appid):
+            if roles.get(current_studio_id) != "developer":
+                roles[current_studio_id] = role
+        return roles
+
+    def studio_scores(self, seeds, played_appids, developer_weight, publisher_weight, evidence_limit):
+        self.calls.append("studio_scores")
+        names = {sid: name for appid in self.games for sid, name, _ in self.studio_edges(appid)}
+        titles: dict[str, set[str]] = defaultdict(set)
+        for appid in self.games:
+            for current_studio_id in self.studio_roles(appid):
+                titles[current_studio_id].add(appid)
+        rows = []
+        for appid in self.games:
+            if appid in played_appids:
+                continue
+            game_roles = self.studio_roles(appid)
+            links = []
+            for seed in seeds:
+                seed_roles = self.studio_roles(seed["appid"])
+                options = []
+                for current_studio_id in set(seed_roles) & set(game_roles):
+                    both_developed = seed_roles[current_studio_id] == game_roles[current_studio_id] == "developer"
+                    role_weight = developer_weight if both_developed else publisher_weight
+                    term = seed["weight"] * role_weight / math.log(2 + len(titles[current_studio_id]))
+                    options.append((-term, current_studio_id))
+                if options:
+                    negative_term, best = min(options)
+                    links.append(
+                        {
+                            "studio_id": best,
+                            "studio": names[best],
+                            "seed_role": seed_roles[best],
+                            "game_role": game_roles[best],
+                            "titles": len(titles[best]),
+                            "term": -negative_term,
+                            "seed_appid": seed["appid"],
+                            "seed_name": self.games[seed["appid"]]["name"],
+                            "weight": seed["weight"],
+                        }
+                    )
+            if links:
+                links.sort(key=lambda link: (-link["term"], link["seed_appid"]))
+                rows.append(
+                    {
+                        "appid": appid,
+                        "score": sum(link["term"] for link in links),
+                        "seed_count": len(links),
+                        "links": links[:evidence_limit],
+                    }
+                )
+        rows.sort(key=lambda row: (-row["score"], row["appid"]))
+        return self.answer(rows)
+
+    def game_popularity(self, player_id, played_appids):
+        self.calls.append("game_popularity")
+        rows = [
+            {"appid": appid, "players": len(self.others(player_id, appid))}
+            for appid in self.games
+            if appid not in played_appids
+        ]
+        rows.sort(key=lambda row: (-row["players"], row["appid"]))
+        return self.answer(rows)
+
+    def games_by_appids(self, appids):
+        self.calls.append("games_by_appids")
+        return [self.game_row(appid) for appid in appids if appid in self.games]
 
     # ---- chat-only queries ---------------------------------------------------------------------
 

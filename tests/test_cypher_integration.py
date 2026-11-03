@@ -17,7 +17,11 @@ import pytest
 from neo4j import GraphDatabase
 
 import kg.neo4j_loader
+from app.api.static_recommend import SeedScheme, collect_path_scores, recommend_games
+from app.api.static_recommend_v0 import recommend_games_v0
+from eval.explanation_check import CypherFacts, check_evidence, check_recommendations
 from tests.fake_graph import PLAYER_IDS, FakeGraphReader, write_loader_input
+from tests.test_explanation_check import FakeFacts
 from utils import settings
 from utils.graph_reader import GraphReader
 
@@ -31,6 +35,13 @@ pytestmark = pytest.mark.skipif(
 
 # (player_id, hidden appids) pairs to compare on.
 CASES = [("u1", []), ("u1", ["30"]), ("u1", ["10"]), ("p2", ["60"]), ("p6", []), ("solo", []), ("p7", [])]
+
+
+def write(cypher, **params):
+    connection = settings.neo4j_connection(GRAPH_NAME)
+    driver = GraphDatabase.driver(connection["uri"], auth=(connection["user"], connection["password"]))
+    with driver, driver.session(database=connection["database"]) as session:
+        session.run(cypher, **params).consume()
 
 
 @pytest.fixture(scope="module")
@@ -103,7 +114,10 @@ def test_popular_and_chat_queries_run(reader):
     assert_same(reader.top_reviews("10", 5), fake.top_reviews("10", 5))
     assert_same(reader.sample_players(10), fake.sample_players(10))
     assert_same(reader.player_reviews("u1", ["30"], 3), fake.player_reviews("u1", ["30"], 3))
-    assert_same(reader.player_aspects("u1", [], 8), fake.player_aspects("u1", [], 8))
+    # Chat-only queries without a tiebreak (outside M2): compare equally ranked rows as sets.
+    assert_same(
+        sorted(reader.player_aspects("u1", [], 8), key=repr), sorted(fake.player_aspects("u1", [], 8), key=repr)
+    )
     assert sorted(reader.top_tags(80)) == sorted(fake.top_tags(80))
     assert reader.aspect_names() == fake.aspect_names()
     search = reader.search_games(["Action", "Puzzle"], ["gameplay"], ["fun"], 30.0, 10)
@@ -114,3 +128,67 @@ def test_popular_and_chat_queries_run(reader):
     assert sorted(reader.all_play_records()) == sorted(fake.all_play_records())
     assert reader.tag_ids_by_game() == fake.tag_ids_by_game()
     assert {row["player_id"] for row in reader.sample_players(50)} <= set(PLAYER_IDS)
+
+
+SCHEMES = [SeedScheme(), SeedScheme(weighting="uniform", peer_limit=None), SeedScheme(peer_limit=1)]
+
+
+@pytest.mark.parametrize("scheme", SCHEMES, ids=["default", "uniform-all", "one-peer-seed"])
+@pytest.mark.parametrize("player_id,hidden", CASES)
+def test_path_queries_match_the_formulas(reader, player_id, hidden, scheme):
+    hidden_appids = frozenset(hidden)
+    assert_same(
+        collect_path_scores(reader, player_id, hidden_appids, scheme),
+        collect_path_scores(FakeGraphReader(), player_id, hidden_appids, scheme),
+    )
+
+
+@pytest.mark.parametrize("recommend", [recommend_games, recommend_games_v0], ids=["current", "v0"])
+@pytest.mark.parametrize("player_id,hidden", CASES + [("nobody", []), (None, [])])
+def test_recommendations_match_the_reference(reader, recommend, player_id, hidden):
+    for lang in ("en", "ja"):
+        actual = recommend(reader, player_id, 20, lang, frozenset(hidden))
+        expected = recommend(FakeGraphReader(), player_id, 20, lang, frozenset(hidden))
+        assert_same([item.model_dump() for item in actual], [item.model_dump() for item in expected])
+
+
+@pytest.mark.parametrize("player_id,hidden", CASES)
+def test_explanation_check_cypher_agrees_with_the_reference(reader, player_id, hidden):
+    cypher_facts, fake_facts = CypherFacts(reader), FakeFacts(FakeGraphReader())
+    assert cypher_facts.played(player_id) == fake_facts.played(player_id)
+    visible = {appid: name for appid, name in cypher_facts.played(player_id).items() if appid not in hidden}
+    for recommend in (recommend_games, recommend_games_v0):
+        for item in recommend(reader, player_id, 20, "en", frozenset(hidden)):
+            for evidence in item.evidence or []:
+                actual = check_evidence(cypher_facts, player_id, visible, item.appid, evidence)
+                expected = check_evidence(fake_facts, player_id, visible, item.appid, evidence)
+                assert normalize(actual) == normalize(expected), (item.appid, evidence)
+
+
+def test_explanation_check_end_to_end(reader):
+    players = ["u1", "p1", "p2", "p3", "p4", "p5", "p6", "solo"]
+    hidden = {"u1": "30", "p2": "60", "p6": "90", "p4": "80"}
+    reports = check_recommendations(reader, CypherFacts(reader), players, hidden, 10, ["current", "v0"])
+    assert reports["current"].validity == 1.0
+    assert reports["v0"].validity < 1.0
+    expected = check_recommendations(
+        FakeGraphReader(), FakeFacts(FakeGraphReader()), players, hidden, 10, ["current", "v0"]
+    )
+    for version in ("current", "v0"):
+        assert normalize(reports[version].summary()) == normalize(expected[version].summary())
+
+
+def test_deleting_the_hidden_edge_changes_nothing(reader):
+    """Hiding a game in the query equals deleting the player's PLAYED edge (proposal M1/M3)."""
+    hidden = frozenset({"30"})
+    before = collect_path_scores(reader, "u1", hidden)
+    before_items = [item.model_dump() for item in recommend_games(reader, "u1", 20, "en", hidden)]
+    write("MATCH (:Player {player_id: 'u1'})-[edge:PLAYED]->(:Game {appid: '30'}) DELETE edge")
+    try:
+        assert collect_path_scores(reader, "u1", hidden) == before
+        assert [item.model_dump() for item in recommend_games(reader, "u1", 20, "en", hidden)] == before_items
+    finally:
+        write(
+            "MATCH (p:Player {player_id: 'u1'}), (g:Game {appid: '30'}) "
+            "MERGE (p)-[edge:PLAYED]->(g) SET edge.hours = 5.0, edge.hours_2w = 0.0"
+        )

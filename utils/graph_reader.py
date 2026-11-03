@@ -97,6 +97,70 @@ class SamplePlayer(TypedDict):
     played_count: int
 
 
+class SeedGame(TypedDict):
+    appid: str
+    weight: float
+
+
+class CoPlaySeed(TypedDict):
+    appid: str
+    name: str
+    weight: float
+    co_players: int
+    seed_players: int
+    term: float
+
+
+class CoPlayCandidate(TypedDict):
+    appid: str
+    score: float
+    game_players: int
+    seed_count: int
+    seeds: list[CoPlaySeed]
+
+
+class TagConceptMatch(TypedDict):
+    concept: str
+    name: str
+    name_ja: str | None
+    weight: float
+    seed_appid: str
+    seed_name: str
+    term: float
+
+
+class TagConceptCandidate(TypedDict):
+    appid: str
+    score: float
+    concept_count: int
+    match_count: int
+    matches: list[TagConceptMatch]
+
+
+class StudioLink(TypedDict):
+    studio_id: str
+    studio: str
+    seed_appid: str
+    seed_name: str
+    seed_role: str
+    game_role: str
+    titles: int
+    weight: float
+    term: float
+
+
+class StudioCandidate(TypedDict):
+    appid: str
+    score: float
+    seed_count: int
+    links: list[StudioLink]
+
+
+class GamePopularity(TypedDict):
+    appid: str
+    players: int
+
+
 GAME_COLUMNS = f"""
 g.appid AS appid, g.name AS name, g.name_ja AS name_ja,
 g.description AS description, g.description_ja AS description_ja,
@@ -243,6 +307,150 @@ class GraphReader:
             limit=limit,
         )
         return [with_recommend_rate(row) for row in rows]
+
+    # Static recommendation paths (M3). Each query scores every game the player has not visibly played
+    # and returns the path instances behind the score, strongest first. PLAYED edges only start at
+    # Player nodes, so COUNT { (g)<-[:PLAYED]-() } reads the degree store; the player's own edge is
+    # subtracted so that a hidden game looks exactly as if its edge had been deleted.
+
+    def co_play_scores(
+        self, player_id: str, seeds: list[SeedGame], played_appids: list[str], evidence_limit: int
+    ) -> list[CoPlayCandidate]:
+        """score(g) = Σ_s w_s · co(s, g) / sqrt(deg(s) · deg(g)), all counts without the player."""
+        return self.query(
+            "MATCH (me:Player {player_id: $player_id}) "
+            "UNWIND $seeds AS seed_row "
+            "MATCH (seed:Game {appid: seed_row.appid})<-[:PLAYED]-(peer:Player)-[:PLAYED]->(g:Game) "
+            "WHERE peer <> me "
+            "WITH me, seed, seed_row.weight AS seed_weight, g, count(peer) AS co_players "
+            "WHERE NOT g.appid IN $played_appids "
+            "WITH g, seed, seed_weight, co_players, "
+            "COUNT { (seed)<-[:PLAYED]-() } - CASE WHEN EXISTS { (me)-[:PLAYED]->(seed) } THEN 1 ELSE 0 END "
+            "AS seed_players, "
+            "COUNT { (g)<-[:PLAYED]-() } - CASE WHEN EXISTS { (me)-[:PLAYED]->(g) } THEN 1 ELSE 0 END "
+            "AS game_players "
+            "WITH g, game_players, seed, seed_weight, co_players, seed_players, "
+            "seed_weight * co_players / sqrt(toFloat(seed_players) * game_players) AS term "
+            "ORDER BY term DESC, seed.appid ASC "
+            "WITH g, game_players, sum(term) AS score, count(seed) AS seed_count, "
+            "collect({appid: seed.appid, name: seed.name, weight: seed_weight, co_players: co_players, "
+            "seed_players: seed_players, term: term})[..$evidence_limit] AS seeds "
+            "RETURN g.appid AS appid, score, game_players, seed_count, seeds "
+            "ORDER BY score DESC, appid ASC",
+            player_id=player_id,
+            seeds=seeds,
+            played_appids=played_appids,
+            evidence_limit=evidence_limit,
+        )
+
+    def tag_concept_scores(
+        self, seeds: list[SeedGame], played_appids: list[str], concept_limit: int, evidence_limit: int
+    ) -> list[TagConceptCandidate]:
+        """A genre and a user tag with the same name are one concept (the part of tag_id after the
+        colon); Feature tags are left out. IDF and matching both use edges with rank <= TAG_MAX_RANK
+        or no rank. weight(c) = Σ_{seeds with c} w_s · ln(N / df(c)), kept for the top concepts;
+        score(g) = Σ_{c of g} weight(c) / sqrt(number of concepts of g)."""
+        return self.query(
+            "MATCH (game:Game) WITH count(game) AS total "
+            "UNWIND $seeds AS seed_row "
+            "MATCH (seed:Game {appid: seed_row.appid})-[seed_tag:HAS_TAG]->(t:Tag) "
+            "WHERE NOT t:Feature AND (seed_tag.rank IS NULL OR seed_tag.rank <= $max_rank) "
+            "WITH DISTINCT total, seed, seed_row.weight AS seed_weight, split(t.tag_id, ':')[1] AS concept "
+            "ORDER BY seed_weight DESC, seed.appid ASC "
+            "WITH total, concept, sum(seed_weight) AS preference, head(collect(seed)) AS via "
+            "MATCH (tag:Tag) WHERE NOT tag:Feature AND split(tag.tag_id, ':')[1] = concept "
+            "WITH total, concept, preference, via, tag ORDER BY tag.tag_id ASC "
+            "WITH total, concept, preference, via, collect(tag) AS tags "
+            "UNWIND tags AS tag "
+            "MATCH (tag)<-[owner_tag:HAS_TAG]-(owner:Game) "
+            "WHERE owner_tag.rank IS NULL OR owner_tag.rank <= $max_rank "
+            "WITH total, concept, preference, via, tags, count(DISTINCT owner) AS document_frequency "
+            "WITH concept, via, tags, preference * log(toFloat(total) / document_frequency) AS weight "
+            "WHERE weight > 0 "
+            "WITH concept, via, tags, weight ORDER BY weight DESC, concept ASC LIMIT $concept_limit "
+            "UNWIND tags AS tag "
+            "MATCH (tag)<-[game_tag:HAS_TAG]-(g:Game) "
+            "WHERE (game_tag.rank IS NULL OR game_tag.rank <= $max_rank) AND NOT g.appid IN $played_appids "
+            "WITH DISTINCT g, concept, weight, via, head(tags) AS label "
+            "WITH g, collect({concept: concept, weight: weight, via: via, label: label}) AS matched "
+            "WITH g, matched, size(reduce(seen = [], key IN "
+            "[(g)-[own:HAS_TAG]->(own_tag:Tag) WHERE NOT own_tag:Feature "
+            "AND (own.rank IS NULL OR own.rank <= $max_rank) | split(own_tag.tag_id, ':')[1]] "
+            "| CASE WHEN key IN seen THEN seen ELSE seen + key END)) AS concept_count "
+            "UNWIND matched AS match "
+            "WITH g, concept_count, match, match.weight / sqrt(toFloat(concept_count)) AS term "
+            "ORDER BY term DESC, match.concept ASC "
+            "WITH g, concept_count, sum(term) AS score, count(match) AS match_count, "
+            "collect({concept: match.concept, name: match.label.name, name_ja: match.label.name_ja, "
+            "weight: match.weight, seed_appid: match.via.appid, seed_name: match.via.name, term: term})"
+            "[..$evidence_limit] AS matches "
+            "RETURN g.appid AS appid, score, concept_count, match_count, matches "
+            "ORDER BY score DESC, appid ASC",
+            seeds=seeds,
+            played_appids=played_appids,
+            max_rank=TAG_MAX_RANK,
+            concept_limit=concept_limit,
+            evidence_limit=evidence_limit,
+        )
+
+    def studio_scores(
+        self,
+        seeds: list[SeedGame],
+        played_appids: list[str],
+        developer_weight: float,
+        publisher_weight: float,
+        evidence_limit: int,
+    ) -> list[StudioCandidate]:
+        """A game's role for a studio is developer if it has DEVELOPED_BY to it, else publisher.
+        Each seed counts once per candidate, through its strongest shared studio:
+        w_s · (developer_weight if both are developer else publisher_weight) / ln(2 + titles)."""
+        return self.query(
+            "UNWIND $seeds AS seed_row "
+            "MATCH (seed:Game {appid: seed_row.appid})-[seed_link:DEVELOPED_BY|PUBLISHED_BY]->(studio:Studio) "
+            "WITH seed, seed_row.weight AS seed_weight, studio, collect(type(seed_link)) AS seed_relations "
+            "MATCH (studio)<-[:DEVELOPED_BY|PUBLISHED_BY]-(title:Game) "
+            "WITH seed, seed_weight, studio, seed_relations, count(DISTINCT title) AS titles "
+            "MATCH (studio)<-[game_link:DEVELOPED_BY|PUBLISHED_BY]-(g:Game) WHERE NOT g.appid IN $played_appids "
+            "WITH seed, seed_weight, studio, seed_relations, titles, g, collect(type(game_link)) AS game_relations "
+            "WITH g, seed, seed_weight, studio, titles, "
+            "CASE WHEN 'DEVELOPED_BY' IN seed_relations THEN 'developer' ELSE 'publisher' END AS seed_role, "
+            "CASE WHEN 'DEVELOPED_BY' IN game_relations THEN 'developer' ELSE 'publisher' END AS game_role "
+            "WITH g, seed, seed_weight, studio, titles, seed_role, game_role, "
+            "seed_weight * CASE WHEN seed_role = 'developer' AND game_role = 'developer' "
+            "THEN $developer_weight ELSE $publisher_weight END / log(2 + titles) AS term "
+            "ORDER BY term DESC, studio.studio_id ASC "
+            "WITH g, seed, seed_weight, head(collect({studio_id: studio.studio_id, studio: studio.name, "
+            "seed_role: seed_role, game_role: game_role, titles: titles, term: term})) AS link "
+            "WITH g, seed, seed_weight, link ORDER BY link.term DESC, seed.appid ASC "
+            "WITH g, sum(link.term) AS score, count(seed) AS seed_count, "
+            "collect(link {.*, seed_appid: seed.appid, seed_name: seed.name, weight: seed_weight})"
+            "[..$evidence_limit] AS links "
+            "RETURN g.appid AS appid, score, seed_count, links ORDER BY score DESC, appid ASC",
+            seeds=seeds,
+            played_appids=played_appids,
+            developer_weight=developer_weight,
+            publisher_weight=publisher_weight,
+            evidence_limit=evidence_limit,
+        )
+
+    def game_popularity(self, player_id: str, played_appids: list[str]) -> list[GamePopularity]:
+        """Players of every game the player has not visibly played, not counting the player."""
+        return self.query(
+            "MATCH (g:Game) WHERE NOT g.appid IN $played_appids "
+            "RETURN g.appid AS appid, COUNT { (g)<-[:PLAYED]-() } "
+            "- CASE WHEN EXISTS { (:Player {player_id: $player_id})-[:PLAYED]->(g) } THEN 1 ELSE 0 END AS players "
+            "ORDER BY players DESC, appid ASC",
+            player_id=player_id,
+            played_appids=played_appids,
+        )
+
+    def games_by_appids(self, appids: list[str]) -> list[GameRow]:
+        rows = self.query(
+            f"UNWIND $appids AS wanted MATCH (g:Game {{appid: wanted}}) RETURN {GAME_COLUMNS}",
+            appids=appids,
+        )
+        position = {appid: index for index, appid in enumerate(appids)}
+        return sorted((with_recommend_rate(row) for row in rows), key=lambda row: position[row["appid"]])
 
     def player_reviews(self, player_id: str, hide_appids: list[str], limit: int) -> list[PlayerReview]:
         return self.query(

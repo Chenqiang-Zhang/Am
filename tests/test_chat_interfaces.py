@@ -39,6 +39,8 @@ def test_chat_returns_picked_candidates_with_tag_reasons():
     assert isinstance(response, ChatResponse)
     assert [item.appid for item in response.recommendations] == ["40"]
     assert response.recommendations[0].reasons[0].label == "Puzzle"
+    assert response.recommendations[0].evidence is None
+    assert response.recommendations[0].contributions is None
     assert response.options == ["Cheaper"]
 
 
@@ -76,6 +78,7 @@ def test_api_endpoints_respond_with_the_fake_graph():
         )
         assert chat_response.status_code == 200
         assert [item["appid"] for item in chat_response.json()["recommendations"]] == ["110"]
+        assert chat_response.json()["recommendations"][0]["evidence"] is None
 
         players = client.get("/players/sample", params={"limit": 3})
         assert [player["player_id"] for player in players.json()["players"]] == ["p1", "p2", "p3"]
