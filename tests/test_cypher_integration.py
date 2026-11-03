@@ -34,7 +34,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 # (player_id, hidden appids) pairs to compare on.
-CASES = [("u1", []), ("u1", ["30"]), ("u1", ["10"]), ("p2", ["60"]), ("p6", []), ("solo", []), ("p7", [])]
+CASES = [
+    ("u1", []), ("u1", ["30"]), ("u1", ["10"]), ("p2", ["60"]), ("p6", []), ("solo", []), ("p7", []), ("p7", ["40"])
+]
 
 
 def write(cypher, **params):
@@ -53,9 +55,12 @@ def reader(tmp_path_factory):
         markers = session.run(f"MATCH (n:{MARKER_LABEL}) RETURN count(n) AS n").single()["n"]
         if nodes and not markers:
             pytest.fail(f"{connection['uri']} holds data this test did not create; refusing to delete it")
+        # Mark the database first and unmark it never: an interrupted run can always be cleaned up next time.
+        session.run(f"MERGE (:{MARKER_LABEL})").consume()
         session.run("MATCH ()-[r]->() CALL { WITH r DELETE r } IN TRANSACTIONS OF 10000 ROWS").consume()
-        session.run("MATCH (n) CALL { WITH n DELETE n } IN TRANSACTIONS OF 10000 ROWS").consume()
-        session.run(f"CREATE (:{MARKER_LABEL})").consume()
+        session.run(
+            f"MATCH (n) WHERE NOT n:{MARKER_LABEL} CALL {{ WITH n DELETE n }} IN TRANSACTIONS OF 10000 ROWS"
+        ).consume()
 
         directory = tmp_path_factory.mktemp("graph")
         write_loader_input(directory)
@@ -179,17 +184,21 @@ def test_explanation_check_end_to_end(reader):
         assert normalize(reports[version].summary()) == normalize(expected[version].summary())
 
 
-def test_deleting_the_hidden_edge_changes_nothing(reader):
+@pytest.mark.parametrize("player_id,appid,hours", [("u1", "30", 5.0), ("p7", "40", 4.0)])
+def test_deleting_the_hidden_edge_changes_nothing(reader, player_id, appid, hours):
     """Hiding a game in the query equals deleting the player's PLAYED edge (proposal M1/M3)."""
-    hidden = frozenset({"30"})
-    before = collect_path_scores(reader, "u1", hidden)
-    before_items = [item.model_dump() for item in recommend_games(reader, "u1", 20, "en", hidden)]
-    write("MATCH (:Player {player_id: 'u1'})-[edge:PLAYED]->(:Game {appid: '30'}) DELETE edge")
+    hidden = frozenset({appid})
+    before = collect_path_scores(reader, player_id, hidden)
+    before_items = [item.model_dump() for item in recommend_games(reader, player_id, 20, "en", hidden)]
+    edge = {"player_id": player_id, "appid": appid}
+    write("MATCH (:Player {player_id: $player_id})-[edge:PLAYED]->(:Game {appid: $appid}) DELETE edge", **edge)
     try:
-        assert collect_path_scores(reader, "u1", hidden) == before
-        assert [item.model_dump() for item in recommend_games(reader, "u1", 20, "en", hidden)] == before_items
+        assert collect_path_scores(reader, player_id, hidden) == before
+        assert [item.model_dump() for item in recommend_games(reader, player_id, 20, "en", hidden)] == before_items
     finally:
         write(
-            "MATCH (p:Player {player_id: 'u1'}), (g:Game {appid: '30'}) "
-            "MERGE (p)-[edge:PLAYED]->(g) SET edge.hours = 5.0, edge.hours_2w = 0.0"
+            "MATCH (p:Player {player_id: $player_id}), (g:Game {appid: $appid}) "
+            "MERGE (p)-[edge:PLAYED]->(g) SET edge.hours = $hours, edge.hours_2w = 0.0",
+            hours=hours,
+            **edge,
         )

@@ -56,6 +56,20 @@ def test_hiding_a_game_equals_deleting_the_edge():
     ]
 
 
+def test_hiding_all_of_a_players_games_leaks_nothing():
+    # p7 only played Delta(40). With it hidden only popularity is left, and it must not count p7.
+    hidden = frozenset({"40"})
+    with_edge = FakeGraphReader()
+    without_edge = FakeGraphReader(plays=[play for play in PLAYS if play[:2] != ("p7", "40")])
+    items = recommend_games(with_edge, "p7", 13, "en", hidden)
+    assert [item.model_dump() for item in items] == [
+        item.model_dump() for item in recommend_games(without_edge, "p7", 13, "en", hidden)
+    ]
+    assert {evidence.path for item in items for evidence in item.evidence} == {"popular"}
+    delta = next(item for item in items if item.appid == "40")
+    assert delta.evidence[0].count == 1  # p3; p7's own hidden edge does not count
+
+
 def test_one_shared_game_is_enough_for_co_play():
     # solo only played Echo(50), so v0's "peer shares at least 2 games" rule left solo with nothing.
     reader = FakeGraphReader()

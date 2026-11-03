@@ -133,6 +133,17 @@ def test_tampered_evidence_is_caught(path, change, broken):
     assert not assertions_for(evidence.model_copy(update=change), appid)[broken]
 
 
+def test_a_merged_tag_may_be_spelled_like_either_of_its_tags():
+    # Echo(50) has the genre "Free To Play", Foxtrot(60) the user tag "Free to Play".
+    stated = Evidence(path="tag", seed_appid="50", seed_name="Echo", bridge_id="free_to_play", bridge_name="Free To Play")
+    checked = assertions_for(stated, appid="60", player_id="p1", hidden=frozenset())
+    assert checked["seed_has_tag"] and checked["game_has_tag"]
+    wrong = stated.model_copy(update={"bridge_name": "Free to Win"})
+    assert not assertions_for(wrong, appid="60", player_id="p1", hidden=frozenset())["game_has_tag"]
+    elsewhere = stated.model_copy(update={"seed_appid": "10", "seed_name": "Alpha"})  # Alpha is not free to play
+    assert not assertions_for(elsewhere, appid="60", player_id="p1", hidden=frozenset())["seed_has_tag"]
+
+
 def test_feature_tags_and_far_ranks_do_not_count_as_owned():
     # Charlie(30) carries user tag Action only at rank 11; Lima(120) only a Feature tag.
     action = Evidence(path="tag", seed_appid="10", seed_name="Alpha", bridge_id="action", bridge_name="Action")

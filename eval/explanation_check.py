@@ -8,8 +8,9 @@ recommender's own:
 - seed_played: the player played the seed, it is not hidden, and it has the stated name
 - co_players: exactly `count` other players played both the seed and the game (peer)
 - seed_has_tag, game_has_tag: both games carry the tag (tag). For the current recommender a genre
-  and a user tag with the same name are one tag, Feature tags do not count and only edges with
-  rank <= TAG_MAX_RANK or no rank count. For v0 it is a tag of that name, with v0's edges.
+  and a user tag with the same name are one tag (names compared as in tag_id, so "Free To Play"
+  and "Free to Play" are one name), Feature tags do not count and only edges with
+  rank <= TAG_MAX_RANK or no rank count. For v0 it is a tag of that exact name, with v0's edges.
 - seed_studio, game_studio: both games are linked to the studio in the stated role (studio).
   developer: DEVELOPED_BY; publisher: PUBLISHED_BY without DEVELOPED_BY; v0 states no role.
 - studio_titles: the studio has exactly `count` games (studio)
@@ -31,6 +32,7 @@ from typing import Any, Callable, Protocol
 from app.api.models import Evidence, Recommendation
 from app.api.static_recommend import recommend_games
 from app.api.static_recommend_v0 import recommend_games_v0
+from kg.ids import to_snake_case
 from utils.graph_reader import TAG_MAX_RANK, GraphReader
 
 from .rankers import PlayRecord, group_appids_by_player
@@ -155,8 +157,12 @@ def check_evidence(
             if not game:
                 results.append((assertion, False, None))
             elif item.bridge_id:
+                # The game carries the merged tag, under the stated name or another spelling of it
+                # (Steam's genre "Free To Play" and user tag "Free to Play" are one tag).
                 names = facts.merged_tag_names(game, item.bridge_id)
-                results.append((assertion, item.bridge_name in names, sorted(names)))
+                stated = item.bridge_name or ""
+                holds = bool(names) and (stated in names or to_snake_case(stated) == item.bridge_id)
+                results.append((assertion, holds, sorted(names)))
             else:
                 found = facts.has_tag_named(game, item.bridge_name or "")
                 results.append((assertion, found, found))

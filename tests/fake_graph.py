@@ -63,14 +63,26 @@ GAMES: list[dict[str, Any]] = [
         "appid": "50",
         "name": "Echo",
         "price": 0.0,
-        "tags": [("genre", "Action", None), ("usertag", "Shooter", 1), ("usertag", "Multiplayer", 2), ("feature", "Online PvP", None)],
+        "tags": [
+            ("genre", "Action", None),
+            ("genre", "Free To Play", None),  # Steam's genre spelling; the user tag is "Free to Play"
+            ("usertag", "Shooter", 1),
+            ("usertag", "Multiplayer", 2),
+            ("feature", "Online PvP", None),
+        ],
         "studios": [("Valve", "developer"), ("Valve", "publisher")],
     },
     {
         "appid": "60",
         "name": "Foxtrot",
         "price": 29.99,
-        "tags": [("genre", "RPG", None), ("usertag", "Open World", 1), ("usertag", "RPG", 2), ("usertag", "Action", 3)],
+        "tags": [
+            ("genre", "RPG", None),
+            ("usertag", "Open World", 1),
+            ("usertag", "RPG", 2),
+            ("usertag", "Action", 3),
+            ("usertag", "Free to Play", 4),
+        ],
         "studios": [("RPG House", "developer"), ("RPG House", "publisher")],
     },
     {

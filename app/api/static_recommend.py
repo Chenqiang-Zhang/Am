@@ -100,13 +100,13 @@ def recommend_games(
     weights: Mapping[str, float] | None = None,
     scheme: SeedScheme = DEFAULT_SEED_SCHEME,
 ) -> list[Recommendation]:
-    path_scores = collect_path_scores(reader, player_id, hidden_appids, scheme) if player_id else None
-    if path_scores is None:
+    if not player_id:
         return [
             build_recommendation(game, lang, float(game["played_count"]), [], POPULAR_EXPLANATION[lang])
             for game in reader.popular_games(limit)
         ]
 
+    path_scores = collect_path_scores(reader, player_id, hidden_appids, scheme)
     ranked = combine(path_scores, limit, weights)
     games = {game["appid"]: game for game in reader.games_by_appids([item["appid"] for item in ranked])}
     recommendations = []
@@ -132,13 +132,12 @@ def collect_path_scores(
     player_id: str,
     hidden_appids: frozenset[str] = frozenset(),
     scheme: SeedScheme = DEFAULT_SEED_SCHEME,
-) -> PathScores | None:
-    """Run the path queries for one player; None when the player has no visible history."""
+) -> PathScores:
+    """Run the path queries for one player. Without visible history only popularity is scored (still
+    without the player, so hiding all of a player's games leaks nothing either)."""
     played = sorted(
         reader.played_games(player_id, sorted(hidden_appids)), key=lambda game: (-game["hours"], game["appid"])
     )
-    if not played:
-        return None
     seeds = [
         Seed(appid=game["appid"], name=game["name"], hours=game["hours"], weight=scheme.weight(game["hours"]))
         for game in played
@@ -146,20 +145,22 @@ def collect_path_scores(
     played_appids = [seed["appid"] for seed in seeds]
     seed_games = [SeedGame(appid=seed["appid"], weight=seed["weight"]) for seed in seeds]
     peer_seed_games = seed_games if scheme.peer_limit is None else seed_games[: scheme.peer_limit]
-    rows_by_path: dict[str, list[Any]] = {
-        "peer": reader.co_play_scores(player_id, peer_seed_games, played_appids, EVIDENCE_PER_PATH),
-        "tag": reader.tag_concept_scores(seed_games, played_appids, TAG_PREFERENCE_LIMIT, EVIDENCE_PER_PATH),
-        "studio": reader.studio_scores(
-            seed_games,
-            played_appids,
-            STUDIO_ROLE_WEIGHTS["developer"],
-            STUDIO_ROLE_WEIGHTS["publisher"],
-            EVIDENCE_PER_PATH,
-        ),
-        "popular": [
-            dict(row, score=math.log1p(row["players"])) for row in reader.game_popularity(player_id, played_appids)
-        ],
-    }
+    rows_by_path: dict[str, list[Any]] = {"peer": [], "tag": [], "studio": []}
+    if seeds:
+        rows_by_path = {
+            "peer": reader.co_play_scores(player_id, peer_seed_games, played_appids, EVIDENCE_PER_PATH),
+            "tag": reader.tag_concept_scores(seed_games, played_appids, TAG_PREFERENCE_LIMIT, EVIDENCE_PER_PATH),
+            "studio": reader.studio_scores(
+                seed_games,
+                played_appids,
+                STUDIO_ROLE_WEIGHTS["developer"],
+                STUDIO_ROLE_WEIGHTS["publisher"],
+                EVIDENCE_PER_PATH,
+            ),
+        }
+    rows_by_path["popular"] = [
+        dict(row, score=math.log1p(row["players"])) for row in reader.game_popularity(player_id, played_appids)
+    ]
     return PathScores(
         player_id=player_id,
         seeds=seeds,
