@@ -363,7 +363,8 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 ### 7.5 实现
 
-- 每个用户、每条路径执行 1 条 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各查询同时返回分数和产生该分数的实例。
+- 每个用户、每条路径执行 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各路径同时返回分数和产生该分数的实例。共玩以外各 1 条。
+- 共玩先执行 1 条读取种子名称和人数的小 Cypher，再每 64 个种子执行 1 条计数的 Cypher。每个种子的 co(s, g) 打包在整数的位字段里计数，因此每条计数的 Cypher 中，每个其他玩家只展开 1 次。结果与直接写成 1 条的 Cypher 相同。该 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
 - 种子的权重（ln(1 + 游玩时长) 或 1）、共玩的种子数（10 款或全部）以及 λ，在验证用户上决定（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`）。
 - 改进前的方法（v0）为了比较，保留在 `app/api/static_recommend_v0.py`（`python -m eval.evaluate --rankers ... graph_v0`）。

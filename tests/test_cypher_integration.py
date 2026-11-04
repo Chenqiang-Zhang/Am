@@ -11,12 +11,14 @@ database that is empty or was filled by this test before. Everything in it is de
         python -m pytest tests/test_cypher_integration.py
 """
 
+import math
 import os
 
 import pytest
 from neo4j import GraphDatabase
 
 import kg.neo4j_loader
+import utils.graph_reader as graph_reader
 from app.api.static_recommend import SeedScheme, collect_path_scores, recommend_games
 from app.api.static_recommend_v0 import recommend_games_v0
 from eval.explanation_check import CypherFacts, check_evidence, check_recommendations
@@ -33,9 +35,10 @@ pytestmark = pytest.mark.skipif(
     reason="needs a throwaway Neo4j (STATIC_REC_TEST_NEO4J_URI / STATIC_REC_TEST_NEO4J_PASSWORD)",
 )
 
-# (player_id, hidden appids) pairs to compare on.
+# (player_id, hidden appids) pairs to compare on. p8 has more games than the 10 co-play seeds.
 CASES = [
-    ("u1", []), ("u1", ["30"]), ("u1", ["10"]), ("p2", ["60"]), ("p6", []), ("solo", []), ("p7", []), ("p7", ["40"])
+    ("u1", []), ("u1", ["30"]), ("u1", ["10"]), ("p2", ["60"]), ("p6", []), ("solo", []), ("p7", []), ("p7", ["40"]),
+    ("p8", []), ("p8", ["150"]),
 ]
 
 
@@ -136,10 +139,15 @@ def test_popular_and_chat_queries_run(reader):
     assert {row["player_id"] for row in reader.sample_players(50)} <= set(PLAYER_IDS)
 
 
-SCHEMES = [SeedScheme(), SeedScheme(weighting="uniform", peer_limit=None), SeedScheme(peer_limit=1)]
+SCHEMES = [
+    SeedScheme(),
+    SeedScheme(peer_limit=None),
+    SeedScheme(weighting="uniform", peer_limit=None),
+    SeedScheme(peer_limit=1),
+]
 
 
-@pytest.mark.parametrize("scheme", SCHEMES, ids=["default", "uniform-all", "one-peer-seed"])
+@pytest.mark.parametrize("scheme", SCHEMES, ids=["default", "all", "uniform-all", "one-peer-seed"])
 @pytest.mark.parametrize("player_id,hidden", CASES)
 def test_path_queries_match_the_formulas(reader, player_id, hidden, scheme):
     hidden_appids = frozenset(hidden)
@@ -147,6 +155,29 @@ def test_path_queries_match_the_formulas(reader, player_id, hidden, scheme):
         collect_path_scores(reader, player_id, hidden_appids, scheme),
         collect_path_scores(FakeGraphReader(), player_id, hidden_appids, scheme),
     )
+
+
+def test_played_edges_run_from_a_player_to_a_game_without_parallels(reader):
+    """co_play_scores relies on both: it matches PLAYED without labels, and its count fields cannot
+    carry only if no player has two edges to one game."""
+    assert reader.query("MATCH (a)-[r:PLAYED]->(b) WHERE NOT (a:Player AND b:Game) RETURN count(r) AS n") == [{"n": 0}]
+    assert reader.query(
+        "MATCH (p:Player)-[r:PLAYED]->(g:Game) WITH p, g, count(r) AS edges WHERE edges > 1 RETURN count(*) AS n"
+    ) == [{"n": 0}]
+
+
+@pytest.mark.parametrize("seed_batch,word_bits", [(1, 63), (2, 3)])
+@pytest.mark.parametrize("player_id,hidden", CASES)
+def test_co_play_counts_do_not_depend_on_batch_or_word_size(
+    reader, monkeypatch, player_id, hidden, seed_batch, word_bits
+):
+    played = reader.played_games(player_id, hidden)
+    seeds = [{"appid": game["appid"], "weight": math.log1p(game["hours"])} for game in played]
+    args = (player_id, seeds, [game["appid"] for game in played], 3)
+    expected = reader.co_play_scores(*args)
+    monkeypatch.setattr(graph_reader, "SEED_BATCH", seed_batch)
+    monkeypatch.setattr(graph_reader, "WORD_BITS", word_bits)
+    assert reader.co_play_scores(*args) == expected
 
 
 @pytest.mark.parametrize("recommend", [recommend_games, recommend_games_v0], ids=["current", "v0"])

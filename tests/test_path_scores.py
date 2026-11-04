@@ -61,9 +61,9 @@ def test_hiding_all_of_a_players_games_leaks_nothing():
     hidden = frozenset({"40"})
     with_edge = FakeGraphReader()
     without_edge = FakeGraphReader(plays=[play for play in PLAYS if play[:2] != ("p7", "40")])
-    items = recommend_games(with_edge, "p7", 13, "en", hidden)
+    items = recommend_games(with_edge, "p7", len(GAMES), "en", hidden)
     assert [item.model_dump() for item in items] == [
-        item.model_dump() for item in recommend_games(without_edge, "p7", 13, "en", hidden)
+        item.model_dump() for item in recommend_games(without_edge, "p7", len(GAMES), "en", hidden)
     ]
     assert {evidence.path for item in items for evidence in item.evidence} == {"popular"}
     delta = next(item for item in items if item.appid == "40")

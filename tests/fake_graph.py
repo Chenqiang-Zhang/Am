@@ -150,6 +150,16 @@ GAMES: list[dict[str, Any]] = [
         "tags": [("genre", "Indie", None), ("usertag", "Puzzle", 1), ("usertag", "Indie", 2)],
         "studios": [("Indie Co", "developer"), ("Big Pub", "publisher")],
     },
+    # Only p8 and p9 played these, so p8 has more games than the co-play path takes as seeds.
+    {"appid": "140", "name": "November", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "150", "name": "Oscar", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "160", "name": "Papa", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "170", "name": "Quebec", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "180", "name": "Romeo", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "190", "name": "Sierra", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "200", "name": "Tango", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "210", "name": "Uniform", "price": 4.99, "tags": [], "studios": []},
+    {"appid": "220", "name": "Victor", "price": 4.99, "tags": [], "studios": []},
 ]
 
 # (player_id, appid, hours, hours_2w)
@@ -181,6 +191,22 @@ PLAYS: list[tuple[str, str, float, float]] = [
     ("p6", "110", 1.0, 0.0),
     ("p7", "40", 4.0, 0.0),
     ("solo", "50", 9.0, 0.0),
+    # p8: twelve games. With 10 co-play seeds its least played games drop out, and India and Mike
+    # tie on hours at the cut when Oscar is hidden.
+    ("p8", "140", 90.0, 0.0),
+    ("p8", "150", 80.0, 0.0),
+    ("p8", "160", 70.0, 0.0),
+    ("p8", "170", 60.0, 0.0),
+    ("p8", "180", 50.0, 0.0),
+    ("p8", "190", 40.0, 0.0),
+    ("p8", "200", 30.0, 0.0),
+    ("p8", "210", 20.0, 0.0),
+    ("p8", "220", 15.0, 0.0),
+    ("p8", "80", 6.0, 0.0),
+    ("p8", "90", 2.0, 0.0),
+    ("p8", "130", 2.0, 0.0),
+    ("p9", "140", 3.0, 0.0),
+    ("p9", "150", 1.0, 0.0),
 ]
 
 # (review_id, player_id, appid, text, recommended, votes_up, created_at, aspects)
@@ -448,6 +474,8 @@ class FakeGraphReader:
 
     def co_play_scores(self, player_id, seeds, played_appids, evidence_limit):
         self.calls.append("co_play_scores")
+        if not self.games_by_player.get(player_id):  # the Cypher starts from the player's node
+            return self.answer([])
         rows = []
         for appid in self.games:
             if appid in played_appids:
@@ -455,7 +483,7 @@ class FakeGraphReader:
             instances = []
             for seed in seeds:
                 co_players = len(self.others(player_id, seed["appid"]) & self.others(player_id, appid))
-                if not co_players:
+                if not co_players or seed["appid"] == appid:  # the Cypher never pairs a seed with itself
                     continue
                 seed_players = len(self.others(player_id, seed["appid"]))
                 game_players = len(self.others(player_id, appid))
@@ -471,10 +499,13 @@ class FakeGraphReader:
                 )
             if instances:
                 instances.sort(key=lambda item: (-item["term"], item["appid"]))
+                score = 0.0
+                for item in instances:  # one by one in this order, as the Cypher adds them
+                    score += item["term"]
                 rows.append(
                     {
                         "appid": appid,
-                        "score": sum(item["term"] for item in instances),
+                        "score": score,
                         "game_players": len(self.others(player_id, appid)),
                         "seed_count": len(instances),
                         "seeds": instances[:evidence_limit],

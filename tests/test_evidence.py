@@ -7,13 +7,13 @@ from app.api.main import app, get_graph_reader
 from app.api.models import Evidence, Recommendation
 from app.api.static_recommend import PATHS, describe_evidence, recommend_games
 from app.api.static_recommend_v0 import recommend_games_v0
-from tests.fake_graph import FakeGraphReader
+from tests.fake_graph import GAMES, FakeGraphReader
 
-U1 = recommend_games(FakeGraphReader(), "u1", 13, "en", frozenset({"30"}))
+U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}))
 
 
 def test_every_recommendation_carries_evidence_that_explains_its_score():
-    assert len(U1) == 10  # every game u1 has not played
+    assert len(U1) == len(GAMES) - 3  # every game u1 has not played
     for item in U1:
         assert item.evidence, item.appid
         assert item.contributions is not None
@@ -44,7 +44,7 @@ def test_headline_is_the_strongest_path_other_than_popularity():
 
 def test_backfilled_games_say_how_many_others_played_them():
     # Juliet(100) and Lima(120) have no players and no path reaches them.
-    items = recommend_games(FakeGraphReader(), "u1", 13, "en", frozenset({"30"}), weights={"peer": 1.0})
+    items = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}), weights={"peer": 1.0})
     juliet = next(item for item in items if item.appid == "100")
     assert juliet.score == 0.0 and juliet.contributions == {}
     assert [(evidence.path, evidence.count) for evidence in juliet.evidence] == [("popular", 0)]

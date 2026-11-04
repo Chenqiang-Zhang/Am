@@ -1,4 +1,6 @@
-from typing import Any, TypedDict
+import math
+from collections import defaultdict
+from typing import Any, Iterable, Iterator, TypedDict
 
 from neo4j import READ_ACCESS, GraphDatabase
 
@@ -6,6 +8,10 @@ from utils import settings
 
 TAG_MAX_RANK = 10
 MIN_SHARED_GAMES_WITH_PEER = 2
+# co_play_scores counts this many seeds per statement, in fields packed into integers of WORD_BITS
+# bits (Cypher integers are signed 64-bit).
+SEED_BATCH = 64
+WORD_BITS = 63
 
 
 class TagLabel(TypedDict):
@@ -179,6 +185,71 @@ def with_recommend_rate(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+CO_PLAY_CONTEXT = (
+    "MATCH (me:Player {player_id: $player_id}) "
+    "WITH me, [(me)-[:PLAYED]->(own:Game) WHERE NOT own.appid IN $played_appids | own.appid] AS own_unseen "
+    "UNWIND $appids AS appid MATCH (seed:Game {appid: appid}) "
+    "RETURN appid, seed.name AS name, COUNT { (seed)<-[:PLAYED]-() } AS degree, "
+    "EXISTS { (me)-[:PLAYED]->(seed) } AS mine, own_unseen"
+)
+
+
+def co_play_count_statement(words: int) -> str:
+    """Each seed row carries `units`: 1 << shift in the word of its field. Summed per other player and
+    then per game, the field of seed s holds co(s, g)."""
+    played = ", ".join(f"sum(seed_row.units[{k}]) AS played{k}" for k in range(words))
+    counts = ", ".join(f"sum(played{k}) AS counts{k}" for k in range(words))
+    columns = ", ".join(f"collect(counts{k}) AS word{k}" for k in range(words))
+    return (
+        "MATCH (me:Player {player_id: $player_id}) "
+        "UNWIND $seeds AS seed_row "
+        "MATCH (seed:Game {appid: seed_row.appid})<-[:PLAYED]-(peer) "
+        "WHERE peer <> me "
+        f"WITH peer, {played} "
+        "MATCH (peer)-[:PLAYED]->(g) "
+        f"WITH g, {counts} "
+        "WHERE NOT g.appid IN $played_appids "
+        f"RETURN collect(g.appid) AS appids, collect(COUNT {{ (g)<-[:PLAYED]-() }}) AS degrees, {columns}"
+    )
+
+
+def pack_fields(widths: list[int]) -> tuple[list[tuple[int, int]], int]:
+    """Place fields of the given bit widths in words of WORD_BITS bits, widest first, each in the first
+    word with room. Returns (word, shift) per field and the number of words."""
+    free: list[int] = []
+    places: dict[int, tuple[int, int]] = {}
+    for index in sorted(range(len(widths)), key=lambda index: (-widths[index], index)):
+        word = next((word for word, bits in enumerate(free) if bits >= widths[index]), len(free))
+        if word == len(free):
+            free.append(WORD_BITS)
+        places[index] = (word, WORD_BITS - free[word])
+        free[word] -= widths[index]
+    return [places[index] for index in range(len(widths))], len(free)
+
+
+def co_play_candidate(
+    appid: str, game_players: int, counts: Iterable[tuple[dict[str, Any], int]], evidence_limit: int
+) -> CoPlayCandidate | None:
+    """One candidate from (seed, co(s, g)) pairs; a seed holds appid, name, weight and seed_players.
+    The terms are added one by one in the order (-term, seed appid), as Cypher's sum() adds them after
+    that ORDER BY (Python's sum() compensates rounding since 3.12)."""
+    terms = [
+        (seed["weight"] * co_players / math.sqrt(float(seed["seed_players"]) * game_players), seed, co_players)
+        for seed, co_players in counts
+        if co_players and seed["appid"] != appid
+    ]
+    if not terms:
+        return None
+    terms.sort(key=lambda item: (-item[0], item[1]["appid"]))
+    score = 0.0
+    for term, _, _ in terms:
+        score += term
+    evidence = [
+        CoPlaySeed(**seed, co_players=co_players, term=term) for term, seed, co_players in terms[:evidence_limit]
+    ]
+    return CoPlayCandidate(appid=appid, score=score, game_players=game_players, seed_count=len(terms), seeds=evidence)
+
+
 class GraphReader:
     def __init__(self, graph_name: str = settings.GRAPH) -> None:
         connection = settings.neo4j_connection(graph_name)
@@ -308,7 +379,7 @@ class GraphReader:
         )
         return [with_recommend_rate(row) for row in rows]
 
-    # Static recommendation paths (M3). Each query scores every game the player has not visibly played
+    # Static recommendation paths (M3). Each method scores every game the player has not visibly played
     # and returns the path instances behind the score, strongest first. PLAYED edges only start at
     # Player nodes, so COUNT { (g)<-[:PLAYED]-() } reads the degree store; the player's own edge is
     # subtracted so that a hidden game looks exactly as if its edge had been deleted.
@@ -316,32 +387,64 @@ class GraphReader:
     def co_play_scores(
         self, player_id: str, seeds: list[SeedGame], played_appids: list[str], evidence_limit: int
     ) -> list[CoPlayCandidate]:
-        """score(g) = Σ_s w_s · co(s, g) / sqrt(deg(s) · deg(g)), all counts without the player."""
-        return self.query(
-            "MATCH (me:Player {player_id: $player_id}) "
-            "UNWIND $seeds AS seed_row "
-            "MATCH (seed:Game {appid: seed_row.appid})<-[:PLAYED]-(peer:Player)-[:PLAYED]->(g:Game) "
-            "WHERE peer <> me "
-            "WITH me, seed, seed_row.weight AS seed_weight, g, count(peer) AS co_players "
-            "WHERE NOT g.appid IN $played_appids "
-            "WITH g, seed, seed_weight, co_players, "
-            "COUNT { (seed)<-[:PLAYED]-() } - CASE WHEN EXISTS { (me)-[:PLAYED]->(seed) } THEN 1 ELSE 0 END "
-            "AS seed_players, "
-            "COUNT { (g)<-[:PLAYED]-() } - CASE WHEN EXISTS { (me)-[:PLAYED]->(g) } THEN 1 ELSE 0 END "
-            "AS game_players "
-            "WITH g, game_players, seed, seed_weight, co_players, seed_players, "
-            "seed_weight * co_players / sqrt(toFloat(seed_players) * game_players) AS term "
-            "ORDER BY term DESC, seed.appid ASC "
-            "WITH g, game_players, sum(term) AS score, count(seed) AS seed_count, "
-            "collect({appid: seed.appid, name: seed.name, weight: seed_weight, co_players: co_players, "
-            "seed_players: seed_players, term: term})[..$evidence_limit] AS seeds "
-            "RETURN g.appid AS appid, score, game_players, seed_count, seeds "
-            "ORDER BY score DESC, appid ASC",
-            player_id=player_id,
-            seeds=seeds,
-            played_appids=played_appids,
-            evidence_limit=evidence_limit,
+        """score(g) = Σ_s w_s · co(s, g) / sqrt(deg(s) · deg(g)), all counts without the player.
+
+        One statement reads the seeds' names and degrees and the player's own games; then one statement
+        per SEED_BATCH seeds expands every other player once, carrying co(s, g) of each seed in a field
+        of bit_length(deg(s)) bits of packed integers. co(s, g) <= deg(s) < 2^width because PLAYED has
+        no parallel edges, so no field carries into the next. The counts of all batches are merged
+        before the terms are added up in the order (-term, seed appid), the order in which sum() saw
+        them in the single statement this replaces (kept in eval/check_reader_equivalence.py), so the
+        result is bit-identical to it for any batch size. As there, a seed is never paired with itself."""
+        if not seeds:
+            return []
+        context = self.query(
+            CO_PLAY_CONTEXT, player_id=player_id, played_appids=played_appids, appids=[seed["appid"] for seed in seeds]
         )
+        if not context:
+            return []
+        known = {row["appid"]: row for row in context}
+        seeds = [seed for seed in seeds if seed["appid"] in known]
+        facts = [
+            {
+                "appid": seed["appid"],
+                "name": known[seed["appid"]]["name"],
+                "weight": seed["weight"],
+                "seed_players": known[seed["appid"]]["degree"] - (1 if known[seed["appid"]]["mine"] else 0),
+            }
+            for seed in seeds
+        ]
+        counts: dict[str, list[int]] = defaultdict(lambda: [0] * len(seeds))  # candidate -> co(s, g) of each seed
+        degrees: dict[str, int] = {}
+        for start in range(0, len(seeds), SEED_BATCH):
+            batch = seeds[start : start + SEED_BATCH]
+            widths = [max(1, known[seed["appid"]]["degree"].bit_length()) for seed in batch]
+            for appid, degree, batch_counts in self.count_co_players(player_id, batch, widths, played_appids):
+                degrees[appid] = degree
+                counts[appid][start : start + len(batch)] = batch_counts
+        own_unseen = set(context[0]["own_unseen"])
+        rows = [
+            co_play_candidate(appid, degrees[appid] - (1 if appid in own_unseen else 0), zip(facts, co), evidence_limit)
+            for appid, co in counts.items()
+        ]
+        return sorted((row for row in rows if row), key=lambda row: (-row["score"], row["appid"]))
+
+    def count_co_players(
+        self, player_id: str, seeds: list[SeedGame], widths: list[int], played_appids: list[str]
+    ) -> Iterator[tuple[str, int, list[int]]]:
+        """(candidate, its degree, co(s, g) for each seed) for one batch of seeds and field widths."""
+        places, words = pack_fields(widths)
+        seed_rows = [
+            {"appid": seed["appid"], "units": [1 << shift if k == word else 0 for k in range(words)]}
+            for seed, (word, shift) in zip(seeds, places)
+        ]
+        columns = self.query(
+            co_play_count_statement(words), player_id=player_id, seeds=seed_rows, played_appids=played_appids
+        )[0]
+        fields = [(word, shift, (1 << width) - 1) for (word, shift), width in zip(places, widths)]
+        packed = zip(*(columns[f"word{k}"] for k in range(words)))
+        for appid, degree, values in zip(columns["appids"], columns["degrees"], packed):
+            yield appid, degree, [(values[word] >> shift) & mask for word, shift, mask in fields]
 
     def tag_concept_scores(
         self, seeds: list[SeedGame], played_appids: list[str], concept_limit: int, evidence_limit: int

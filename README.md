@@ -364,7 +364,8 @@ docker compose up -d api web           # バックエンドと UI  http://localh
 
 ### 7.5 実装
 
-- 1 ユーザにつき、経路ごとに Cypher を 1 本実行する（`utils/graph_reader.py` の `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各クエリは、スコアと、そのスコアを生んだ実例を一緒に返す。
+- 1 ユーザにつき、経路ごとに Cypher を実行する（`utils/graph_reader.py` の `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各経路は、スコアと、そのスコアを生んだ実例を一緒に返す。共プレイ以外は 1 本ずつ。
+- 共プレイは、シードの名前と人数を読む小さな Cypher 1 本と、シード 64 本ごとに数える Cypher 1 本を実行する。シードごとの co(s, g) を整数のビット欄に詰めて数えるので、数える Cypher 1 本につき、他のプレイヤーを 1 回だけたどる。結果は、素直に書いた 1 本の Cypher と同じになる。その Cypher は `eval/check_reader_equivalence.py` に基準として残し、実際のグラフで照合する。
 - `collect_path_scores()` の結果は JSON で保存でき、`combine()` で λ を変えて並べ直せる。API と評価は、同じ `combine()` を使う。
 - シードの重み（ln(1 + プレイ時間) か 1）、共プレイのシードの数（10 本か全部）、λ は、検証用のユーザで決める（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`）。
 - 改良前の方法（v0）は、比較のため `app/api/static_recommend_v0.py` に残す（`python -m eval.evaluate --rankers ... graph_v0`）。
