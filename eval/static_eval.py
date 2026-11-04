@@ -310,14 +310,17 @@ def load_play_records(reader: Any, split: Mapping[str, Any]) -> list[PlayRecord]
     return records
 
 
-def git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+def git(*args: str, strip: bool = True) -> str:
+    output = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    return output.strip() if strip else output
 
 
 def git_state() -> dict[str, Any]:
     """HEAD, and whether the code differs from it: a changed tracked file or an untracked .py file."""
     try:
-        commit, lines = git("rev-parse", "HEAD"), git("status", "--porcelain", "--untracked-files=all").splitlines()
+        commit = git("rev-parse", "HEAD")
+        # Unstripped: a porcelain line starts with its status, which may be a space (" M path").
+        lines = git("status", "--porcelain", "--untracked-files=all", strip=False).splitlines()
     except (OSError, subprocess.CalledProcessError):
         return {"commit": None, "dirty": None, "changes": []}
     changes = [line[3:] for line in lines if not line.startswith("??") or line.endswith(".py")]

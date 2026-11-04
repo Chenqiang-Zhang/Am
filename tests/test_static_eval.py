@@ -7,6 +7,7 @@ import math
 import os
 import random
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -693,6 +694,17 @@ def test_the_report_is_the_same_bytes_every_time(setup, run, tmp_path, capsys, m
     assert outputs[0] == outputs[1] and "C1" in outputs[0].decode()
     with pytest.raises(SystemExit):
         static_eval.main(["report", "--lang", "ja", "--plan", str(setup.plan_path), "--tuning", str(tmp_path / "no")])
+
+
+def test_git_state_keeps_the_first_changed_path_whole(monkeypatch):
+    outputs = {"rev-parse": "abc123\n", "status": " M eval/x.py\n?? notes.txt\n?? new.py\nA  app/y.py\n"}
+
+    def run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout=outputs[command[1]], stderr="")
+
+    monkeypatch.setattr(static_eval.subprocess, "run", run)
+    state = static_eval.git_state()
+    assert state == {"commit": "abc123", "dirty": True, "changes": ["eval/x.py", "new.py", "app/y.py"]}
 
 
 # ---- the committed plan ----------------------------------------------------------------------------
