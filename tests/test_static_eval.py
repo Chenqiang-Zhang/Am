@@ -8,6 +8,7 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,8 @@ from neo4j.exceptions import TransientError
 
 from app.api import static_recommend
 from app.api.static_recommend import STUDIO_NORMALIZATIONS, SeedScheme, collect_path_scores, combine
-from eval import static_cache, static_eval, static_plan, static_report
+from eval import explanation_check, static_cache, static_eval, static_plan, static_report
+from eval.static_analysis import c5_claim
 from eval.static_cache import (
     HiddenRank,
     StageCache,
@@ -29,6 +31,7 @@ from eval.static_eval import Setup
 from eval.static_plan import config_id, make_config, preference, select
 from eval.static_split import build_split, dumps
 from tests.fake_graph import GAMES, PLAYS, FakeGraphReader
+from tests.test_explanation_check import FakeFacts
 
 APPIDS = [game["appid"] for game in GAMES]
 VALVE = {"10", "50"}  # Alpha and Echo: Valve developed and published both
@@ -716,6 +719,61 @@ def test_the_claims_table_shows_the_post_stratified_v0_share_and_why_c5_is_unusa
     assert "（v0 0.7400 [0.6650, 0.8100]; 事後層別 0.6900）" in static_report.render("ja", tuning, test, without_ci)
     unusable = static_report.render("ja", tuning, test, {"status": "error", "error": "made from uncommitted code"})
     assert "| C5 |" in unusable and "made from uncommitted code | 使えない |" in unusable
+
+
+CLEAN = {"commit": "0" * 40, "dirty": False, "changes": []}
+
+
+def write_explanations(monkeypatch, setup, path):
+    """eval/explanation_check.py on the split's explanations subset of the fake graph, from clean code."""
+    monkeypatch.setattr(explanation_check, "GraphReader", lambda graph_name: READER())
+    monkeypatch.setattr(explanation_check, "CypherFacts", FakeFacts)
+    monkeypatch.setattr(explanation_check, "graph_counts", fake_graph_counts)
+    monkeypatch.setattr(explanation_check, "graph_links", fake_graph_links)
+    monkeypatch.setattr(explanation_check, "git_state", lambda: dict(CLEAN))
+    monkeypatch.setattr(sys, "argv", ["explanation_check", "--split", str(setup.split_path), "--output", str(path)])
+    explanation_check.main()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_c5_is_judged_only_on_an_explanation_check_of_the_test_runs_inputs(setup, run, tmp_path, monkeypatch, capsys):
+    """explanation_check --split, then test and report: a verdict for the file of the same split, k, code
+    defaults and links, made from clean code on the whole subset at rep 0; 使えない for any other."""
+    explanations = tmp_path / "explanations.json"
+    clean = write_explanations(monkeypatch, setup, explanations)  # code_defaults(): the tuned config of `run`
+    report = ["report", "--lang", "ja", "--plan", str(setup.plan_path), "--tuning", str(tmp_path / "tuning.json")]
+    report += ["--test", str(tmp_path / "c5" / "static_test_v1.json"), "--explanations", str(explanations)]
+
+    def judged():
+        test = static_eval.run_test(setup, "test", tmp_path / "tuning.json", tmp_path / "c5", explanations)
+        capsys.readouterr()
+        static_eval.main(report)
+        row = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("| C5 |"))
+        return test["claims"]["C5"], row
+
+    claim, row = judged()
+    assert (claim["status"], claim["current"]) == ("pass", 1.0) and row.endswith("| 成立 |")
+    assert claim["v0"] == clean["versions"]["v0"]["recommendation_validity"]
+    changes = {
+        "uncommitted code": {"git": dict(CLEAN, dirty=True)},
+        "no git": {"git": dict(CLEAN, commit=None, dirty=None)},
+        "k 5": {"k": 5},
+        "rep 1": {"users_from": dict(clean["users_from"], rep=1)},
+        "the v0 subset": {"users_from": dict(clean["users_from"], subset="v0")},
+    }
+    for name, change in changes.items():
+        explanations.write_text(json.dumps(clean | change), encoding="utf-8")
+        claim, row = judged()
+        assert claim["status"] == "error" and row.endswith("| 使えない |"), name
+    expected = {
+        "split_sha256": setup.split_sha256,
+        "k": 10,
+        "code_defaults": static_eval.code_defaults(),
+        "links_sha256": setup.graph["links_sha256"],
+    }
+    nearly = dict(clean["versions"]["current"], recommendation_validity=0.999)
+    explanations.write_text(json.dumps(clean | {"versions": dict(clean["versions"], current=nearly)}), encoding="utf-8")
+    assert c5_claim(explanations, "explanations", expected)["status"] == "fail"  # only 1.0 passes
 
 
 def test_git_state_keeps_the_first_changed_path_whole(monkeypatch):
