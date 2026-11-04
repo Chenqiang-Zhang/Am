@@ -38,13 +38,13 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
 from app.api import static_recommend
 from app.api.static_recommend import PATHS, SeedScheme, recommend_games
-from utils.graph_reader import GraphReader
+from utils.graph_reader import TAG_MAX_RANK, GraphReader
 
 from . import static_report
 from .rankers import PlayRecord, build_item_knn_ranker, build_popularity_ranker, group_appids_by_player
@@ -112,6 +112,11 @@ GRAPH_COUNTS = (
     "MATCH (g:Game) WHERE EXISTS { (g)<-[:PLAYED]-() } WITH players, count(g) AS games "
     "MATCH ()-[r:PLAYED]->() RETURN players, games, count(r) AS played"
 )
+GRAPH_LINKS = (
+    "MATCH (g:Game) RETURN g.appid AS appid, "
+    "[(g)-[r:HAS_TAG]->(t:Tag) | [type(r), t.tag_id, r.rank]] + "
+    "[(g)-[r:DEVELOPED_BY|PUBLISHED_BY]->(s:Studio) | [type(r), s.studio_id]] AS links"
+)
 STUDIO_GAMES = (
     "MATCH (g:Game)-[:DEVELOPED_BY|PUBLISHED_BY]->(:Studio {studio_id: $studio_id}) RETURN DISTINCT g.appid AS appid"
 )
@@ -138,14 +143,26 @@ class Setup:
         split = load_split(split_path)
         return cls(plan, Path(plan_path), split, split_path, split_sha256, Path(cache_root), workers, reader_factory)
 
+    @functools.cached_property
+    def graph(self) -> dict[str, Any]:
+        """The graph's counts, named as in the split's graph block, and the digest of its tag and studio links."""
+        reader = self.reader_factory()
+        try:
+            return {**graph_counts(reader), "links_sha256": graph_links(reader)}
+        finally:
+            reader.close()
+
 
 # ---- the cache and the frozen config ----------------------------------------------------------------
 
 
-def cache_manifest(stage: str, split_sha256: str, targets: Mapping[str, SeedScheme | None]) -> dict[str, Any]:
+def cache_manifest(
+    stage: str, split_sha256: str, links_sha256: str, targets: Mapping[str, SeedScheme | None]
+) -> dict[str, Any]:
     return {
         "stage": stage,
         "split_sha256": split_sha256,
+        "graph": {"links_sha256": links_sha256},
         "targets": {
             name: {"recommender": "recommend_games_v0", "top": V0_TOP}
             if scheme is None
@@ -155,6 +172,7 @@ def cache_manifest(stage: str, split_sha256: str, targets: Mapping[str, SeedSche
         "scoring": {
             "TAG_PREFERENCE_LIMIT": static_recommend.TAG_PREFERENCE_LIMIT,
             "STUDIO_ROLE_WEIGHTS": static_recommend.STUDIO_ROLE_WEIGHTS,
+            "TAG_MAX_RANK": TAG_MAX_RANK,
         },
     }
 
@@ -165,7 +183,8 @@ def file_sha256(path: Path) -> str:
 
 def open_cache(setup: Setup, stage: str, names: Sequence[str], write: bool = False) -> StageCache:
     cache = StageCache(setup.cache_root, stage)
-    cache.check_manifest(cache_manifest(stage, setup.split_sha256, collect_targets(setup.plan, names)), write)
+    targets = collect_targets(setup.plan, names)
+    cache.check_manifest(cache_manifest(stage, setup.split_sha256, setup.graph["links_sha256"], targets), write)
     return cache
 
 
@@ -190,6 +209,8 @@ def check_frozen(setup: Setup, tuning_path: Path, stage: str) -> dict[str, Any]:
         raise SystemExit(f"{tuning_path} was made from another plan than {setup.plan_path}")
     if tuning["split"]["sha256"] != setup.split_sha256:
         raise SystemExit(f"{tuning_path} was made from another split than {setup.split_path}")
+    if tuning.get("graph", {}).get("links_sha256") != setup.graph["links_sha256"]:
+        raise SystemExit(f"{tuning_path} was made on another graph: the tag or studio links differ")
     if stage == "test" and not whole_grid(setup.plan, tuning):
         raise SystemExit(f"{tuning_path} is not a tuning run over the whole grid on the validation users")
     if not follows_the_rule(setup.plan, tuning):
@@ -248,6 +269,32 @@ def graph_counts(reader: Any) -> dict[str, int]:
     """Players with a game, games with a player and PLAYED edges, as in the split's graph block."""
     row = reader.query(GRAPH_COUNTS)[0]
     return {"players": row["players"], "games": row["games"], "played": row["played"]}
+
+
+def graph_links(reader: Any) -> str:
+    """sha256 of every HAS_TAG (game, tag, rank) and DEVELOPED_BY / PUBLISHED_BY (game, studio) link, which the
+    tag and studio paths read; the split covers the PLAYED edges."""
+    return links_digest(reader.query(GRAPH_LINKS))
+
+
+def links_digest(rows: Iterable[Mapping[str, Any]]) -> str:
+    lines = sorted(json.dumps([row["appid"], *link]) for row in rows for link in row["links"])
+    return hashlib.sha256("".join(f"{line}\n" for line in lines).encode("utf-8")).hexdigest()
+
+
+def graph_block(setup: Setup, all_games: int) -> dict[str, Any]:
+    """The graph of a result: the split's PLAYED edges, which load_play_records checked against the graph,
+    the number of all games and the digest of the tag and studio links."""
+    graph = setup.split["graph"]
+    return {
+        "name": graph["name"],
+        "players": graph["players"],
+        "played_games": graph["games"],
+        "all_games": all_games,
+        "played": graph["played"],
+        "played_sha256": graph["played_sha256"],
+        "links_sha256": setup.graph["links_sha256"],
+    }
 
 
 def studio_games(reader: Any, studio_id: str) -> set[str]:
@@ -328,17 +375,13 @@ def write_json(path: Path, data: Mapping[str, Any]) -> None:
 
 def run_collect(setup: Setup, stage: str, names: Sequence[str]) -> dict[str, Any]:
     targets = collect_targets(setup.plan, names)
-    cache = open_cache(setup, stage, names, write=True)
-    cases = stage_cases(setup.split, stage_players(setup.split, stage))
-    v0_cases = stage_cases(setup.split, v0_players(setup.split, stage), reps=(0,)) if V0 in targets else []
-    reader = setup.reader_factory()
-    try:
-        counts = graph_counts(reader)
-    finally:
-        reader.close()
+    counts = {field: setup.graph[field] for field in ("players", "games", "played")}
     expected = {field: setup.split["graph"][field] for field in counts}
     if counts != expected:
         raise SystemExit(f"the graph {counts} is not the graph of the split {expected}")
+    cache = open_cache(setup, stage, names, write=True)
+    cases = stage_cases(setup.split, stage_players(setup.split, stage))
+    v0_cases = stage_cases(setup.split, v0_players(setup.split, stage), reps=(0,)) if V0 in targets else []
     summary = collect(
         cache,
         targets,
@@ -469,7 +512,7 @@ def run_tune(setup: Setup, stage: str, output: Path, schemes: Sequence[str] | No
         specs = [spec(name, config) for name, config in configs.items() if config["scheme"] == scheme]
         ranks.update(rank_hidden(cache, scheme, cases, specs, setup.workers))
     timer.mark("rank_configs")
-    baselines, _, _ = baselines_and_graph(setup, cases)
+    baselines, _, extra = baselines_and_graph(setup, cases)
     timer.mark("baselines")
 
     objective, selection = plan["objective"], plan["selection"]["bootstrap"]
@@ -518,6 +561,7 @@ def run_tune(setup: Setup, stage: str, output: Path, schemes: Sequence[str] | No
         "split": {"path": relative(setup.split_path), "sha256": setup.split_sha256},
         "git": git_state(),
         "environment": environment(),
+        "graph": graph_block(setup, len(extra["tag_ids_by_game"])),
         "users": {name: len(players[name]) for name in STRATA},
         "evaluations": len(cases),
         "objective": dict(objective),
@@ -595,7 +639,7 @@ def run_test(setup: Setup, stage: str, tuning_path: Path, output_dir: Path, expl
         "code_defaults": code_defaults(),
         "git": git_state(),
         "environment": environment(),
-        "graph": dict(split["graph"], all_games=len(extra["tag_ids_by_game"])),
+        "graph": graph_block(setup, len(extra["tag_ids_by_game"])),
         "rows": {
             row["name"]: {"definition": row["definition"], **with_id(graph_rows.get(row["name"]))}
             for row in plan["test_rows"]

@@ -124,16 +124,16 @@ class StageCache:
         self.directory = Path(root) / stage
 
     def check_manifest(self, manifest: Mapping[str, Any], write: bool) -> None:
-        """Refuse a cache made from another split, other targets of the same name or other scoring
-        constants; with write, add the new targets."""
+        """Refuse a cache made from another split or graph, other targets of the same name or other scoring
+        constants (every field but the targets must be equal); with write, add the new targets."""
         path = self.directory / "manifest.json"
         stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
         if stored is None and not write:
             raise SystemExit(f"no cache in {self.directory}; run collect first")
         merged = dict(manifest, targets=dict(stored["targets"] if stored else {}))
         if stored:
-            for field in ("stage", "split_sha256", "scoring"):
-                if stored[field] != manifest[field]:
+            for field in manifest:
+                if field != "targets" and stored.get(field) != manifest[field]:
                     raise SystemExit(f"{path} has another {field}; use another --cache-dir")
         for name, definition in manifest["targets"].items():
             if merged["targets"].setdefault(name, definition) != definition:

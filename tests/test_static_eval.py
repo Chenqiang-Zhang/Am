@@ -167,10 +167,26 @@ def fake_graph_counts(reader):
     }
 
 
+ROLE_LINKS = {"developer": "DEVELOPED_BY", "publisher": "PUBLISHED_BY"}
+
+
+def fake_graph_links(reader):
+    rows = [
+        {
+            "appid": appid,
+            "links": [["HAS_TAG", tag_id, rank] for tag_id, _, _, rank in reader.tag_edges(appid)]
+            + [[ROLE_LINKS[role], studio_id] for studio_id, _, role in reader.studio_edges(appid)],
+        }
+        for appid in reader.games
+    ]
+    return static_eval.links_digest(rows)
+
+
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
-    """A split, a plan and an empty cache on the fake graph; the two Cypher-only helpers answered here."""
+    """A split, a plan and an empty cache on the fake graph; the Cypher-only helpers answered here."""
     monkeypatch.setattr(static_eval, "graph_counts", fake_graph_counts)
+    monkeypatch.setattr(static_eval, "graph_links", fake_graph_links)
     monkeypatch.setattr(static_eval, "studio_games", lambda reader, studio_id: set(VALVE))
     split_file = tmp_path / "split.json"
     split_file.write_text(dumps(build_split(READER().all_play_records(), "fake", **SMALL_SPLIT)), encoding="utf-8")
@@ -358,6 +374,20 @@ def test_a_worker_pool_writes_the_same_records_as_one_process(setup, tmp_path):
         assert cached(StageCache(tmp_path / "pooled", "smoke"), target) == expected
 
 
+def test_the_links_digest_changes_with_any_link_but_not_with_their_order():
+    rows = [
+        {"appid": "10", "links": [["HAS_TAG", "genre:action", 1], ["DEVELOPED_BY", "valve"]]},
+        {"appid": "20", "links": [["HAS_TAG", "tag:co_op", None]]},
+    ]
+    digest = static_eval.links_digest(rows)
+    assert static_eval.links_digest([rows[1], dict(rows[0], links=rows[0]["links"][::-1])]) == digest
+    studio = ["DEVELOPED_BY", "valve"]
+    ranked = [dict(rows[0], links=[["HAS_TAG", "genre:action", 2], studio]), rows[1]]
+    moved = [dict(rows[0], links=rows[0]["links"][:1]), dict(rows[1], links=[*rows[1]["links"], studio])]
+    renamed = [dict(rows[0], links=[["HAS_TAG", "genre:action", 1], ["DEVELOPED_BY", "valve_corporation"]]), rows[1]]
+    assert len({digest, *(static_eval.links_digest(other) for other in (ranked, moved, renamed))}) == 4
+
+
 def test_a_cache_of_another_split_or_scheme_is_refused(setup):
     static_eval.run_collect(setup, "smoke", ["log1p_10"])
     plan = json.loads(setup.plan_path.read_text())
@@ -537,6 +567,19 @@ def test_the_test_command_needs_the_tuning_result_and_the_defaults_committed(set
         static_eval.main([*arguments[:3], "--tuning", str(tmp_path / "none.json"), *arguments[5:]])
 
 
+def test_a_cache_or_tuning_result_of_other_tag_or_studio_links_is_refused(setup, tuned, tmp_path, monkeypatch):
+    as_defaults(monkeypatch, tuned["chosen"])
+    assert static_eval.check_frozen(setup, tmp_path / "tuning.json", "test") == tuned
+    monkeypatch.setattr(static_eval, "graph_links", lambda reader: "0" * 64)
+    rebuilt = Setup.load(setup.plan_path, setup.cache_root, 1, READER)
+    with pytest.raises(SystemExit, match="another graph"):
+        static_eval.run_collect(rebuilt, "validation", ["log1p_10"])
+    with pytest.raises(SystemExit, match="another graph"):
+        static_eval.run_tune(rebuilt, "validation", tmp_path / "again.json")
+    with pytest.raises(SystemExit, match="another graph"):
+        static_eval.check_frozen(rebuilt, tmp_path / "tuning.json", "test")
+
+
 # ---- the whole run ---------------------------------------------------------------------------------
 
 
@@ -565,6 +608,9 @@ def test_tune_writes_every_config_the_choice_and_c1(setup, run):
     pop_only = tuning["C1"]["checks"]["pop_only"]
     assert pop_only["agreement"] == 1.0 and pop_only["same_rank"] == pop_only["evaluations"]
     assert tuning["C1"]["status"] in ("pass", "fail") and tuning["plan"]["sha256"]
+    played = len({appid for _, appid, _, _ in PLAYS_ALL})
+    graph = {"players": setup.split["graph"]["players"], "played_games": played, "all_games": len(APPIDS)}
+    assert tuning["graph"].items() >= graph.items() and tuning["graph"]["links_sha256"] == setup.graph["links_sha256"]
     assert tuning["wall_seconds"]["total"] >= 0
 
 
@@ -578,7 +624,7 @@ def test_the_test_stage_writes_every_row_contrast_and_claim(setup, run, tmp_path
     assert set(test["claims"]) == {"C1", "C2", "C3", "C4", "C5"} and test["claims"]["C5"]["status"] == "pending"
     assert test["claims"]["C3"]["tests"]["primary"]["ci_975"]["level"] == 0.975
     assert test["pop_only_agreement"]["agreement"] == 1.0
-    assert test["code_defaults"]["weights"] == tuning["chosen"]["weights"]
+    assert test["code_defaults"]["weights"] == tuning["chosen"]["weights"] and test["graph"] == tuning["graph"]
     groups = {"hidden_under_1h", "hidden_1h_or_more", "hidden_valve", "hidden_not_valve"}
     assert set(test["descriptive"]["groups"]) == groups
     assert set(test["beyond_accuracy"]["rows"]) == set(static_plan.ROW_NAMES)
