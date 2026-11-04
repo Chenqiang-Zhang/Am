@@ -366,7 +366,7 @@ docker compose up -d api web           # バックエンドと UI  http://localh
 ### 7.5 実装
 
 - 1 ユーザにつき、経路ごとに Cypher を実行する（`utils/graph_reader.py` の `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各経路は、スコアと、そのスコアを生んだ実例を一緒に返す。開発元・販売元と人気は 1 本ずつ。
-- 共プレイは、シードの名前と人数を読む小さな Cypher 1 本と、シード 64 本ごとに数える Cypher 1 本を実行する。シードごとの co(s, g) を整数のビット欄に詰めて数えるので、数える Cypher 1 本につき、他のプレイヤーを 1 回だけたどる。
+- 共プレイは、シードの名前と人数を読む小さな Cypher 1 本と、シード 64 本ごとに数える Cypher 1 本を実行する。シードごとの co(s, g) を整数のビット欄に詰めて数えるので、数える Cypher 1 本につき、他のプレイヤーを 1 回だけたどる。ビット欄の幅は、先に読んだ人数で決まるので、実行中にグラフへ書き込んではならない。
 - タグは、weight の大きい上位 30 個のタグの表（weight と、そのタグを持つシード）を作る Cypher 1 本と、候補ごとに、表のどのタグを持つかと n(g) を返す Cypher 1 本を実行する。
 - 共プレイとタグの項は Python で足す。Cypher の `sum()` と同じく大きい項から順に足すので、結果は、素直に書いた 1 本の Cypher と同じになる。それらの Cypher は `eval/check_reader_equivalence.py` に基準として残し、実際のグラフで照合する。
 - `collect_path_scores()` の結果は JSON で保存でき、`combine()` で λ を変えて並べ直せる。API と評価は、同じ `combine()` を使う。

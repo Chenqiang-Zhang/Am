@@ -365,7 +365,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 ### 7.5 实现
 
 - 每个用户、每条路径执行 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各路径同时返回分数和产生该分数的实例。开发商・发行商和热门各 1 条。
-- 共玩先执行 1 条读取种子名称和人数的小 Cypher，再每 64 个种子执行 1 条计数的 Cypher。每个种子的 co(s, g) 打包在整数的位字段里计数，因此每条计数的 Cypher 中，每个其他玩家只展开 1 次。
+- 共玩先执行 1 条读取种子名称和人数的小 Cypher，再每 64 个种子执行 1 条计数的 Cypher。每个种子的 co(s, g) 打包在整数的位字段里计数，因此每条计数的 Cypher 中，每个其他玩家只展开 1 次。位字段的宽度由先读取的人数决定，因此执行期间不能写入图。
 - 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight 和带有该标签的种子），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。
 - 共玩和标签的各项在 Python 里相加。与 Cypher 的 `sum()` 一样从大的项开始依次相加，因此结果与直接写成 1 条的 Cypher 相同。这些 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。

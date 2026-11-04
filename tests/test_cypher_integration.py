@@ -190,6 +190,16 @@ def test_co_play_counts_do_not_depend_on_batch_or_word_size(
     assert reader.co_play_scores(*args) == expected
 
 
+def test_co_play_seeds_the_player_did_not_play_equal_the_statement_they_replaced(reader, reference):
+    graph = FakeGraphReader()
+    others = sorted(appid for appid, players in graph.players_by_game.items() if players and "u1" not in players)
+    seeds = [{"appid": appid, "weight": 1.0} for appid in others] + [{"appid": "10", "weight": 2.0}]
+    args = ("u1", seeds, ["10"], len(seeds))
+    rows = reader.co_play_scores(*args)
+    assert rows == reference.co_play_scores(*args)
+    assert_same(rows, graph.co_play_scores(*args))
+
+
 @pytest.mark.parametrize("scheme", SCHEMES, ids=SCHEME_IDS)
 @pytest.mark.parametrize("player_id,hidden", CASES + [("nobody", [])])
 def test_path_queries_equal_the_statements_they_replaced(reader, reference, player_id, hidden, scheme):

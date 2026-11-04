@@ -88,6 +88,18 @@ def test_a_seed_outside_played_appids_is_not_paired_with_itself():
     assert list(rows.values()) == FakeGraphReader().co_play_scores(*args)
 
 
+def test_seeds_the_player_did_not_play_keep_all_their_players():
+    # u1 played none of these seeds, so deg(s) is their whole degree; Alpha(10) is u1's and loses u1.
+    graph = FakeGraphReader()
+    others = sorted(appid for appid, players in graph.players_by_game.items() if players and "u1" not in players)
+    seeds = [{"appid": appid, "weight": 1.0} for appid in others] + [{"appid": "10", "weight": 2.0}]
+    args = ("u1", seeds, ["10"], len(seeds))
+    rows = CoPlayReader(FakeGraphReader()).co_play_scores(*args)
+    assert rows == FakeGraphReader().co_play_scores(*args)
+    seed_players = {seed["appid"]: seed["seed_players"] for row in rows for seed in row["seeds"]}
+    assert seed_players == {appid: len(graph.players_by_game[appid]) - (appid == "10") for appid in others + ["10"]}
+
+
 def test_unknown_players_unknown_seeds_and_no_seeds():
     _, seeds, played_appids, _ = arguments("u1", [])
     reader = CoPlayReader(FakeGraphReader())

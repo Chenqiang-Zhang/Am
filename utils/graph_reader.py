@@ -203,10 +203,10 @@ def with_recommend_rate(row: dict[str, Any]) -> dict[str, Any]:
 
 CO_PLAY_CONTEXT = (
     "MATCH (me:Player {player_id: $player_id}) "
-    "WITH me, [(me)-[:PLAYED]->(own:Game) WHERE NOT own.appid IN $played_appids | own.appid] AS own_unseen "
     "UNWIND $appids AS appid MATCH (seed:Game {appid: appid}) "
-    "RETURN appid, seed.name AS name, COUNT { (seed)<-[:PLAYED]-() } AS degree, "
-    "EXISTS { (me)-[:PLAYED]->(seed) } AS mine, own_unseen"
+    "WITH me, collect({appid: appid, name: seed.name, degree: COUNT { (seed)<-[:PLAYED]-() }, "
+    "mine: EXISTS { (me)-[:PLAYED]->(seed) }}) AS seeds "
+    "RETURN seeds, [(me)-[:PLAYED]->(own:Game) WHERE NOT own.appid IN $played_appids | own.appid] AS own_unseen"
 )
 
 
@@ -485,7 +485,10 @@ class GraphReader:
         no parallel edges, so no field carries into the next. The counts of all batches are merged
         before the terms are added up in the order (-term, seed appid), the order in which sum() saw
         them in the single statement this replaces (kept in eval/check_reader_equivalence.py), so the
-        result is bit-identical to it for any batch size. As there, a seed is never paired with itself."""
+        result is bit-identical to it for any batch size. As there, a seed is never paired with itself.
+
+        The graph must not be written during a call: the field widths come from the degrees the first
+        statement read, and a seed that gains players in between could overflow its field."""
         if not seeds:
             return []
         context = self.query(
@@ -493,7 +496,7 @@ class GraphReader:
         )
         if not context:
             return []
-        known = {row["appid"]: row for row in context}
+        known = {row["appid"]: row for row in context[0]["seeds"]}
         seeds = [seed for seed in seeds if seed["appid"] in known]
         facts = [
             {

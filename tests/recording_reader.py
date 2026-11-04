@@ -53,27 +53,27 @@ class CoPlayReader(StandInReader):
     def query(self, cypher, **params):
         self.statements.append(cypher)
         if cypher == CO_PLAY_CONTEXT:
-            return self.shuffled(self.context(**params))
+            return self.context(**params)
         words = len(params["seeds"][0]["units"])
         assert cypher == co_play_count_statement(words), cypher
         return [self.counts(words, **params)]
 
     def context(self, player_id, played_appids, appids):
+        """One row with the known seeds, or none for an unknown player or without known seeds."""
         own = self.graph.games_by_player.get(player_id)
-        if not own:
-            return []
-        own_unseen = self.shuffled(own - set(played_appids))
-        return [
+        seeds = [
             {
                 "appid": appid,
                 "name": self.graph.games[appid]["name"],
                 "degree": len(self.graph.players_by_game[appid]),
                 "mine": appid in own,
-                "own_unseen": own_unseen,
             }
             for appid in appids
-            if appid in self.graph.games
+            if own and appid in self.graph.games
         ]
+        if not seeds:
+            return []
+        return [{"seeds": self.shuffled(seeds), "own_unseen": self.shuffled(own - set(played_appids))}]
 
     def counts(self, words, player_id, seeds, played_appids):
         """Per other player the units of the seeds they played add up, then per game those of its players."""
