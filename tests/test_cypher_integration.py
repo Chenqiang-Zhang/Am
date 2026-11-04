@@ -13,10 +13,13 @@ database that is empty or was filled by this test before. Everything in it is de
 
 import math
 import os
+import sys
 
 import pytest
 from neo4j import GraphDatabase
+from neo4j.exceptions import TransientError
 
+import eval.check_reader_equivalence as check_reader_equivalence
 import kg.neo4j_loader
 import utils.graph_reader as graph_reader
 from app.api.static_recommend import SeedScheme, collect_path_scores, recommend_games
@@ -243,6 +246,24 @@ def test_games_by_appids_equals_the_statement_it_replaced(reader, reference):
 
     assert rows(reader) == rows(reference)
     assert [row["appid"] for row in rows(reader)] == appids[:-1]
+
+
+@pytest.mark.parametrize("failing,compared,code", [({"u1"}, 1, 0), ({"u1", "p8", "nobody"}, 0, 2)], ids=["one", "all"])
+def test_the_equivalence_check_goes_on_after_a_reference_fails(reader, monkeypatch, capsys, failing, compared, code):
+    """A player whose reference statements fail transiently is not compared; exit code 2 if no player is."""
+    query = ReferenceReader.query
+
+    def flaky(self, cypher, **params):
+        if params.get("player_id") in failing:
+            raise TransientError("forced")
+        return query(self, cypher, **params)
+
+    monkeypatch.setattr(ReferenceReader, "query", flaky)
+    monkeypatch.setattr(sys, "argv", ["check_reader_equivalence", "--graph", GRAPH_NAME, "--players", "u1", "p8"])
+    with pytest.raises(SystemExit) as exit_info:
+        check_reader_equivalence.main()
+    assert exit_info.value.code == code
+    assert f"compared {compared} players" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("recommend", [recommend_games, recommend_games_v0], ids=["current", "v0"])

@@ -14,9 +14,9 @@ those 50 and the model_dump() of recommend_games() in en and ja. Then the edge c
 those of an unknown player. The median seconds of each path query, games_by_appids(),
 collect_path_scores() and recommend_games() (en) are printed for both readers. Exit code 1 on any
 mismatch or broken precondition. A player whose reference statements fail with a transient error (the
-database is shared) is reported as "reference failed" and not compared. With --all-seeds the reference
-only runs for players with at most REFERENCE_SEED_LIMIT visible games: above that its co-play
-statement runs out of transaction memory.
+database is shared) is reported as "reference failed" and not compared; exit code 2 if a reference
+failed and no player was compared. With --all-seeds the reference only runs for players with at most
+REFERENCE_SEED_LIMIT visible games: above that its co-play statement runs out of transaction memory.
 
     python -m eval.check_reader_equivalence --users-per-stratum 5
     python -m eval.check_reader_equivalence --users-per-stratum 5 --all-seeds
@@ -465,7 +465,9 @@ def main() -> None:
             reference_median = statistics.median(seconds["reference"][name])
             new_median = statistics.median(seconds["new"][name])
             print(f"  {name:20} {reference_median:6.3f} -> {new_median:6.3f}")
-    sys.exit(1 if broken or mismatches else 0)
+    if broken or mismatches:
+        sys.exit(1)
+    sys.exit(2 if reference_failed and not compared else 0)
 
 
 if __name__ == "__main__":
