@@ -53,7 +53,8 @@ def test_hours_groups_are_ratios_of_post_stratified_means():
     def post_stratified(value):
         return sum(weight[name] * np.mean([value(p) for p in ids]) for name, ids in players.items())
 
-    for group, inside in (("under_1h", lambda h: h < 1), ("1h_to_10h", lambda h: 1 <= h < 10), ("10h_or_more", lambda h: h >= 10)):
+    groups = (("under_1h", lambda h: h < 1), ("1h_to_10h", lambda h: 1 <= h < 10), ("10h_or_more", lambda h: h >= 10))
+    for group, inside in groups:
         share = post_stratified(lambda p: sum(inside(h) for h in played[p]) / len(played[p]))
         assert result[group]["share"] == pytest.approx(share)
         assert result[group]["evaluations"] == sum(inside(hours[(p, a)]) for p, _, _, a in cases)

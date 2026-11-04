@@ -122,7 +122,8 @@ def c5_problems(data: Mapping[str, Any], expected: Mapping[str, Any]) -> list[st
     users_from, problems = data.get("users_from") or {}, []
     if users_from.get("split_sha256") != expected["split_sha256"]:
         problems.append("made from another split")
-    if (users_from.get("subset"), users_from.get("rep"), users_from.get("limit_per_stratum")) != ("explanations", 0, None):
+    subset = (users_from.get("subset"), users_from.get("rep"), users_from.get("limit_per_stratum"))
+    if subset != ("explanations", 0, None):
         problems.append("not the whole explanations subset at rep 0")
     if data.get("k") != expected["k"]:
         problems.append(f"k = {data.get('k')}, not {expected['k']}")

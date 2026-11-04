@@ -67,7 +67,7 @@ Case = tuple[str, str, int, str]
 def exploration(split_cases: Mapping[str, Sequence[Case]], sources: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Per source and over all of them: pairs, users and pairs that are validation or test-sample cases."""
     users = {part: {player_id for player_id, _, _, _ in cases} for part, cases in split_cases.items()}
-    pairs = {part: {(player_id, appid): name for player_id, name, _, appid in cases} for part, cases in split_cases.items()}
+    pairs = {part: {(player_id, appid) for player_id, _, _, appid in cases} for part, cases in split_cases.items()}
     strata = strata_of(split_cases)
 
     def counts(explored: Sequence[tuple[str, str]]) -> dict[str, Any]:
@@ -107,7 +107,10 @@ def read_test_ranks(path: Path) -> dict[str, dict[tuple[str, int], int | None]]:
 
 
 def without_explored(
-    plan: Mapping[str, Any], split: Mapping[str, Any], ranks: Mapping[str, Mapping[tuple[str, int], int | None]], left_out: set[str]
+    plan: Mapping[str, Any],
+    split: Mapping[str, Any],
+    ranks: Mapping[str, Mapping[tuple[str, int], int | None]],
+    left_out: set[str],
 ) -> dict[str, Any]:
     """C2-C4 and the overall NDCG@10 of every test row on the test sample without the left-out users."""
     players = stage_players(split, "test")
@@ -248,19 +251,24 @@ def main() -> None:
         "environment": environment(),
         "exploration": overlap,
         "without_explored": without_explored(plan, split, read_test_ranks(TEST_RANKS), explored_players & test_users),
-        "hours": dict(validation_hours(setup, args.workers), bootstrap=HOURS_BOOTSTRAP, links_sha256=setup.graph["links_sha256"]),
+        "hours": dict(
+            validation_hours(setup, args.workers), bootstrap=HOURS_BOOTSTRAP, links_sha256=setup.graph["links_sha256"]
+        ),
     }
     write_json(args.output, result)
     every = overlap["all"]
-    print(f"exploration: {every['test_users']} test users ({every['test_users_by_stratum']}), {every['test_cases']} test cases")
+    users, by_stratum, cases = every["test_users"], every["test_users_by_stratum"], every["test_cases"]
+    print(f"exploration: {users} test users {by_stratum}, {cases} test cases")
     claims = result["without_explored"]["claims"]
     for role, test in claims["C3"]["tests"].items():
         ci = test["ci_975"]
-        print(f"without them, C3 {role}: {ci['delta']:+.4f} [{ci['lo']:+.4f}, {ci['hi']:+.4f}] Holm p {test['p_holm']:.4f} {test['status']}")
+        interval = f"{ci['delta']:+.4f} [{ci['lo']:+.4f}, {ci['hi']:+.4f}]"
+        print(f"without them, C3 {role}: {interval} Holm p {test['p_holm']:.4f} {test['status']}")
     print(f"without them, C2 {claims['C2']['status']}, C4 {claims['C4']['status']}")
     for group, item in result["hours"]["groups"].items():
         contrasts = ", ".join(
-            f"{name} {row['delta']:+.4f} [{row['lo']:+.4f}, {row['hi']:+.4f}]" for name, row in item["contrasts"].items()
+            f"{name} {row['delta']:+.4f} [{row['lo']:+.4f}, {row['hi']:+.4f}]"
+            for name, row in item["contrasts"].items()
         )
         print(f"{group}: share {item['share']:.3f}; {contrasts}")
 
