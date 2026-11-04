@@ -451,6 +451,44 @@ def test_a_user_whose_queries_fail_transiently_is_retried_and_counted_once(monke
         assert report[version].assertions == once[version].assertions
 
 
+def test_a_failure_in_the_second_version_does_not_count_the_first_twice(monkeypatch):
+    calls = Counter()
+    v0 = explanation_check.RECOMMENDERS["v0"]
+
+    def flaky(reader, player_id, k, lang, hidden_appids):
+        calls[player_id] += 1
+        if player_id == "p2" and calls[player_id] == 1:
+            raise TransientError("the database is busy")
+        return v0(reader, player_id, k, lang, hidden_appids)
+
+    once = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current", "v0"])
+    monkeypatch.setitem(explanation_check.RECOMMENDERS, "v0", flaky)
+    monkeypatch.setattr(explanation_check, "with_retries", functools.partial(with_retries, sleep=lambda seconds: None))
+    report = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current", "v0"])
+    assert calls["p2"] == 2 and all(calls[player_id] == 1 for player_id in PLAYERS if player_id != "p2")
+    for version in ("current", "v0"):
+        counted, clean = report[version], once[version]
+        assert counted.by_user == clean.by_user and counted.assertions == clean.assertions
+        assert counted.recommendations == sum(tally[0] for tally in counted.by_user.values()) == clean.recommendations
+        assert counted.valid == sum(tally[1] for tally in counted.by_user.values()) == clean.valid
+
+
+def test_an_error_that_is_not_transient_ends_the_run(monkeypatch):
+    calls = Counter()
+
+    def broken(reader, player_id, k, lang, hidden_appids):
+        calls[player_id] += 1
+        if player_id == "p2":
+            raise ValueError("a bug, not a busy database")
+        return EVERY_PATH(reader, player_id, k, lang, hidden_appids)
+
+    monkeypatch.setitem(explanation_check.RECOMMENDERS, "current", broken)
+    monkeypatch.setattr(explanation_check, "with_retries", functools.partial(with_retries, sleep=lambda seconds: None))
+    with pytest.raises(ValueError, match="a bug"):
+        check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current", "v0"])
+    assert calls == Counter({"u1": 1, "p1": 1, "p2": 1})  # neither retried nor skipped
+
+
 APPIDS = [game["appid"] for game in GAMES]
 
 
@@ -571,6 +609,59 @@ def test_the_same_input_gives_the_same_output_but_for_the_times(split_file, tmp_
         weights = first["versions"][version]["post_stratification_weights"]
         assert weights == {name: pool[name] / sum(pool[s] for s in present) for name in present}
     assert tuple(first["versions"]["current"]["post_stratification_weights"]) == tuple(STRATA)
+
+
+class SomeGamesMisspelled(FakeFacts):
+    """FakeFacts that misspell three games, so that the recommendations naming them as seed are invalid
+    and the users' tallies differ."""
+
+    def played(self, player_id):
+        return {
+            appid: f"{name}?" if appid in ("10", "60", "140") else name
+            for appid, name in super().played(player_id).items()
+        }
+
+
+WIDE_PLAYS = synthetic_plays(players=70, seed=9)
+WIDE_SIZES = {
+    "validation_size": 6,
+    "test_sample_sizes": dict.fromkeys(STRATA),
+    "subsets": {"v0": ("per_stratum", 3), "explanations": ("per_stratum", 6), "beyond_accuracy": ("proportional", 6)},
+}
+
+
+def approx_or_none(value):
+    return None if value is None else pytest.approx(value, abs=1e-12)
+
+
+def test_every_version_is_resampled_with_the_same_draws_in_the_splits_order(tmp_path, monkeypatch):
+    """The file's intervals, recomputed from its users rows in file order (the split's) with a new
+    default_rng(0) for every version."""
+    split_file = tmp_path / "split.json"
+    records = FakeGraphReader(plays=WIDE_PLAYS).all_play_records()
+    split_file.write_text(dumps(build_split(records, "fake", **WIDE_SIZES)))
+    output = tmp_path / "result.json"
+    result = run_command_line(monkeypatch, output, "--split", split_file, plays=WIDE_PLAYS, facts=SomeGamesMisspelled)
+    pool = json.loads(split_file.read_text())["counts"]["test_pool"]
+    users = result["users"]
+    strata = {row["player_id"]: row["stratum"] for row in users}
+    for name in STRATA:  # other draws or another order of the users would give other intervals
+        ids = [row["player_id"] for row in users if row["stratum"] == name]
+        assert len(ids) == 6 and ids != sorted(ids)
+    bootstrap = result["bootstrap"]
+    for version, written in result["versions"].items():
+        by_user = {row["player_id"]: [row["recommendations"][version], row["valid"][version]] for row in users}
+        assert len({tuple(tally) for tally in by_user.values()}) > 4
+        expected = reference_statistics(by_user, strata, pool, bootstrap["B"], bootstrap["seed"], bootstrap["level"])
+        assert written["recommendation_validity_ci"] == approx_or_none(expected["pooled"])
+        for name, row in written["by_stratum"].items():
+            assert row["recommendation_validity_ci"] == approx_or_none(expected["by_stratum"][name])
+        assert written["recommendation_validity_post_stratified"] == expected["post_stratified"]
+        assert written["recommendation_validity_post_stratified_ci"] == approx_or_none(expected["post_stratified_ci"])
+        assert written["post_stratification_weights"] == expected["weights"]
+    # v0 lists nothing for some users of stratum 1: some replicates draw no v0 recommendation there.
+    assert result["versions"]["v0"]["recommendation_validity_post_stratified_ci"] is None
+    assert result["versions"]["v0"]["post_stratification_weights"].keys() == set(STRATA)
 
 
 def test_a_graph_with_other_played_edges_but_the_same_counts_is_refused(split_file, tmp_path, monkeypatch):
