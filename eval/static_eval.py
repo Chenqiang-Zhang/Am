@@ -181,7 +181,8 @@ def code_defaults() -> dict[str, Any]:
 
 def check_frozen(setup: Setup, tuning_path: Path, stage: str) -> dict[str, Any]:
     """The tuning result the test runs with. Refuses unless it was made from this plan and split, over
-    the whole grid on the validation users (for the test stage), and chose the code defaults."""
+    the whole grid on the validation users (for the test stage), its best and chosen configs follow from
+    its rows by the selection rule, and the chosen config is the code default."""
     if not Path(tuning_path).exists():
         raise SystemExit(f"{tuning_path} does not exist; run tune first")
     tuning = json.loads(Path(tuning_path).read_text(encoding="utf-8"))
@@ -189,9 +190,10 @@ def check_frozen(setup: Setup, tuning_path: Path, stage: str) -> dict[str, Any]:
         raise SystemExit(f"{tuning_path} was made from another plan than {setup.plan_path}")
     if tuning["split"]["sha256"] != setup.split_sha256:
         raise SystemExit(f"{tuning_path} was made from another split than {setup.split_path}")
-    whole_grid = tuning["grid"]["configs"] == setup.plan["grid"]["configs"]
-    if stage == "test" and (tuning["stage"] != "validation" or not whole_grid):
+    if stage == "test" and not whole_grid(setup.plan, tuning):
         raise SystemExit(f"{tuning_path} is not a tuning run over the whole grid on the validation users")
+    if not follows_the_rule(setup.plan, tuning):
+        raise SystemExit(f"{tuning_path}: the selection rule on its rows does not give its best and chosen configs")
     chosen, defaults = tuning["chosen"], code_defaults()
     scheme = plan_schemes(setup.plan)[chosen["scheme"]]
     frozen = {
@@ -206,6 +208,37 @@ def check_frozen(setup: Setup, tuning_path: Path, stage: str) -> dict[str, Any]:
             "DEFAULT_SEED_SCHEME before the test run"
         )
     return tuning
+
+
+def whole_grid(plan: Mapping[str, Any], tuning: Mapping[str, Any]) -> bool:
+    """A validation run with one row per grid config and nothing else besides the reference."""
+    ids = [row["id"] for row in tuning["configs"] if row["id"] != tuning["reference"]]
+    return (
+        tuning["stage"] == "validation"
+        and sorted(tuning["grid"]["schemes"]) == sorted(plan["grid"]["schemes"])
+        and sorted(ids) == sorted(config_id(config) for config in grid_configs(plan))
+    )
+
+
+def follows_the_rule(plan: Mapping[str, Any], tuning: Mapping[str, Any]) -> bool:
+    """The best and chosen configs, every row's difference to the best and its 'qualifies' are those the
+    selection rule gives on the rows' objective and SE."""
+    reference = config_id(reference_config(plan))
+    rows = [row for row in tuning["configs"] if row["id"] != reference]
+    configs = [make_config(row["scheme"], row["weights"], row["studio_normalization"]) for row in rows]
+    ids = [row["id"] for row in rows]
+    if not rows or tuning["reference"] != reference or [config_id(config) for config in configs] != ids:
+        return False
+    column = f"{plan['objective']['metric']}@{plan['objective']['k']}"
+    values = {row["id"]: row[column] for row in rows}
+    to_best = {row["id"]: row["to_best"] for row in rows}
+    best, chosen = select(configs, values, lambda config, _: to_best[config_id(config)]["se"], plan_schemes(plan))
+    top = values[config_id(best)]
+    return (
+        all(to_best[key]["delta"] == values[key] - top for key in values)
+        and all(row["qualifies"] == (row["to_best"]["delta"] >= -row["to_best"]["se"]) for row in rows)
+        and (tuning["best"], tuning["chosen"]) == (with_id(best), with_id(chosen))
+    )
 
 
 # ---- graph and run metadata -------------------------------------------------------------------------
@@ -423,6 +456,8 @@ def baselines_and_graph(setup: Setup, cases: Sequence[Case]) -> tuple[Any, list[
 def run_tune(setup: Setup, stage: str, output: Path, schemes: Sequence[str] | None = None) -> dict[str, Any]:
     timer, plan, split = Timer(), setup.plan, setup.split
     schemes = list(plan["grid"]["schemes"] if schemes is None else schemes)
+    if len(set(schemes)) != len(schemes) or not set(schemes) <= set(plan["grid"]["schemes"]):
+        raise SystemExit(f"tune takes some of the grid's schemes {plan['grid']['schemes']}, each once, not {schemes}")
     grid, reference, checks = grid_configs(plan, schemes), reference_config(plan), c1_configs(plan)
     configs = {config_id(config): config for config in (*grid, reference, *checks.values())}
     needed = list(dict.fromkeys([*schemes, *(config["scheme"] for config in configs.values())]))
@@ -490,8 +525,8 @@ def run_tune(setup: Setup, stage: str, output: Path, schemes: Sequence[str] | No
         "grid": {"schemes": schemes, "weights": plan["grid"]["weights"], "configs": len(grid)},
         "schemes": {name: plan["schemes"][name] for name in needed},
         "reference": config_id(reference),
-        "best": {"id": config_id(best), **best},
-        "chosen": {"id": config_id(chosen), **chosen},
+        "best": with_id(best),
+        "chosen": with_id(chosen),
         "configs": rows,
         "C1": c1_claim(plan["claims"]["C1"], graph_ranks, baseline_ranks, max(plan["metrics"]["k"])),
         "collection": cache.runs(),

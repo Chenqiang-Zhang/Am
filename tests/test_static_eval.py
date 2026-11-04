@@ -438,41 +438,80 @@ def test_the_arg_max_ties_follow_the_preference():
 # ---- the test stage's guard ------------------------------------------------------------------------
 
 
-def tuning_file(setup, path, chosen, **changes):
-    tuning = {
-        "stage": "validation",
-        "plan": {"sha256": static_eval.file_sha256(setup.plan_path)},
-        "split": {"sha256": setup.split_sha256},
-        "grid": {"configs": setup.plan["grid"]["configs"]},
-        "chosen": dict(chosen, id=config_id(chosen)),
-    } | changes
-    path.write_text(json.dumps(tuning))
+@pytest.fixture
+def tuned(setup, tmp_path):
+    """collect and tune the validation stage; the result is also in tmp_path / "tuning.json"."""
+    static_eval.run_collect(setup, "validation", ["all"])
+    return static_eval.run_tune(setup, "validation", tmp_path / "tuning.json")
+
+
+def as_defaults(monkeypatch, config):
+    """Make a tuned config the code default, as the commit after tune does."""
+    monkeypatch.setattr(static_recommend, "DEFAULT_PATH_WEIGHTS", dict(config["weights"]))
+    monkeypatch.setattr(static_recommend, "DEFAULT_SEED_SCHEME", SeedScheme(**SCHEMES[config["scheme"]]))
+
+
+def edited(tuning, path, edit):
+    """A copy of the tuning result with one edit."""
+    copy = json.loads(json.dumps(tuning))
+    edit(copy)
+    path.write_text(json.dumps(copy))
     return path
 
 
-def test_the_test_stage_refuses_to_run_unless_the_tuned_config_is_the_code_default(setup, tmp_path, monkeypatch):
-    tmp_path = tmp_path / "tunings"
-    tmp_path.mkdir()
-    defaults = make_config("log1p_10", static_recommend.DEFAULT_PATH_WEIGHTS, "seed_weight")
-    accepted = static_eval.check_frozen(setup, tuning_file(setup, tmp_path / "ok.json", defaults), "test")
-    assert accepted["chosen"]["scheme"] == "log1p_10"
-    refused = [
-        tuning_file(setup, tmp_path / "weights.json", make_config("log1p_10", {"peer": 1.0, "tag": 0.25}, "seed_weight")),
-        tuning_file(setup, tmp_path / "scheme.json", dict(defaults, scheme="uniform_10")),
-        tuning_file(setup, tmp_path / "rule.json", dict(defaults, studio_normalization="max")),
-        tuning_file(setup, tmp_path / "plan.json", defaults, plan={"sha256": "0" * 64}),
-        tuning_file(setup, tmp_path / "split.json", defaults, split={"sha256": "0" * 64}),
-        tuning_file(setup, tmp_path / "smoke.json", defaults, stage="smoke"),
-        tmp_path / "missing.json",
+def row_of(tuning, config):
+    return next(row for row in tuning["configs"] if row["id"] == config["id"])
+
+
+def config_fields(row):
+    return {key: row[key] for key in ("id", "scheme", "weights", "studio_normalization")}
+
+
+def test_the_test_stage_takes_only_the_whole_tuned_grid_and_its_choice_as_the_code_default(
+    setup, tuned, tmp_path, monkeypatch
+):
+    path = tmp_path / "tuning.json"
+    with pytest.raises(SystemExit, match="code default"):
+        static_eval.check_frozen(setup, path, "test")
+    as_defaults(monkeypatch, tuned["chosen"])
+    assert static_eval.check_frozen(setup, path, "test") == tuned
+    named = {tuned["chosen"]["id"], tuned["best"]["id"], tuned["reference"]}
+    other = next(row for row in tuned["configs"] if row["id"] not in named)
+    edits = [
+        ("another plan", lambda tuning: tuning["plan"].update(sha256="0" * 64)),
+        ("another split", lambda tuning: tuning["split"].update(sha256="0" * 64)),
+        ("whole grid", lambda tuning: tuning.update(stage="smoke")),
+        ("whole grid", lambda tuning: tuning["configs"].remove(row_of(tuning, other))),
+        ("whole grid", lambda tuning: tuning["configs"].append(row_of(tuning, other))),
+        ("whole grid", lambda tuning: tuning["grid"].update(schemes=tuning["grid"]["schemes"][:1])),
+        ("selection rule", lambda tuning: tuning.update(best=config_fields(other))),
+        ("selection rule", lambda tuning: row_of(tuning, other).update({"NDCG@10": 1.0})),
+        ("selection rule", lambda tuning: row_of(tuning, other).update(qualifies=not other["qualifies"])),
+        ("selection rule", lambda tuning: row_of(tuning, other)["weights"].update(tag=3.0)),
     ]
-    for path in refused:
-        with pytest.raises(SystemExit):
-            static_eval.check_frozen(setup, path, "test")
-    tuned = {"peer": 1.0, "tag": 0.25, "studio": 0.0, "popular": 0.0}
-    monkeypatch.setattr(static_recommend, "DEFAULT_PATH_WEIGHTS", tuned)
-    assert static_eval.check_frozen(setup, refused[0], "test")
-    with pytest.raises(SystemExit):
-        static_eval.check_frozen(setup, tmp_path / "ok.json", "test")
+    for index, (reason, edit) in enumerate(edits):
+        with pytest.raises(SystemExit, match=reason):
+            static_eval.check_frozen(setup, edited(tuned, tmp_path / f"edit{index}.json", edit), "test")
+    as_defaults(monkeypatch, other)
+    chosen = edited(tuned, tmp_path / "chosen.json", lambda tuning: tuning.update(chosen=config_fields(other)))
+    with pytest.raises(SystemExit, match="selection rule"):
+        static_eval.check_frozen(setup, chosen, "test")
+    with pytest.raises(SystemExit, match="does not exist"):
+        static_eval.check_frozen(setup, tmp_path / "missing.json", "test")
+
+
+def test_tune_takes_each_grid_scheme_once_and_the_test_stage_refuses_a_part_of_the_grid(setup, tmp_path, monkeypatch):
+    output = tmp_path / "part.json"
+    for schemes in (["log1p_10", "log1p_10"], ["log1p_10", "log1p_5"]):
+        with pytest.raises(SystemExit, match="each once"):
+            static_eval.run_tune(setup, "smoke", output, schemes)
+    static_eval.run_collect(setup, "smoke", ["log1p_10", "uniform_all"])
+    part = static_eval.run_tune(setup, "smoke", output, ["log1p_10"])
+    assert part["grid"]["configs"] == 8
+    as_defaults(monkeypatch, part["chosen"])
+    assert static_eval.check_frozen(setup, output, "smoke") == part
+    with pytest.raises(SystemExit, match="whole grid"):
+        static_eval.check_frozen(setup, output, "test")
 
 
 def test_the_test_command_needs_the_tuning_result_and_the_defaults_committed(setup, tmp_path, monkeypatch):
@@ -502,17 +541,13 @@ def test_the_test_command_needs_the_tuning_result_and_the_defaults_committed(set
 
 
 @pytest.fixture
-def run(setup, tmp_path, monkeypatch):
-    """collect, tune, freeze the choice as the code defaults, collect the test stage and run it."""
-    static_eval.run_collect(setup, "validation", ["all"])
-    tuning = static_eval.run_tune(setup, "validation", tmp_path / "tuning.json")
-    chosen = tuning["chosen"]
-    monkeypatch.setattr(static_recommend, "DEFAULT_PATH_WEIGHTS", dict(chosen["weights"]))
-    monkeypatch.setattr(static_recommend, "DEFAULT_SEED_SCHEME", SeedScheme(**SCHEMES[chosen["scheme"]]))
-    static_eval.run_collect(setup, "test", sorted({chosen["scheme"], "log1p_10"}))
+def run(setup, tuned, tmp_path, monkeypatch):
+    """Freeze the tuned choice as the code defaults, collect the test stage and run it."""
+    as_defaults(monkeypatch, tuned["chosen"])
+    static_eval.run_collect(setup, "test", sorted({tuned["chosen"]["scheme"], "log1p_10"}))
     explanations = tmp_path / "explanations.json"
     test = static_eval.run_test(setup, "test", tmp_path / "tuning.json", tmp_path / "results", explanations)
-    return tuning, test
+    return tuned, test
 
 
 def test_tune_writes_every_config_the_choice_and_c1(setup, run):
