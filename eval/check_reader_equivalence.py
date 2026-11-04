@@ -17,9 +17,11 @@ mismatch or broken precondition. A player whose reference statements fail with a
 database is shared) is reported as "reference failed" and not compared; exit code 2 if a reference
 failed and no player was compared. With --all-seeds the reference only runs for players with at most
 REFERENCE_SEED_LIMIT visible games: above that its co-play statement runs out of transaction memory.
+--uniform --all-seeds is the shipped DEFAULT_SEED_SCHEME; without them the scheme is SeedScheme()
+(w_s = ln(1 + hours), the 10 longest-played seeds for co-play), which exercises the seed weights.
 
     python -m eval.check_reader_equivalence --users-per-stratum 5
-    python -m eval.check_reader_equivalence --users-per-stratum 5 --all-seeds
+    python -m eval.check_reader_equivalence --users-per-stratum 5 --uniform --all-seeds
     python -m eval.check_reader_equivalence --players 0ebcdac87473bdce47327aef5ec69eeb --all-seeds
 """
 
@@ -383,12 +385,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Compare the path queries with the statements they replaced")
     parser.add_argument("--graph", default="ucsd")
     parser.add_argument("--users-per-stratum", type=int, default=5)
-    parser.add_argument("--all-seeds", action="store_true", help="SeedScheme(peer_limit=None) instead of the default")
+    parser.add_argument("--all-seeds", action="store_true", help="every seed for co-play (peer_limit=None)")
+    parser.add_argument("--uniform", action="store_true", help="w_s = 1 instead of ln(1 + hours)")
     parser.add_argument("--players", nargs="+", help="these players instead of the strata")
     args = parser.parse_args()
     logging.getLogger("neo4j").setLevel(logging.ERROR)  # UCSD games have no description properties
 
-    scheme = SeedScheme(peer_limit=None) if args.all_seeds else SeedScheme()
+    scheme = SeedScheme(
+        weighting="uniform" if args.uniform else SeedScheme().weighting,
+        peer_limit=None if args.all_seeds else SeedScheme().peer_limit,
+    )
     new_reader, reference_reader = GraphReader(args.graph), ReferenceReader(args.graph)
     new, reference = Timed(new_reader), Timed(reference_reader)
     broken = 0
