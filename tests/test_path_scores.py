@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from app.api.static_recommend import SeedScheme, collect_path_scores, combine, recommend_games
+from app.api.static_recommend import STUDIO_NORMALIZATIONS, SeedScheme, collect_path_scores, combine, recommend_games
 from eval.rankers import build_item_knn_ranker
 from tests.fake_graph import GAMES, PLAYS, FakeGraphReader
 
@@ -181,20 +181,24 @@ def test_popularity_prior_is_log_degree_without_the_player():
     assert set(U1["popular"]) == {game["appid"] for game in GAMES} - {"10", "20", "70"}
 
 
-def synthetic(**rows_by_path):
+def synthetic(seed_weights=(), **rows_by_path):
+    seeds = [
+        {"appid": f"s{index}", "name": f"Seed {index}", "hours": math.expm1(weight), "weight": weight}
+        for index, weight in enumerate(seed_weights)
+    ]
     paths = {}
     for path, rows in rows_by_path.items():
         if path == "popular":
             paths[path] = {appid: {"appid": appid, "score": math.log1p(n), "players": n} for appid, n in rows.items()}
         else:
             paths[path] = {appid: {"appid": appid, "score": score} for appid, score in rows.items()}
-    return {"player_id": "x", "seeds": [], "paths": paths}
+    return {"player_id": "x", "seeds": seeds, "paths": paths}
 
 
 EXAMPLE = synthetic(peer={"a": 4.0, "b": 2.0}, tag={"b": 10.0, "c": 5.0}, studio={}, popular={"a": 9, "b": 1, "c": 4, "d": 0})
 
 
-def test_combine_normalises_each_path_by_its_maximum():
+def test_combine_normalises_peer_tag_and_popular_by_their_maximum():
     ranked = combine(EXAMPLE, 4, {"peer": 1.0, "tag": 0.5, "popular": 0.1})
     assert [(item["appid"], item["backfill"]) for item in ranked] == [("a", False), ("b", False), ("c", False), ("d", True)]
     by_appid = {item["appid"]: item for item in ranked}
@@ -222,6 +226,11 @@ def test_combine_rejects_unknown_paths_and_negative_weights():
         combine(EXAMPLE, 3, {"peer": -1.0})
 
 
+def test_combine_rejects_an_unknown_studio_normalization():
+    with pytest.raises(ValueError):
+        combine(EXAMPLE, 3, studio_normalization="sum")
+
+
 def test_combine_never_returns_played_games_and_fills_the_whole_catalogue():
     path_scores = path_scores_of(FakeGraphReader(), "u1", {"30"})
     ranked = combine(path_scores, 100)
@@ -235,3 +244,65 @@ def test_path_scores_survive_a_json_round_trip_for_offline_tuning():
     assert cached == path_scores
     for weights in ({"peer": 1.0}, {"peer": 1.0, "tag": 0.25, "studio": 0.5, "popular": 0.1}, None):
         assert combine(cached, 10, weights) == combine(path_scores, 10, weights)
+
+
+# ---- the studio divisor ---------------------------------------------------------------------------
+
+
+def studio_contributions(path_scores, weights=None, studio_normalization="seed_weight"):
+    ranked = combine(path_scores, 10, weights, studio_normalization)
+    return {item["appid"]: item["contributions"].get("studio") for item in ranked}
+
+
+def test_studio_contribution_doubles_with_the_studio_linked_share_of_seed_weight():
+    # Both players' seeds weigh 4 in total. A developer with 2 titles links g to seeds of weight 1 or 2.
+    quarter = synthetic(seed_weights=(1.0, 3.0), studio={"g": 1.0 / math.log(4)})
+    half = synthetic(seed_weights=(2.0, 2.0), studio={"g": 2.0 / math.log(4)})
+    assert studio_contributions(quarter)["g"] == pytest.approx(0.5 * 0.25 / math.log(4))
+    assert studio_contributions(half)["g"] == pytest.approx(2 * studio_contributions(quarter)["g"])
+    # Dividing by the highest studio score gave both the full λ.
+    for path_scores in (quarter, half):
+        assert studio_contributions(path_scores, studio_normalization="max") == {"g": 0.5}
+
+
+def test_studio_divides_by_the_weight_of_every_visible_seed():
+    # u1 keeps Alpha(100h), Bravo(20h) and Golf(0.5h). Co-play only uses Alpha here; the studio divisor uses all three.
+    path_scores = path_scores_of(FakeGraphReader(), "u1", {"30"}, SeedScheme(peer_limit=1))
+    expected = 0.5 * (W(100) / math.log(2 + 2)) / (W(100) + W(20) + W(0.5))
+    assert studio_contributions(path_scores)["50"] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("studio_normalization", STUDIO_NORMALIZATIONS)
+def test_zero_weight_switches_the_studio_path_off(studio_normalization):
+    path_scores = synthetic(seed_weights=(2.0,), peer={"a": 1.0}, studio={"a": 1.0, "b": 1.0}, popular={"a": 1, "b": 1})
+    ranked = combine(path_scores, 2, {"peer": 1.0, "studio": 0.0}, studio_normalization)
+    assert [(item["appid"], item["contributions"], item["backfill"]) for item in ranked] == [
+        ("a", {"peer": 1.0}, False),
+        ("b", {}, True),
+    ]
+
+
+@pytest.mark.parametrize("seed_weights", [(), (0.0, 0.0)])
+def test_studio_path_is_skipped_when_the_seeds_weigh_nothing(seed_weights):
+    # No visible seeds, or only games played for 0 hours under ln(1 + hours).
+    path_scores = synthetic(seed_weights=seed_weights, peer={"a": 2.0}, studio={"a": 1.0})
+    assert [item["contributions"] for item in combine(path_scores, 1)] == [{"peer": 1.0}]
+
+
+def test_max_normalization_keeps_the_previous_rule():
+    # Titles of one studio share one score, so the highest score gives each of them the full λ.
+    path_scores = synthetic(seed_weights=(3.0, 1.0), studio={"a": 0.8, "b": 0.8, "c": 0.2})
+    assert studio_contributions(path_scores, {"studio": 0.5}, "max") == {"a": 0.5, "b": 0.5, "c": 0.125}
+    assert studio_contributions(path_scores, {"studio": 0.5}) == pytest.approx({"a": 0.1, "b": 0.1, "c": 0.025})
+
+
+def test_max_normalization_differs_only_in_the_studio_path():
+    path_scores = path_scores_of(FakeGraphReader(), "u1", {"30"})
+    studio = path_scores["paths"]["studio"]
+    highest = max(row["score"] for row in studio.values())
+    current = {item["appid"]: item["contributions"] for item in combine(path_scores, 20)}
+    for item in combine(path_scores, 20, studio_normalization="max"):
+        previous = dict(item["contributions"])
+        if "studio" in previous:
+            assert previous.pop("studio") == 0.5 * studio[item["appid"]]["score"] / highest
+        assert previous == {path: value for path, value in current[item["appid"]].items() if path != "studio"}

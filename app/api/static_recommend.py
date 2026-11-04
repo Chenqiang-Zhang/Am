@@ -11,9 +11,10 @@ popularity prior, and every count leaves the player out:
 - popular: ln(1 + deg(g))
 
 collect_path_scores() runs the queries once per player and returns plain data that can be cached.
-combine() divides each path by its maximum, multiplies by the path weight λ, adds the paths up and
-ranks by (-score, appid), filling up with popular games; the API and offline tuning share it. The
-reason text states nothing but the evidence: the path instances that produced the score.
+combine() divides peer, tag and popular by their maximum and studio by the player's total seed weight
+Σ_s w_s, multiplies by the path weight λ, adds the paths up and ranks by (-score, appid), filling up
+with popular games; the API and offline tuning share it. The reason text states nothing but the
+evidence: the path instances that produced the score.
 """
 
 import math
@@ -31,9 +32,14 @@ PEER_SEED_GAMES = 10
 EVIDENCE_PER_PATH = REASON_TAG_LIMIT
 # The order paths are added up in, and the tie order when choosing the headline evidence.
 PATHS: tuple[EvidencePath, ...] = ("peer", "tag", "studio", "popular")
-# λ per path until they are tuned on the validation users (M5).
+# λ per path, all tuned on the validation users later (M5). λ_studio scales a share of the player's
+# seed weight, S_studio / Σ_s w_s; the other λ scale a path score divided by its highest score.
 DEFAULT_PATH_WEIGHTS: dict[str, float] = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
 STUDIO_ROLE_WEIGHTS = {"developer": 1.0, "publisher": 0.5}
+# The studio divisor: the player's total seed weight, or the highest studio score (the previous rule,
+# kept for comparison).
+StudioNormalization = Literal["seed_weight", "max"]
+STUDIO_NORMALIZATIONS: tuple[StudioNormalization, ...] = ("seed_weight", "max")
 # Totals that agree to this many decimals are ties, ordered by appid.
 SCORE_DECIMALS = 12
 
@@ -87,7 +93,7 @@ class PathScores(TypedDict):
 class RankedGame(TypedDict):
     appid: str
     score: float
-    contributions: dict[str, float]  # path -> λ · score / highest score of the path; adds up to score
+    contributions: dict[str, float]  # path -> λ · score / highest score of the path (studio: Σ_s w_s); adds up to score
     backfill: bool  # no path scored it; it fills the list by popularity
 
 
@@ -168,26 +174,39 @@ def collect_path_scores(
     )
 
 
-def combine(path_scores: PathScores, limit: int, weights: Mapping[str, float] | None = None) -> list[RankedGame]:
-    """Rank by Σ_path λ · score / highest score of the path. A path with λ = 0 is switched off.
-    Games no path scored fill the list in order of popularity."""
+def combine(
+    path_scores: PathScores,
+    limit: int,
+    weights: Mapping[str, float] | None = None,
+    studio_normalization: StudioNormalization = "seed_weight",
+) -> list[RankedGame]:
+    """Rank by Σ_path λ · score / divisor: the highest score of the path, but for studio the total weight
+    Σ_s w_s of all visible seeds unless studio_normalization is "max". A path with λ = 0 or a divisor of 0
+    is switched off. Games no path scored fill the list in order of popularity."""
     weights = DEFAULT_PATH_WEIGHTS if weights is None else weights
     unknown_paths = sorted(set(weights) - set(PATHS))
     if unknown_paths:
         raise ValueError(f"unknown paths: {unknown_paths}")
     if any(weight < 0 for weight in weights.values()):
         raise ValueError("path weights must not be negative")
+    if studio_normalization not in STUDIO_NORMALIZATIONS:
+        raise ValueError(f"unknown studio normalization: {studio_normalization!r}")
 
     contributions: dict[str, dict[str, float]] = {}
     for path in PATHS:
         weight = weights.get(path, 0.0)
         rows = path_scores["paths"].get(path, {})
-        highest = max((row["score"] for row in rows.values()), default=0.0)
-        if weight == 0 or highest <= 0:
+        if path == "studio" and studio_normalization == "seed_weight":
+            # All titles of one studio share one score, so dividing by the highest score would give every
+            # title of the player's strongest studio the full λ.
+            divisor = sum(seed["weight"] for seed in path_scores["seeds"])
+        else:
+            divisor = max((row["score"] for row in rows.values()), default=0.0)
+        if weight == 0 or divisor <= 0:
             continue
         for appid, row in rows.items():
             if row["score"] > 0:
-                contributions.setdefault(appid, {})[path] = weight * row["score"] / highest
+                contributions.setdefault(appid, {})[path] = weight * row["score"] / divisor
 
     totals = {appid: sum(parts.values()) for appid, parts in contributions.items()}
     ranked_appids = sorted(totals, key=lambda appid: (-round(totals[appid], SCORE_DECIMALS), appid))[:limit]
