@@ -5,11 +5,14 @@ from fastapi.testclient import TestClient
 
 from app.api.main import app, get_graph_reader
 from app.api.models import Evidence, Recommendation
-from app.api.static_recommend import PATHS, describe_evidence, recommend_games
+from app.api.static_recommend import PATHS, SeedScheme, describe_evidence, recommend_games
 from app.api.static_recommend_v0 import recommend_games_v0
 from tests.fake_graph import GAMES, FakeGraphReader
 
-U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}))
+# Every path on and ln(1 + hours) seed weights, as the fixture was written for (the tuned defaults switch
+# studio and popular off).
+ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
+U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}), weights=ALL_PATHS, scheme=SeedScheme())
 
 
 def test_every_recommendation_carries_evidence_that_explains_its_score():

@@ -313,7 +313,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 | u | 生成推荐的用户 |
 | s | 种子。u 玩过的游戏（评估时去掉被隐藏的游戏） |
 | g | 候选。u 没有玩过的所有游戏（包括评估时被隐藏的游戏） |
-| w_s | 种子的权重。`ln(1 + s 的游玩时长)` |
+| w_s | 种子的权重。默认为 1（`SeedScheme(weighting="log_hours")` 时为 `ln(1 + s 的游玩时长)`） |
 | deg(g) | 玩过 g 的玩家数（不含 u） |
 | co(s, g) | s 和 g 都玩过的玩家数（不含 u） |
 
@@ -328,7 +328,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 | 开发商・发行商（`studio`） | s → `DEVELOPED_BY` / `PUBLISHED_BY` → `Studio` ← g | `Σ_s w_s · r / ln(2 + m)` |
 | 热门（`popular`） | 其他玩家 → `PLAYED` → g | `ln(1 + deg(g))` |
 
-- 共玩：种子取游玩时长最长的前 10 款（标签和开发商・发行商使用全部种子）。不设共同游戏数的下限（共同玩过 1 款也计入）。若 w_s 取 1 且使用全部种子，则与不含 u 的 Item-KNN（余弦相似度之和）相同。
+- 共玩：默认使用全部种子（可用 `SeedScheme` 的 `peer_limit` 只取游玩时长最长的前 N 款；标签和开发商・发行商始终使用全部种子）。不设共同游戏数的下限（共同玩过 1 款也计入）。w_s 取 1 且使用全部种子的默认设置，与不含 u 的 Item-KNN（余弦相似度之和）相同。
 - 标签：
   - 使用类型和用户标签，不使用功能（`Feature`）。使用的边为 `rank` 不超过 10 或没有 `rank` 的边；weight 的 IDF 和“g 是否带有该标签”的判断使用同一组边。
   - 名称相同的类型和用户标签（如 `genre:action` 与 `usertag:action`，即 `tag_id` 中 `:` 之后的部分相同）视为同一个标签。
@@ -342,7 +342,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 `score(g) = Σ_{路径 ∈ {peer, tag, popular}} λ_路径 · S_路径(g) / max S_路径 + λ_studio · S_studio(g) / Σ_s w_s`
 
-- 共玩、标签和热门先除以候选中的最大值，开发商・发行商先除以全部种子的权重之和 Σ_s w_s，再乘以权重 λ 后相加。λ 取共玩 1.0、标签 1.0、开发商・发行商 0.5、热门 0.1（在验证用户上调整之前的值）。λ 为 0 时，不使用该路径。
+- 共玩、标签和热门先除以候选中的最大值，开发商・发行商先除以全部种子的权重之和 Σ_s w_s，再乘以权重 λ 后相加。λ 取在验证用户上选出的共玩 1.0、标签 0.1、开发商・发行商 0、热门 0（8.5）。λ 为 0 时，不使用该路径（热门仍用于条数不够时的补充）。
 - 同一公司的作品 S_studio 相同，除以最大值会让与 u 关联最强的公司的每部作品都拿到满额的 λ，而除以 Σ_s w_s 后，它就是 u 的游玩记录中该公司作品所占的比例（再乘以 r / ln(2 + m)）。为了比较，除以最大值的旧规则仍可通过 `combine(..., studio_normalization="max")` 使用。
 - 按 score 从大到小排列，相同则按 appid 升序（小数点后 12 位相同即视为相同）。对同一用户，每次返回相同的结果。
 - 任何路径都没有分数的游戏，在数量不足时，按玩过的人数从多到少（相同则按 appid）补在后面。
@@ -369,7 +369,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 - 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight 和带有该标签的种子），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。
 - 共玩和标签的各项在 Python 里相加。与 Cypher 的 `sum()` 一样从大的项开始依次相加，因此结果与直接写成 1 条的 Cypher 相同。这些 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
-- 种子的权重（ln(1 + 游玩时长) 或 1）、共玩的种子数（10 款或全部）以及 λ，在验证用户上决定（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`）。
+- 默认的种子权重为 1，共玩使用全部种子，λ 为 1 / 0.1 / 0 / 0（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`，在验证用户上选出，见 8.5）。由于使用全部种子，玩过的游戏越多的用户，共玩的计算越耗时。
 - 改进前的方法（v0）为了比较，保留在 `app/api/static_recommend_v0.py`（`python -m eval.evaluate --rankers ... graph_v0`）。
 
 ## 8. 离线评估

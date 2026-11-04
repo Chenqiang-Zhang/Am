@@ -263,7 +263,11 @@ def test_path_scores_survive_a_json_round_trip_for_offline_tuning():
 # ---- the studio divisor ---------------------------------------------------------------------------
 
 
-def studio_contributions(path_scores, weights=None, studio_normalization="seed_weight"):
+# Every path on, as these tests were written for (the tuned defaults switch studio and popular off).
+ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
+
+
+def studio_contributions(path_scores, weights=ALL_PATHS, studio_normalization="seed_weight"):
     ranked = combine(path_scores, 10, weights, studio_normalization)
     return {item["appid"]: item["contributions"].get("studio") for item in ranked}
 
@@ -300,7 +304,7 @@ def test_zero_weight_switches_the_studio_path_off(studio_normalization):
 def test_studio_path_is_skipped_when_the_seeds_weigh_nothing(seed_weights):
     # No visible seeds, or only games played for 0 hours under ln(1 + hours).
     path_scores = synthetic(seed_weights=seed_weights, peer={"a": 2.0}, studio={"a": 1.0})
-    assert [item["contributions"] for item in combine(path_scores, 1)] == [{"peer": 1.0}]
+    assert [item["contributions"] for item in combine(path_scores, 1, ALL_PATHS)] == [{"peer": 1.0}]
 
 
 def test_max_normalization_keeps_the_previous_rule():
@@ -314,8 +318,8 @@ def test_max_normalization_differs_only_in_the_studio_path():
     path_scores = path_scores_of(FakeGraphReader(), "u1", {"30"})
     studio = path_scores["paths"]["studio"]
     highest = max(row["score"] for row in studio.values())
-    current = {item["appid"]: item["contributions"] for item in combine(path_scores, 20)}
-    for item in combine(path_scores, 20, studio_normalization="max"):
+    current = {item["appid"]: item["contributions"] for item in combine(path_scores, 20, ALL_PATHS)}
+    for item in combine(path_scores, 20, ALL_PATHS, studio_normalization="max"):
         previous = dict(item["contributions"])
         if "studio" in previous:
             assert previous.pop("studio") == 0.5 * studio[item["appid"]]["score"] / highest
