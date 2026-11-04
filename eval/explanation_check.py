@@ -1,9 +1,10 @@
 """Re-check the evidence behind static recommendations with independent read-only Cypher.
 
-Players are sampled as in run 0 of eval/evaluate.py (same --seed and --users give the same players and
-hidden games). Every evidence item of the current recommender, and every claim of the v0 reason
-text, becomes assertions that are tested against the graph with queries written apart from the
-recommender's own:
+Users: with --split, the explanations subset of the split (75 test users per stratum, eval/static_split.py),
+in the split's order, each with the game rep 0 hides; otherwise players sampled as in run 0 of
+eval/evaluate.py (same --seed and --users give the same players and hidden games). Every evidence item
+of the current recommender, and every claim of the v0 reason text, becomes assertions that are tested
+against the graph with queries written apart from the recommender's own:
 
 - seed_played: the player played the seed, it is not hidden, and it has the stated name
 - co_players: exactly `count` other players played both the seed and the game (peer)
@@ -16,18 +17,32 @@ recommender's own:
 - studio_titles: the studio has exactly `count` games (studio)
 - players: exactly `count` other players played the game (popular)
 
-Evidence validity = verified assertions / all assertions.
+A recommendation is valid when every assertion of every evidence item holds (one without evidence asserts
+nothing, so it is valid; their number is reported as without_evidence). Per version:
 
-    python -m eval.explanation_check --users 300 --seed 0 --output eval/results/explanations.json
+- recommendation validity (claim C5 of the plan): valid recommendations / recommendations, overall
+  and per stratum, with 95% percentile CIs from a bootstrap that resamples users within each stratum:
+  numpy default_rng(0) draws one B × n_s index matrix per stratum, strata in order (the same draws for
+  every version), B = 10,000, and a replicate's share is its valid recommendations / recommendations
+- headline validity per headline path (the path of the first evidence item): every assertion of the
+  evidence items of that path holds
+- per assertion, secondary: verified assertions / assertions. The versions make different numbers
+  and kinds of assertions per recommendation, so these shares do not compare across versions.
+
+    python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 \\
+        --output eval/results/static_explanations_v1.json
 """
 
 import argparse
-import json
+import logging
 import random
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol, Sequence
+
+import numpy as np
 
 from app.api.models import Evidence, Recommendation
 from app.api.static_recommend import recommend_games
@@ -36,9 +51,28 @@ from kg.ids import to_snake_case
 from utils.graph_reader import TAG_MAX_RANK, GraphReader
 
 from .rankers import PlayRecord, group_appids_by_player
+from .static_cache import log
+from .static_eval import Timer, file_sha256, git_state, graph_counts, relative, write_json
+from .static_split import STRATA, cases, load_split, stratum
+from .static_stats import LEVEL, REPLICATES, SEED, interval
 
 RECOMMENDERS: dict[str, Callable[..., list[Recommendation]]] = {"current": recommend_games, "v0": recommend_games_v0}
 FAILURES_KEPT = 200
+SUBSET = "explanations"
+PROGRESS_EVERY = 25
+BOOTSTRAP = {
+    "B": REPLICATES,
+    "seed": SEED,
+    "rng": "numpy.random.default_rng",
+    "level": LEVEL,
+    "interval": "percentile",
+    "resampling": "users within each stratum; one B x n_s index matrix per stratum, strata in order, the same "
+    "for every version",
+    "statistic": "valid recommendations / recommendations over the resampled users",
+}
+
+User = tuple[str, str, str]  # (player_id, stratum, hidden appid)
+Checked = tuple[Evidence, str, bool, Any]  # (evidence item, assertion, holds, what the graph says)
 
 
 class GraphFacts(Protocol):
@@ -189,33 +223,140 @@ def check_evidence(
     return results
 
 
+def check_recommendation(
+    facts: GraphFacts, player_id: str, visible: dict[str, str], recommendation: Recommendation
+) -> list[Checked]:
+    """Every assertion of every evidence item of one recommendation."""
+    return [
+        (item, assertion, holds, actual)
+        for item in recommendation.evidence or []
+        for assertion, holds, actual in check_evidence(facts, player_id, visible, recommendation.appid, item)
+    ]
+
+
 @dataclass
 class VersionReport:
     recommendations: int = 0
+    valid: int = 0  # recommendations whose every assertion holds
+    without_evidence: int = 0
     explained: int = 0  # recommendations whose headline evidence is not popularity
     headline_paths: Counter = field(default_factory=Counter)
+    headline_valid: Counter = field(default_factory=Counter)  # every assertion of the headline path holds
     assertions: Counter = field(default_factory=Counter)
     verified: Counter = field(default_factory=Counter)
+    by_user: dict[str, list[int]] = field(default_factory=dict)  # player_id -> [recommendations, valid]
+    seconds: Counter = field(default_factory=Counter)  # wall time spent recommending and checking
     failures: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def validity(self) -> float | None:
+        """Per assertion."""
         total = sum(self.assertions.values())
         return sum(self.verified.values()) / total if total else None
 
+    @property
+    def recommendation_validity(self) -> float | None:
+        return self.valid / self.recommendations if self.recommendations else None
+
+    def add_user(self, player_id: str, checked: Sequence[tuple[Recommendation, list[Checked]]]) -> None:
+        """One user's recommendations, each with its checked assertions."""
+        valid = sum(self.add(player_id, recommendation, results) for recommendation, results in checked)
+        self.by_user[player_id] = [len(checked), valid]
+
+    def add(self, player_id: str, recommendation: Recommendation, checked: list[Checked]) -> bool:
+        """Count one recommendation and its checked assertions; True when it is valid."""
+        evidence = recommendation.evidence or []
+        valid = all(holds for _, _, holds, _ in checked)
+        self.recommendations += 1
+        self.valid += valid
+        if evidence:
+            headline = evidence[0].path
+            self.headline_paths[headline] += 1
+            self.headline_valid[headline] += all(holds for item, _, holds, _ in checked if item.path == headline)
+            self.explained += headline != "popular"
+        else:
+            self.without_evidence += 1
+        for item, assertion, holds, actual in checked:
+            self.assertions[assertion] += 1
+            self.verified[assertion] += holds
+            if not holds and len(self.failures) < FAILURES_KEPT:
+                self.failures.append(
+                    {
+                        "player_id": player_id,
+                        "appid": recommendation.appid,
+                        "assertion": assertion,
+                        "evidence": item.model_dump(),
+                        "graph": actual,
+                        "explanation": recommendation.explanation,
+                    }
+                )
+        return valid
+
     def summary(self) -> dict[str, Any]:
+        assertions = sum(self.assertions.values())
         return {
             "recommendations": self.recommendations,
-            "evidence_validity": self.validity,
-            "assertions": sum(self.assertions.values()),
-            "verified": sum(self.verified.values()),
-            "by_assertion": {
-                kind: {"assertions": self.assertions[kind], "verified": self.verified[kind]}
-                for kind in sorted(self.assertions)
+            "valid": self.valid,
+            "recommendation_validity": self.recommendation_validity,
+            "without_evidence": self.without_evidence,
+            "headline_validity": {
+                path: {
+                    "recommendations": self.headline_paths[path],
+                    "valid": self.headline_valid[path],
+                    "validity": self.headline_valid[path] / self.headline_paths[path],
+                }
+                for path in sorted(self.headline_paths)
             },
             "explanation_coverage": self.explained / self.recommendations if self.recommendations else None,
-            "headline_paths": dict(sorted(self.headline_paths.items())),
+            "per_assertion": {
+                "validity": self.validity,
+                "assertions": assertions,
+                "verified": sum(self.verified.values()),
+                "per_recommendation": assertions / self.recommendations if self.recommendations else None,
+                "by_assertion": {
+                    kind: {"assertions": self.assertions[kind], "verified": self.verified[kind]}
+                    for kind in sorted(self.assertions)
+                },
+            },
         }
+
+
+def share_interval(drawn: np.ndarray, level: float) -> list[float] | None:
+    """Percentile interval of valid / recommendations over the replicates (rows [recommendations, valid]);
+    None when a replicate has no recommendation."""
+    if not np.all(drawn[:, 0] > 0):
+        return None
+    return list(interval(drawn[:, 1] / drawn[:, 0], level))
+
+
+def validity_statistics(
+    report: VersionReport,
+    strata: Mapping[str, str],
+    replicates: int = REPLICATES,
+    seed: int = SEED,
+    level: float = LEVEL,
+) -> dict[str, Any]:
+    """The CI of the recommendation validity and the validity per stratum with its CI, from the stratified
+    bootstrap of the module docstring. strata: player_id -> stratum of every user, in the users' order."""
+    rng = np.random.default_rng(seed)
+    total = np.zeros((replicates, 2), dtype=np.int64)
+    by_stratum = {}
+    for name in STRATA:
+        tallies = [report.by_user[player_id] for player_id, group in strata.items() if group == name]
+        counts = np.array(tallies, dtype=np.int64).reshape(len(tallies), 2)
+        drawn = np.zeros((replicates, 2), dtype=np.int64)
+        if tallies:
+            drawn = counts[rng.integers(0, len(tallies), size=(replicates, len(tallies)))].sum(axis=1)
+        total += drawn
+        recommendations, valid = (int(value) for value in counts.sum(axis=0))
+        by_stratum[name] = {
+            "users": len(tallies),
+            "recommendations": recommendations,
+            "valid": valid,
+            "recommendation_validity": valid / recommendations if recommendations else None,
+            "recommendation_validity_ci": share_interval(drawn, level),
+        }
+    return {"recommendation_validity_ci": share_interval(total, level), "by_stratum": by_stratum}
 
 
 def sample_players(play_records: list[PlayRecord], users: int, seed: int) -> tuple[list[str], dict[str, str]]:
@@ -230,6 +371,25 @@ def sample_players(play_records: list[PlayRecord], users: int, seed: int) -> tup
     return players, hidden
 
 
+def sampled_users(play_records: list[PlayRecord], users: int, seed: int) -> list[User]:
+    """sample_players' players and hidden games, with the stratum of the split's rule."""
+    players, hidden = sample_players(play_records, users, seed)
+    appids_by_player = group_appids_by_player(play_records)
+    return [(player_id, stratum(len(appids_by_player[player_id]) - 1), hidden[player_id]) for player_id in players]
+
+
+def split_users(split: Mapping[str, Any], limit_per_stratum: int | None = None) -> list[User]:
+    """The split's explanations subset at rep 0, in the split's order; the first `limit_per_stratum` of
+    each stratum when given."""
+    taken: Counter = Counter()
+    users = []
+    for player_id, name, _, appid in cases(split, SUBSET):
+        if limit_per_stratum is None or taken[name] < limit_per_stratum:
+            taken[name] += 1
+            users.append((player_id, name, appid))
+    return users
+
+
 def check_recommendations(
     reader: GraphReader,
     facts: GraphFacts,
@@ -238,84 +398,155 @@ def check_recommendations(
     k: int,
     versions: list[str],
     lang: str = "en",
+    progress: Callable[[int], None] | None = None,
 ) -> dict[str, VersionReport]:
+    """Each version's top k for every player, with hidden[player_id] hidden, checked; progress(done) after
+    every player."""
     reports = {version: VersionReport() for version in versions}
-    for player_id in players:
+    for done, player_id in enumerate(players, start=1):
         hidden_appids = frozenset({hidden[player_id]}) if player_id in hidden else frozenset()
         visible = {appid: name for appid, name in facts.played(player_id).items() if appid not in hidden_appids}
         for version in versions:
             report = reports[version]
-            for recommendation in RECOMMENDERS[version](reader, player_id, k, lang, hidden_appids):
-                evidence = recommendation.evidence or []
-                headline = evidence[0].path if evidence else "none"
-                report.recommendations += 1
-                report.headline_paths[headline] += 1
-                report.explained += headline not in ("popular", "none")
-                for item in evidence:
-                    for assertion, holds, actual in check_evidence(facts, player_id, visible, recommendation.appid, item):
-                        report.assertions[assertion] += 1
-                        report.verified[assertion] += holds
-                        if not holds and len(report.failures) < FAILURES_KEPT:
-                            report.failures.append(
-                                {
-                                    "player_id": player_id,
-                                    "appid": recommendation.appid,
-                                    "assertion": assertion,
-                                    "evidence": item.model_dump(),
-                                    "graph": actual,
-                                    "explanation": recommendation.explanation,
-                                }
-                            )
+            started = time.perf_counter()
+            recommendations = RECOMMENDERS[version](reader, player_id, k, lang, hidden_appids)
+            recommended = time.perf_counter()
+            checked = [(item, check_recommendation(facts, player_id, visible, item)) for item in recommendations]
+            report.seconds["recommend"] += recommended - started
+            report.seconds["check"] += time.perf_counter() - recommended
+            report.add_user(player_id, checked)
+        if progress:
+            progress(done)
     return reports
 
 
-def print_reports(reports: dict[str, VersionReport]) -> None:
-    for version, report in reports.items():
-        summary = report.summary()
-        validity = summary["evidence_validity"]
-        coverage = summary["explanation_coverage"]
-        print(f"{version}: {summary['recommendations']} recommendations")
-        print(
-            f"  evidence validity {summary['verified']}/{summary['assertions']}"
-            + (f" = {validity:.4f}" if validity is not None else "")
-        )
-        for kind, counts in summary["by_assertion"].items():
+def ratio(part: int, whole: int) -> str:
+    return f"{part}/{whole}" + (f" = {part / whole:.4f}" if whole else "")
+
+
+def share_text(row: Mapping[str, Any]) -> str:
+    ci = row.get("recommendation_validity_ci")
+    return ratio(row["valid"], row["recommendations"]) + (f" [{ci[0]:.4f}, {ci[1]:.4f}]" if ci else "")
+
+
+def print_results(versions: Mapping[str, Mapping[str, Any]]) -> None:
+    for version, result in versions.items():
+        print(f"{version}: {result['recommendations']} recommendations, {result['without_evidence']} without evidence")
+        print(f"  per recommendation {share_text(result)}")
+        for name, row in result["by_stratum"].items():
+            print(f"    {name}: {row['users']} users, {share_text(row)}")
+        headline = result["headline_validity"]
+        print("  headline " + ", ".join(f"{path} {share_text(row)}" for path, row in headline.items()))
+        per_assertion = result["per_assertion"]
+        print(f"  per assertion (secondary) {ratio(per_assertion['verified'], per_assertion['assertions'])}")
+        for kind, counts in per_assertion["by_assertion"].items():
             print(f"    {kind}: {counts['verified']}/{counts['assertions']}")
-        if coverage is not None:
-            print(f"  explanation coverage (headline is not popularity) {coverage:.4f}")
-        print("  headline paths " + ", ".join(f"{path}={count}" for path, count in summary["headline_paths"].items()))
+        if result["explanation_coverage"] is not None:
+            print(f"  explanation coverage (headline is not popularity) {result['explanation_coverage']:.4f}")
+
+
+def select_users(
+    reader: GraphReader, graph: Mapping[str, Any], args: argparse.Namespace
+) -> tuple[list[User], dict[str, Any]]:
+    """The users to check, and where they come from."""
+    if args.split is None:
+        users = sampled_users(reader.all_play_records(), args.users, args.seed)
+        return users, {"sample": "run 0 of eval/evaluate.py", "users": args.users, "seed": args.seed}
+    split = load_split(args.split)
+    expected = {name: split["graph"][name] for name in ("players", "games", "played")}
+    if {name: graph[name] for name in expected} != expected:
+        raise SystemExit(f"the graph {graph} is not the graph of the split {expected}")
+    source = {
+        "split": relative(args.split),
+        "split_sha256": file_sha256(args.split),
+        "subset": SUBSET,
+        "rep": 0,
+        "limit_per_stratum": args.limit_per_stratum,
+    }
+    return split_users(split, args.limit_per_stratum), source
+
+
+def user_rows(users: Sequence[User], reports: Mapping[str, VersionReport]) -> list[dict[str, Any]]:
+    """Each user's stratum and hidden game, and per version the recommendations and the valid ones."""
+    return [
+        {
+            "player_id": player_id,
+            "stratum": name,
+            "hidden": appid,
+            "recommendations": {version: report.by_user[player_id][0] for version, report in reports.items()},
+            "valid": {version: report.by_user[player_id][1] for version, report in reports.items()},
+        }
+        for player_id, name, appid in users
+    ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Re-check static recommendation evidence against the graph")
     parser.add_argument("--graph", default="ucsd")
-    parser.add_argument("--users", type=int, default=300)
+    parser.add_argument("--split", type=Path, help="check the users of the split's explanations subset, rep 0")
+    parser.add_argument("--limit-per-stratum", type=int, help="with --split: only the first N users of each stratum")
+    parser.add_argument("--users", type=int, default=300, help="without --split: sampled as in eval/evaluate.py")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--k", type=int, default=10)
+    parser.add_argument("--lang", choices=("en", "ja"), default="en")
     parser.add_argument("--versions", nargs="+", choices=sorted(RECOMMENDERS), default=["current", "v0"])
-    parser.add_argument("--output", type=Path, help="write the summary and the first failures as JSON")
+    parser.add_argument("--output", type=Path, help="write the results and the first failures as JSON")
     args = parser.parse_args()
+    if args.limit_per_stratum is not None and args.split is None:
+        parser.error("--limit-per-stratum needs --split")
+    logging.getLogger("neo4j").setLevel(logging.ERROR)
 
+    timer, git = Timer(), git_state()
     reader = GraphReader(args.graph)
     try:
-        players, hidden = sample_players(reader.all_play_records(), args.users, args.seed)
-        reports = check_recommendations(reader, CypherFacts(reader), players, hidden, args.k, args.versions)
+        graph = {"name": args.graph, **graph_counts(reader)}
+        users, source = select_users(reader, graph, args)
+        if not users:
+            raise SystemExit("no users to check")
+        timer.mark("users")
+        players = [player_id for player_id, _, _ in users]
+
+        def progress(done: int) -> None:
+            if done % PROGRESS_EVERY == 0 or done == len(players):
+                log(f"checked {done}/{len(players)} users")
+
+        hidden = {player_id: appid for player_id, _, appid in users}
+        facts = CypherFacts(reader)
+        reports = check_recommendations(reader, facts, players, hidden, args.k, args.versions, args.lang, progress)
+        timer.mark("check")
     finally:
         reader.close()
-    print(f"graph={args.graph} users={len(players)} seed={args.seed} k={args.k}")
-    print_reports(reports)
+    strata = {player_id: name for player_id, name, _ in users}
+    versions = {
+        version: report.summary() | validity_statistics(report, strata) | {"failures": report.failures}
+        for version, report in reports.items()
+    }
+    timer.mark("statistics")
+    wall = timer.summary() | {
+        "per_user": round(timer.seconds["check"] / len(users), 2),
+        "versions": {
+            version: {part: round(seconds, 1) for part, seconds in sorted(report.seconds.items())}
+            for version, report in reports.items()
+        },
+    }
+    sizes = Counter(strata.values())
+    per_stratum = ", ".join(f"{name}: {sizes[name]}" for name in STRATA)
+    print(f"graph={args.graph} users={len(users)} ({per_stratum}) k={args.k} lang={args.lang}")
+    print_results(versions)
+    print(f"{wall['check']} s checking, {wall['per_user']} s per user")
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "graph": args.graph,
-            "users": len(players),
-            "seed": args.seed,
+        result = {
+            "graph": graph,
+            "users_from": source,
             "k": args.k,
-            "versions": {
-                version: dict(report.summary(), failures=report.failures) for version, report in reports.items()
-            },
+            "lang": args.lang,
+            "bootstrap": BOOTSTRAP,
+            "git": git,
+            "versions": versions,
+            "users": user_rows(users, reports),
+            "wall_seconds": wall,
         }
-        args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        write_json(args.output, result)
 
 
 if __name__ == "__main__":

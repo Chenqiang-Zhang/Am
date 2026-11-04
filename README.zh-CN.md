@@ -476,5 +476,5 @@ python -m eval.static_eval report --lang zh                                     
 
 - `verify --stage <validation|test|smoke> --schemes <…>` 检查：用 `combine()` 对保存的路径分数排出的前 50 名与 `recommend_games()` 相同，快速的名次计算与 `combine()` 相同。`--stage smoke` 为验证用户中键最小的 30 人，只用于确认能否运行。
 - 结果的 JSON 记录 git 的提交、计划和划分的 sha256、图的数量和连接的 sha256、Python 的版本以及各阶段的耗时。`combine()` 和快速名次计算按从前到后的顺序累加 float（Python 3.12 起的 `sum()` 会补偿误差，最后一位可能不同），因此在 Python 3.11 和 3.13 上结果相同。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
-- C5 用的 `eval/results/static_explanations_v1.json`，由 `eval/explanation_check.py` 在解释用户上运行生成（从划分中取用户的选项尚待加入）。
+- C5 用的 `eval/results/static_explanations_v1.json`，在提交选定的配置之后，用 `python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` 生成（在解释用户的 rep 0 上核对现行推荐和 v0）。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` 保留为快速评估：每次重新选择用户和被隐藏的游戏，重复 `--runs` 次（默认 5），各指标以 平均 ± 标准差 显示（不给出差的置信区间）。静态推荐报告的数字取 `eval/static_eval.py` 的结果。

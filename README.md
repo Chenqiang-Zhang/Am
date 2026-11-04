@@ -477,5 +477,5 @@ python -m eval.static_eval report --lang ja                                     
 
 - `verify --stage <validation|test|smoke> --schemes <…>` は、保存した経路スコアを `combine()` で並べた上位 50 件が `recommend_games()` と同じか、速い順位の計算が `combine()` と同じかを確かめる。`--stage smoke` は、検証用のユーザのうちキーの小さい 30 人で、実行の確認だけに使う。
 - 結果の JSON には、git のコミット、計画と分割の sha256、グラフの数とつながりの sha256、Python の版、段階ごとの時間を記録する。`combine()` と速い順位の計算は float を前から順に足す（Python 3.12 からの `sum()` は誤差を補正して最後の桁が変わることがあるため）ので、Python 3.11 と 3.13 で同じ結果になる。`tune` と `test` は、Item-KNN の float32 の和の順序を固定するため、`PYTHONHASHSEED=0` で自分を起動し直す。
-- C5 の `eval/results/static_explanations_v1.json` は、`eval/explanation_check.py` を説明用のユーザで実行して作る（分割からユーザを取るオプションは、これから足す）。
+- C5 の `eval/results/static_explanations_v1.json` は、選んだ設定をコミットした後、`python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` で作る（説明用のユーザの rep 0 で、現行の推薦と v0 を確かめる）。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` は、手早い評価として残す。毎回ユーザと隠すゲームを選び直して `--runs` 回（既定 5）繰り返し、各指標を 平均 ± 標準偏差 で表示する（差の信頼区間は出さない）。静的なおすすめについて報告する数字は、`eval/static_eval.py` のものとする。
