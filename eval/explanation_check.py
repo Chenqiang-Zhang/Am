@@ -40,7 +40,7 @@ code had uncommitted changes). `test` and `report` of eval/static_eval.py give C
 result whose split, k, code defaults and links are the test run's, that covers the whole explanations
 subset at rep 0 and that was made from code without uncommitted changes; the commit is recorded but not
 compared. A user whose queries fail with a transient error (the database may be shared) is retried as a
-whole.
+whole and counted once; any other error ends the run.
 
     python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 \\
         --output eval/results/static_explanations_v1.json
