@@ -17,7 +17,8 @@ export type StudioRole = "developer" | "publisher";
  * - studio: seed -[seed_role]-> studio `bridge_id` <-[candidate_role]- this game
  *   (`count` = number of games of the studio)
  * - popular: `count` other players -PLAYED-> this game
- * `share` is this path's part of the recommendation's score.
+ * `share` is this instance's part of the recommendation's score (0 when the
+ * score is 0).
  */
 export interface Evidence {
   path: EvidencePath;
@@ -45,9 +46,15 @@ export interface Recommendation {
   score: number;
   reasons: Reason[];
   explanation: string;
-  /** Static recommendations only (null from /chat): evidence, headline first. */
+  /**
+   * Static recommendations for a player only (null from /chat and from /recommend
+   * without a player): the path instances behind the score, headline first.
+   */
   evidence?: Evidence[] | null;
-  /** Static recommendations only: the score split by path; the values add up to `score`. */
+  /**
+   * Static recommendations for a player only, as `evidence`: the score split by
+   * path; the values add up to `score`.
+   */
   contributions?: Partial<Record<EvidencePath, number>> | null;
 }
 
