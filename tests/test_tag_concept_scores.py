@@ -7,6 +7,7 @@ import math
 
 import pytest
 
+from app.api.static_recommend import SeedScheme, collect_path_scores
 from tests.fake_graph import FakeGraphReader
 from tests.recording_reader import RecordingGraphReader, TagConceptReader
 from utils.graph_reader import TAG_CANDIDATES, TAG_CONCEPTS
@@ -124,6 +125,38 @@ def test_a_concept_table_passed_in_is_not_read_again():
     [row] = reader.tag_concept_scores(SEEDS, [], 30, 3, [concept_row("a", 2.0)])
     assert reader.statements == [TAG_CANDIDATES]
     assert (row["appid"], row["score"], row["matched"]) == ("10", 2.0, ["a"])
+
+
+class TagPathReader(TagConceptReader):
+    """Records and answers the tag statements as TagConceptReader; the other path queries come from the fake."""
+
+    def played_games(self, player_id, hide_appids):
+        return self.graph.played_games(player_id, hide_appids)
+
+    def co_play_scores(self, *args):
+        return self.graph.co_play_scores(*args)
+
+    def studio_scores(self, *args):
+        return self.graph.studio_scores(*args)
+
+    def game_popularity(self, *args):
+        return self.graph.game_popularity(*args)
+
+
+@pytest.mark.parametrize(
+    "scheme", [SeedScheme(), SeedScheme(weighting="uniform", peer_limit=None)], ids=["log_hours", "default"]
+)
+@pytest.mark.parametrize(
+    "player_id,hidden,statements",
+    [("u1", ["30"], [TAG_CONCEPTS, TAG_CANDIDATES]), ("p8", [], [TAG_CONCEPTS, TAG_CANDIDATES]), ("p7", ["40"], [])],
+)
+def test_collect_path_scores_reads_the_concept_table_once(scheme, player_id, hidden, statements):
+    """collect_path_scores passes the table it read for the tag reason on to tag_concept_scores, so the tag
+    path runs TAG_CONCEPTS and TAG_CANDIDATES once each (none without seeds: p7 hides its only game)."""
+    reader = TagPathReader(FakeGraphReader())
+    path_scores = collect_path_scores(reader, player_id, frozenset(hidden), scheme)
+    assert reader.statements == statements
+    assert path_scores == collect_path_scores(FakeGraphReader(), player_id, frozenset(hidden), scheme)
 
 
 def test_a_candidate_is_built_from_the_concept_rows_it_matched():
