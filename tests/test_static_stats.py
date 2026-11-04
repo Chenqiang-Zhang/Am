@@ -251,6 +251,22 @@ def test_bootstrap_p_values():
     assert bootstrap_p_value(np.zeros(100)) == 1.0
     assert bootstrap_p_value(np.full(99, 0.5)) == 2 / 100
     assert bootstrap_p_value(np.array([-1.0] * 30 + [1.0] * 69)) == pytest.approx(2 * 31 / 100)
+    assert bootstrap_p_value(np.array([5.6e-17] * 60 + [-1.1e-16] * 39)) == 1.0
+    assert bootstrap_p_value(np.full(99, 1e-9)) == 2 / 100
+
+
+def test_a_difference_that_is_zero_on_paper_has_p_value_1():
+    """a beats b by 0.5 in stratum 1 and loses by 0.5 in stratum 2-3, which weigh the same, and the other
+    strata agree: every replicate's difference is 0 on paper, but each column's strata are summed on
+    their own, which leaves float noise of one sign in most replicates."""
+    b = {"1": [0.5, 0.5, 0.5], "2-3": [0.75, 0.75], "4-10": [0.5, 0.0], "11+": [0.0, 1.0, 0.25]}
+    a = dict(b, **{"1": [1.0, 1.0, 1.0], "2-3": [0.25, 0.25]})
+    values = {name: np.array([a[name], b[name]]) for name in STRATA}
+    pool = {"1": 7, "2-3": 7, "4-10": 11, "11+": 1}
+    bootstrap = PairedBootstrap([("a", "HR", 10), ("b", "HR", 10)], values, pool, replicates=99, seed=0)
+    differences = bootstrap.distribution(("a", "HR", 10), "all") - bootstrap.distribution(("b", "HR", 10), "all")
+    assert 0 < np.count_nonzero(differences >= 0) < 5 and np.abs(differences).max() < 1e-15
+    assert bootstrap.contrast(("a", "HR", 10), ("b", "HR", 10), "all")["p"] == 1.0
 
 
 def test_holm_adjusts_step_down():

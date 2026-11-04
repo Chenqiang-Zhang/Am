@@ -31,6 +31,9 @@ SEED = 0
 LEVEL = 0.95
 # Indices plus gathered values per chunk of bootstrap replicates (8 bytes each), at least one replicate.
 CHUNK_ELEMENTS = 1 << 22
+# A replicate difference this close to the null is the null: each column sums its strata on its own, so a
+# difference that is exactly 0 on paper can come out as about ±1e-16.
+P_VALUE_TOLERANCE = 1e-12
 
 Rank = int | None
 Column = tuple[str, str, int]  # (method, metric, K)
@@ -101,9 +104,10 @@ def interval(replicates: np.ndarray, level: float = LEVEL) -> tuple[float, float
 
 def bootstrap_p_value(differences: np.ndarray, null: float = 0.0) -> float:
     """Two-sided bootstrap p-value of 'difference = null': twice the smaller share of replicates on one
-    side of null (null itself counts on both sides), with the +1 of a Monte Carlo test."""
-    below = int(np.count_nonzero(differences <= null))
-    above = int(np.count_nonzero(differences >= null))
+    side of null (null itself, within P_VALUE_TOLERANCE, counts on both sides), with the +1 of a Monte
+    Carlo test."""
+    below = int(np.count_nonzero(differences <= null + P_VALUE_TOLERANCE))
+    above = int(np.count_nonzero(differences >= null - P_VALUE_TOLERANCE))
     return min(1.0, 2 * (min(below, above) + 1) / (len(differences) + 1))
 
 
