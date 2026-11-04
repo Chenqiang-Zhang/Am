@@ -9,6 +9,7 @@ from app.api.models import Evidence, Reason, Recommendation
 from app.api.static_recommend import (
     EVIDENCE_PER_PATH,
     PATHS,
+    SeedScheme,
     build_evidence,
     collect_path_scores,
     combine,
@@ -21,9 +22,11 @@ from app.api.static_recommend_v0 import recommend_games_v0
 from tests.fake_graph import GAMES, FakeGraphReader
 from utils.graph_reader import tag_candidate
 
-U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}))
-U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}))
-U1_RANKED = {item["appid"]: item for item in combine(U1_PATH_SCORES, len(GAMES))}
+# Every path on and ln(1 + hours) seed weights, as the fixture was written for, whatever the defaults.
+ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
+U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}), weights=ALL_PATHS, scheme=SeedScheme())
+U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}), SeedScheme())
+U1_RANKED = {item["appid"]: item for item in combine(U1_PATH_SCORES, len(GAMES), ALL_PATHS)}
 
 
 def test_every_recommendation_carries_evidence_that_explains_its_score():
@@ -202,7 +205,8 @@ def test_a_tag_instance_names_the_anchor_if_the_anchor_has_the_tag():
 def test_generic_tags_stay_in_the_evidence(monkeypatch):
     monkeypatch.setattr(static_recommend, "GENERIC_TAG_GAMES", 6)  # only Action is on 6 games
     assert generic_tags(U1_PATH_SCORES) == {"action"}
-    items = {item.appid: item for item in recommend_games(FakeGraphReader(), "u1", 10, "en", frozenset({"30"}))}
+    recommended = recommend_games(FakeGraphReader(), "u1", 10, "en", frozenset({"30"}), ALL_PATHS, SeedScheme())
+    items = {item.appid: item for item in recommended}
     assert items["90"].explanation == "Shares Indie with Bravo"
     assert [item.bridge_id for item in items["90"].evidence if item.path == "tag"] == ["action", "shooter", "indie"]
     assert items["110"].explanation == "Shares Action with Alpha"  # Kilo(110) has no other tag
