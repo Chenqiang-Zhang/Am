@@ -7,6 +7,7 @@ import math
 import os
 import random
 import shutil
+from pathlib import Path
 
 import pytest
 from neo4j.exceptions import TransientError
@@ -472,6 +473,29 @@ def test_the_test_stage_refuses_to_run_unless_the_tuned_config_is_the_code_defau
     assert static_eval.check_frozen(setup, refused[0], "test")
     with pytest.raises(SystemExit):
         static_eval.check_frozen(setup, tmp_path / "ok.json", "test")
+
+
+def test_the_test_command_needs_the_tuning_result_and_the_defaults_committed(setup, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYTHONHASHSEED", "0")
+    tuning = tmp_path / "tuning.json"
+    tuning.write_text("{}")
+    uncommitted = set()
+    monkeypatch.setattr(
+        static_eval, "committed_file", lambda path: {"commit": None if Path(path).name in uncommitted else "0" * 40}
+    )
+    runs = []
+    monkeypatch.setattr(static_eval, "run_test", lambda *args: runs.append(args))
+    arguments = ["test", "--plan", str(setup.plan_path), "--tuning", str(tuning), "--cache-dir", str(setup.cache_root)]
+    for name in ("plan.json", "tuning.json", "static_recommend.py"):
+        uncommitted = {name}
+        with pytest.raises(SystemExit, match=f"commit .*{name}"):
+            static_eval.main(arguments)
+        static_eval.main([*arguments, "--stage", "smoke"])
+    uncommitted = set()
+    static_eval.main(arguments)
+    assert [args[1] for args in runs] == ["smoke"] * 3 + ["test"]
+    with pytest.raises(SystemExit, match="does not exist"):
+        static_eval.main([*arguments[:3], "--tuning", str(tmp_path / "none.json"), *arguments[5:]])
 
 
 # ---- the whole run ---------------------------------------------------------------------------------

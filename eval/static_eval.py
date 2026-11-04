@@ -19,7 +19,8 @@
 
 Stages: validation and test as in the split, and smoke: the 30 validation users with the smallest user
 keys, whose results go to the cache directory. Item-KNN sums float32 in set order, so tune and test
-restart themselves with PYTHONHASHSEED=0. Tune and test of the real stages need the plan committed.
+restart themselves with PYTHONHASHSEED=0. Tune and test of the real stages need the plan committed, and
+test also the tuning result and app/api/static_recommend.py, whose defaults it checks.
 """
 
 import argparse
@@ -103,6 +104,7 @@ from .static_stats import contrast_rows, estimate_rows, paired_bootstrap
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PLAN = ROOT / "eval" / "results" / "static_plan_v1.json"
 DEFAULT_CACHE = ROOT / "data" / "static_eval_cache"
+DEFAULTS_FILE = Path(static_recommend.__file__).resolve()
 TOP = 10
 RESULT_FILES = ("tuning", "test", "explanations")
 GRAPH_COUNTS = (
@@ -554,7 +556,7 @@ def run_test(setup: Setup, stage: str, tuning_path: Path, output_dir: Path, expl
         "stage": stage,
         "plan": committed_file(setup.plan_path),
         "split": {"path": relative(setup.split_path), "sha256": setup.split_sha256},
-        "tuning": {"path": relative(tuning_path), "sha256": file_sha256(tuning_path), "chosen": tuning["chosen"]},
+        "tuning": dict(committed_file(tuning_path), chosen=tuning["chosen"]),
         "code_defaults": code_defaults(),
         "git": git_state(),
         "environment": environment(),
@@ -636,9 +638,12 @@ def require_hash_seed(argv: Sequence[str]) -> None:
         os.execve(sys.executable, [sys.executable, "-m", "eval.static_eval", *argv], environment)
 
 
-def require_committed(plan_path: Path) -> None:
-    if committed_file(plan_path)["commit"] is None:
-        raise SystemExit(f"commit {plan_path} before tune or test on the real stages")
+def require_committed(paths: Sequence[Path], before: str) -> None:
+    for path in paths:
+        if not Path(path).exists():
+            raise SystemExit(f"{path} does not exist")
+        if committed_file(path)["commit"] is None:
+            raise SystemExit(f"commit {path} before {before}")
 
 
 def output_path(setup: Setup, stage: str, output: str) -> Path:
@@ -695,7 +700,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command in ("tune", "test"):
         require_hash_seed(arguments)
         if args.stage != "smoke":
-            require_committed(args.plan)
+            require_committed([args.plan], "tune or test on the real stages")
     setup = Setup.load(args.plan, args.cache_dir, args.workers, functools.partial(GraphReader, args.graph))
     names = args.schemes.split(",") if getattr(args, "schemes", None) else None
     if args.command == "collect":
@@ -710,6 +715,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         run_tune(setup, args.stage, args.output or output_path(setup, args.stage, "tuning"), names)
     else:
         tuning = args.tuning or output_path(setup, args.stage, "tuning")
+        if args.stage != "smoke":
+            require_committed([tuning, DEFAULTS_FILE], "the test run")
         output_dir = args.output_dir or output_path(setup, args.stage, "test").parent
         run_test(setup, args.stage, tuning, output_dir, ROOT / setup.plan["outputs"]["explanations"])
 
