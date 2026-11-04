@@ -3,23 +3,39 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api import static_recommend
 from app.api.main import app, get_graph_reader
-from app.api.models import Evidence, Recommendation
-from app.api.static_recommend import PATHS, describe_evidence, recommend_games
+from app.api.models import Evidence, Reason, Recommendation
+from app.api.static_recommend import (
+    EVIDENCE_PER_PATH,
+    PATHS,
+    build_evidence,
+    collect_path_scores,
+    combine,
+    describe_evidence,
+    generic_tags,
+    recommend_games,
+    tag_anchor,
+)
 from app.api.static_recommend_v0 import recommend_games_v0
 from tests.fake_graph import GAMES, FakeGraphReader
+from utils.graph_reader import tag_candidate
 
 U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}))
+U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}))
+U1_RANKED = {item["appid"]: item for item in combine(U1_PATH_SCORES, len(GAMES))}
 
 
 def test_every_recommendation_carries_evidence_that_explains_its_score():
     assert len(U1) == len(GAMES) - 3  # every game u1 has not played
+    generic = generic_tags(U1_PATH_SCORES)
     for item in U1:
         assert item.evidence, item.appid
         assert item.contributions is not None
         assert item.score == pytest.approx(sum(item.contributions.values()))
         assert sum(evidence.share for evidence in item.evidence) <= 1 + 1e-9
-        assert describe_evidence(item.evidence, "en") == (item.reasons, item.explanation)
+        anchor = tag_anchor(U1_PATH_SCORES, U1_RANKED[item.appid])
+        assert describe_evidence(item.evidence, "en", anchor, generic) == (item.reasons, item.explanation)
 
 
 def test_shares_add_up_when_every_path_instance_is_listed():
@@ -55,18 +71,141 @@ def tag(seed, name):
     return Evidence(path="tag", seed_appid=seed.lower(), seed_name=seed, bridge_id=name.lower(), bridge_name=name, share=0.1)
 
 
-def test_each_tag_is_stated_with_its_own_seed():
+def test_the_tag_sentence_states_the_tags_of_one_seed():
     evidence = [tag("Alpha", "Action"), tag("Bravo", "Indie"), tag("Alpha", "Shooter")]
-    reasons, text = describe_evidence(evidence, "en")
-    assert text == "Shares Action, Shooter with Alpha; Indie with Bravo"
-    assert [(reason.kind, reason.label) for reason in reasons] == [
-        ("game", "Alpha"),
+    reasons, text = describe_evidence(evidence, "en", "bravo")
+    assert text == "Shares Indie with Bravo"
+    assert [(reason.kind, reason.label) for reason in reasons] == [("game", "Bravo"), ("tag", "Indie")]
+    assert describe_evidence(evidence, "ja", "bravo")[1] == "『Bravo』と共通するタグ: Indie"
+    # No instance names the anchor (or there is none): the seed of the first instance.
+    for anchor in ("charlie", None):
+        reasons, text = describe_evidence(evidence, "en", anchor)
+        assert text == "Shares Action, Shooter with Alpha"
+        assert [(reason.kind, reason.label) for reason in reasons] == [
+            ("game", "Alpha"),
+            ("tag", "Action"),
+            ("tag", "Shooter"),
+        ]
+    assert describe_evidence(evidence, "ja")[1] == "『Alpha』と共通するタグ: Action、Shooter"
+
+
+def test_generic_tags_are_stated_only_when_the_seed_shares_no_other():
+    generic = {"multiplayer", "singleplayer"}
+    evidence = [tag("Alpha", "Multiplayer"), tag("Alpha", "Shooter"), tag("Alpha", "Singleplayer")]
+    reasons, text = describe_evidence(evidence, "en", "alpha", generic)
+    assert text == "Shares Shooter with Alpha"
+    assert [(reason.kind, reason.label) for reason in reasons] == [("game", "Alpha"), ("tag", "Shooter")]
+    only_generic = [evidence[0], evidence[2], tag("Bravo", "Shooter")]
+    assert describe_evidence(only_generic, "en", "alpha", generic)[1] == "Shares Multiplayer, Singleplayer with Alpha"
+
+
+def test_seeds_with_the_same_name_are_told_apart_by_appid():
+    # The real graph has two games named Dark Matter (251410 and 345130).
+    first = Evidence(path="tag", seed_appid="251410", seed_name="Dark Matter", bridge_id="action", bridge_name="Action")
+    other = first.model_copy(update={"seed_appid": "345130", "bridge_id": "puzzle", "bridge_name": "Puzzle"})
+    evidence = [first, other, first.model_copy(update={"bridge_id": "indie", "bridge_name": "Indie"})]
+    assert describe_evidence(evidence, "en", "345130") == (
+        [Reason(kind="game", label="Dark Matter"), Reason(kind="tag", label="Puzzle")],
+        "Shares Puzzle with Dark Matter",
+    )
+    assert describe_evidence(evidence, "en")[1] == "Shares Action, Indie with Dark Matter"
+
+
+def concept(name, weight, *holders):
+    """A row of the concept table; holders are (appid, w_s), heaviest first."""
+    held = [{"appid": appid, "name": f"Seed {appid}", "weight": seed_weight} for appid, seed_weight in holders]
+    return {
+        "concept": name,
+        "weight": weight,
+        "seed_appid": held[0]["appid"],
+        "seed_name": held[0]["name"],
+        "name": name.upper(),
+        "name_ja": None,
+        "tag_ids": [f"usertag:{name}"],
+        "holders": held,
+        "document_frequency": 10,
+    }
+
+
+def tag_only(*concepts):
+    """PathScores where game g matched all the concepts and only the tag path scored, and g as ranked."""
+    row = tag_candidate("g", len(concepts), list(concepts), EVIDENCE_PER_PATH)
+    path_scores = {
+        "player_id": "x",
+        "seeds": [],
+        "paths": {"tag": {"g": row}},
+        "tag_concepts": {item["concept"]: item for item in concepts},
+    }
+    [ranked] = combine(path_scores, 1, {"tag": 1.0})
+    return path_scores, ranked
+
+
+def test_the_anchor_holds_the_largest_part_of_the_tag_score():
+    # Seed 1 has the strongest concept a and is the heaviest seed with b, but seed 2's b, c and d add up to
+    # more. d is not among the 3 evidence instances and still counts: without it seed 1 is the anchor.
+    concepts = [
+        concept("a", 3.0, ("1", 3.0)),
+        concept("b", 2.0, ("1", 3.0), ("2", 1.0)),
+        concept("c", 2.0, ("2", 1.0)),
+        concept("d", 2.0, ("2", 1.0)),
+    ]
+    path_scores, ranked = tag_only(*concepts)
+    assert tag_anchor(path_scores, ranked) == "2"
+    evidence = build_evidence(path_scores, ranked, "en", "2")
+    assert [(item.bridge_id, item.seed_appid, item.seed_name) for item in evidence] == [
+        ("a", "1", "Seed 1"),
+        ("b", "2", "Seed 2"),
+        ("c", "2", "Seed 2"),
+    ]
+    assert [item.share for item in evidence] == [item.share for item in build_evidence(path_scores, ranked, "en")]
+    assert describe_evidence(evidence, "en", "2")[1] == "Shares B, C with Seed 2"
+    assert tag_anchor(*tag_only(*concepts[:3])) == "1"
+
+
+@pytest.mark.parametrize("weight_20,weight_30,anchor", [(2.0, 1.0, "20"), (1.0, 2.0, "30"), (1.0, 1.0, "20")])
+def test_anchor_ties_go_to_the_larger_seed_weight_then_the_smaller_appid(weight_20, weight_30, anchor):
+    # a and b weigh the same, so each seed holds half of the tag score; seed 30's concept comes first.
+    path_scores, ranked = tag_only(concept("a", 2.0, ("30", weight_30)), concept("b", 2.0, ("20", weight_20)))
+    assert tag_anchor(path_scores, ranked) == anchor
+
+
+def test_without_an_instance_of_the_anchor_the_first_instance_names_the_seed():
+    # Seed 2 holds five weaker concepts that add up to more than seed 1's three, which fill the evidence.
+    strong = [concept(name, 3.0, ("1", 3.0)) for name in "abc"]
+    weak = [concept(name, 2.0, ("2", 1.0)) for name in "vwxyz"]
+    path_scores, ranked = tag_only(*strong, *weak)
+    assert tag_anchor(path_scores, ranked) == "2"
+    evidence = build_evidence(path_scores, ranked, "en", "2")
+    assert {item.seed_appid for item in evidence} == {"1"}
+    assert describe_evidence(evidence, "en", "2")[1] == "Shares A, B, C with Seed 1"
+
+
+def test_a_tag_instance_names_the_anchor_if_the_anchor_has_the_tag():
+    # India(90) for u1: Alpha (100 h) is the heaviest seed with Action and Shooter, but Bravo's Action,
+    # Indie and Puzzle make up more of India's tag score. Puzzle is not in the evidence, but without it
+    # Alpha would be the anchor. Shooter, which Bravo does not have, keeps Alpha.
+    india = next(item for item in U1 if item.appid == "90")
+    assert tag_anchor(U1_PATH_SCORES, U1_RANKED["90"]) == "20"
+    assert [(item.bridge_id, item.seed_name) for item in india.evidence if item.path == "tag"] == [
+        ("action", "Bravo"),
+        ("shooter", "Alpha"),
+        ("indie", "Bravo"),
+    ]
+    assert india.explanation == "Shares Action, Indie with Bravo"
+    assert [(reason.kind, reason.label) for reason in india.reasons] == [
         ("game", "Bravo"),
         ("tag", "Action"),
         ("tag", "Indie"),
-        ("tag", "Shooter"),
     ]
-    assert describe_evidence(evidence, "ja")[1] == "『Alpha』と共通するタグ: Action、Shooter／『Bravo』と共通するタグ: Indie"
+
+
+def test_generic_tags_stay_in_the_evidence(monkeypatch):
+    monkeypatch.setattr(static_recommend, "GENERIC_TAG_GAMES", 6)  # only Action is on 6 games
+    assert generic_tags(U1_PATH_SCORES) == {"action"}
+    items = {item.appid: item for item in recommend_games(FakeGraphReader(), "u1", 10, "en", frozenset({"30"}))}
+    assert items["90"].explanation == "Shares Indie with Bravo"
+    assert [item.bridge_id for item in items["90"].evidence if item.path == "tag"] == ["action", "shooter", "indie"]
+    assert items["110"].explanation == "Shares Action with Alpha"  # Kilo(110) has no other tag
 
 
 @pytest.mark.parametrize(

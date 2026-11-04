@@ -19,9 +19,9 @@ evidence: the path instances that produced the score.
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal, Mapping, TypedDict
+from typing import Any, Callable, Collection, Iterable, Literal, Mapping, TypedDict
 
-from utils.graph_reader import GraphReader, SeedGame
+from utils.graph_reader import GraphReader, SeedGame, TagConcept, tag_term
 
 from .models import Evidence, EvidencePath, Lang, Reason, Recommendation
 from .presenters import build_recommendation, pick_language
@@ -30,6 +30,8 @@ TAG_PREFERENCE_LIMIT = 30
 REASON_TAG_LIMIT = 3
 PEER_SEED_GAMES = 10
 EVIDENCE_PER_PATH = REASON_TAG_LIMIT
+# Tags on at least this many games (Multiplayer, Singleplayer, Action, ...) say little in a reason.
+GENERIC_TAG_GAMES = 1000
 # The order paths are added up in, and the tie order when choosing the headline evidence.
 PATHS: tuple[EvidencePath, ...] = ("peer", "tag", "studio", "popular")
 # λ per path, all tuned on the validation users later (M5). λ_studio scales a share of the player's
@@ -88,6 +90,9 @@ class PathScores(TypedDict):
     seeds: list[Seed]
     # path -> appid -> query row: its "score" (before normalisation and λ) and its path instances
     paths: dict[str, dict[str, dict[str, Any]]]
+    # The tag path's concept table by concept, with the seeds that hold each concept; a tag row's "matched"
+    # lists the concepts of the table that its game has.
+    tag_concepts: dict[str, TagConcept]
 
 
 class RankedGame(TypedDict):
@@ -115,10 +120,12 @@ def recommend_games(
     path_scores = collect_path_scores(reader, player_id, hidden_appids, scheme)
     ranked = combine(path_scores, limit, weights)
     games = {game["appid"]: game for game in reader.games_by_appids([item["appid"] for item in ranked])}
+    generic = generic_tags(path_scores)
     recommendations = []
     for item in ranked:
-        evidence = build_evidence(path_scores, item, lang)
-        reasons, explanation = describe_evidence(evidence, lang)
+        anchor = tag_anchor(path_scores, item)
+        evidence = build_evidence(path_scores, item, lang, anchor)
+        reasons, explanation = describe_evidence(evidence, lang, anchor, generic)
         recommendations.append(
             build_recommendation(
                 games[item["appid"]],
@@ -152,10 +159,14 @@ def collect_path_scores(
     seed_games = [SeedGame(appid=seed["appid"], weight=seed["weight"]) for seed in seeds]
     peer_seed_games = seed_games if scheme.peer_limit is None else seed_games[: scheme.peer_limit]
     rows_by_path: dict[str, list[Any]] = {"peer": [], "tag": [], "studio": []}
+    concepts: list[TagConcept] = []
     if seeds:
+        concepts = reader.tag_concepts(seed_games, TAG_PREFERENCE_LIMIT)
         rows_by_path = {
             "peer": reader.co_play_scores(player_id, peer_seed_games, played_appids, EVIDENCE_PER_PATH),
-            "tag": reader.tag_concept_scores(seed_games, played_appids, TAG_PREFERENCE_LIMIT, EVIDENCE_PER_PATH),
+            "tag": reader.tag_concept_scores(
+                seed_games, played_appids, TAG_PREFERENCE_LIMIT, EVIDENCE_PER_PATH, concepts
+            ),
             "studio": reader.studio_scores(
                 seed_games,
                 played_appids,
@@ -171,6 +182,7 @@ def collect_path_scores(
         player_id=player_id,
         seeds=seeds,
         paths={path: {row["appid"]: dict(row) for row in rows} for path, rows in rows_by_path.items()},
+        tag_concepts={concept["concept"]: concept for concept in concepts},
     )
 
 
@@ -236,9 +248,40 @@ def combine(
     return ranked
 
 
-def build_evidence(path_scores: PathScores, ranked: RankedGame, lang: Lang) -> list[Evidence]:
+def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
+    """The seed a tag reason is about: the one whose tags make up the largest part of the game's tag score
+    (the sum of the terms of the matched concepts it holds), ties by larger w_s, then smaller appid. None
+    unless the tag path contributed."""
+    if "tag" not in ranked["contributions"]:
+        return None
+    row = path_scores["paths"]["tag"][ranked["appid"]]
+    totals: dict[str, float] = {}
+    weights: dict[str, float] = {}
+    for concept in row["matched"]:
+        entry = path_scores["tag_concepts"][concept]
+        term = tag_term(entry["weight"], row["concept_count"])
+        for holder in entry["holders"]:
+            totals[holder["appid"]] = totals.get(holder["appid"], 0.0) + term
+            weights[holder["appid"]] = holder["weight"]
+    return min(totals, key=lambda appid: (-totals[appid], -weights[appid], appid))
+
+
+def generic_tags(path_scores: PathScores) -> set[str]:
+    """The concepts of the tag table that at least GENERIC_TAG_GAMES games have."""
+    return {
+        concept
+        for concept, entry in path_scores["tag_concepts"].items()
+        if entry["document_frequency"] >= GENERIC_TAG_GAMES
+    }
+
+
+def build_evidence(
+    path_scores: PathScores, ranked: RankedGame, lang: Lang, anchor: str | None = None
+) -> list[Evidence]:
     """The path instances behind one ranked game. The headline path comes first: the path other than
-    popularity with the largest contribution, or popularity when nothing else contributed."""
+    popularity with the largest contribution, or popularity when nothing else contributed. A tag
+    instance names the anchor seed (tag_anchor) if the anchor has the tag, else the seed of the largest
+    w_s that has it."""
     appid = ranked["appid"]
     if ranked["backfill"]:
         return [Evidence(path="popular", count=path_scores["paths"]["popular"][appid]["players"])]
@@ -250,7 +293,19 @@ def build_evidence(path_scores: PathScores, ranked: RankedGame, lang: Lang) -> l
     for path in headline_order:
         row = path_scores["paths"][path][appid]
         evidence += EVIDENCE_BUILDERS[path](row, contributions[path] / ranked["score"], lang)
-    return evidence
+    if anchor is None:
+        return evidence
+    return [with_anchor(item, path_scores["tag_concepts"], anchor) for item in evidence]
+
+
+def with_anchor(item: Evidence, concepts: Mapping[str, TagConcept], anchor: str) -> Evidence:
+    """A tag instance with the anchor as its seed if the anchor has the tag; any other instance as it is."""
+    if item.path != "tag":
+        return item
+    for holder in concepts[item.bridge_id]["holders"]:
+        if holder["appid"] == anchor:
+            return item.model_copy(update={"seed_appid": holder["appid"], "seed_name": holder["name"]})
+    return item
 
 
 def peer_evidence(row: dict[str, Any], path_share: float, lang: Lang) -> list[Evidence]:
@@ -309,9 +364,13 @@ EVIDENCE_BUILDERS: dict[str, Callable[[dict[str, Any], float, Lang], list[Eviden
 }
 
 
-def describe_evidence(evidence: list[Evidence], lang: Lang) -> tuple[list[Reason], str]:
-    """Reason chips and sentence written from the headline evidence only: each tag with the game it
-    came from, and each studio with its role for both games."""
+def describe_evidence(
+    evidence: list[Evidence], lang: Lang, anchor: str | None = None, generic: Collection[str] = ()
+) -> tuple[list[Reason], str]:
+    """Reason chips and sentence written from the headline evidence only. Tags are stated with one seed:
+    the anchor (tag_anchor) if a tag instance names it, else the seed of the first tag instance; tags in
+    `generic` are left out when that seed shares another tag. Studios are stated with their role for
+    both games."""
     if not evidence:
         return [], POPULAR_EXPLANATION[lang]
     headline = [item for item in evidence if item.path == evidence[0].path]
@@ -325,17 +384,16 @@ def describe_evidence(evidence: list[Evidence], lang: Lang) -> tuple[list[Reason
         )
         return [Reason(kind="game", label=first.seed_name)], explanation
     if first.path == "tag":
-        tags_by_seed: dict[str, list[str]] = {}
+        tags_by_seed: dict[str | None, list[Evidence]] = {}
         for item in headline:
-            tags_by_seed.setdefault(item.seed_name, []).append(item.bridge_name)
+            tags_by_seed.setdefault(item.seed_appid, []).append(item)
+        stated = tags_by_seed.get(anchor) or tags_by_seed[first.seed_appid]
+        stated = [item for item in stated if item.bridge_id not in generic] or stated
+        seed, tags = stated[0].seed_name, [item.bridge_name for item in stated]
         explanation = (
-            "／".join(f"『{seed}』と共通するタグ: {'、'.join(tags)}" for seed, tags in tags_by_seed.items())
-            if japanese
-            else "Shares " + "; ".join(f"{', '.join(tags)} with {seed}" for seed, tags in tags_by_seed.items())
+            f"『{seed}』と共通するタグ: {'、'.join(tags)}" if japanese else f"Shares {', '.join(tags)} with {seed}"
         )
-        reasons = [Reason(kind="game", label=seed) for seed in tags_by_seed]
-        reasons += [Reason(kind="tag", label=item.bridge_name) for item in headline]
-        return reasons, explanation
+        return [Reason(kind="game", label=seed)] + [Reason(kind="tag", label=tag) for tag in tags], explanation
     if first.path == "studio":
         template = STUDIO_EXPLANATIONS[lang][(first.seed_role, first.candidate_role)]
         explanation = template.format(studio=first.bridge_name, seed=first.seed_name)

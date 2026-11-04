@@ -1,21 +1,22 @@
 """Check on the real graph (read-only) that the path queries of GraphReader return exactly what the
 statements they replaced returned. ReferenceReader keeps those statements: the single co-play
-statement of commit aa90eb9, and tag_concept_scores, game_popularity and games_by_appids of commit
-ffa5fa3.
+statement of commit aa90eb9, tag_concept_scores, game_popularity and games_by_appids of commit
+ffa5fa3, and tag_concepts of commit ccb366c. What only the tag reason uses is read apart (see
+ReferenceReader).
 
 Players are taken per stratum of visible history (1, 2-3, 4-10, 11+ games once one is hidden) in the
 order of sha256('reader-equivalence:' + player_id), and each hides the game with the smallest
 sha256('reader-equivalence:' + player_id + ':' + appid). For each player these are compared with
-Python == between GraphReader and ReferenceReader: the rows of each path query (every field, in
-order), the whole collect_path_scores(), the combine() top 50, games_by_appids() of those 50 and the
-model_dump() of recommend_games() in en and ja. Then the edge cases of the same player (all games
-hidden, seeds outside played_appids, no played_appids, no seeds, an unknown seed), and once those of
-an unknown player. The median seconds of each path query, games_by_appids(), collect_path_scores() and
-recommend_games() (en) are printed for both readers. Exit code 1 on any mismatch or broken
-precondition. A player whose reference statements fail with a transient error (the database is
-shared) is reported as "reference failed" and not compared. With --all-seeds the reference only runs
-for players with at most REFERENCE_SEED_LIMIT visible games: above that its co-play statement runs out
-of transaction memory.
+Python == between GraphReader and ReferenceReader: the rows of each path query and of tag_concepts
+(every field, in order), the whole collect_path_scores(), the combine() top 50, games_by_appids() of
+those 50 and the model_dump() of recommend_games() in en and ja. Then the edge cases of the same player
+(all games hidden, seeds outside played_appids, no played_appids, no seeds, an unknown seed), and once
+those of an unknown player. The median seconds of each path query, games_by_appids(),
+collect_path_scores() and recommend_games() (en) are printed for both readers. Exit code 1 on any
+mismatch or broken precondition. A player whose reference statements fail with a transient error (the
+database is shared) is reported as "reference failed" and not compared. With --all-seeds the reference
+only runs for players with at most REFERENCE_SEED_LIMIT visible games: above that its co-play
+statement runs out of transaction memory.
 
     python -m eval.check_reader_equivalence --users-per-stratum 5
     python -m eval.check_reader_equivalence --users-per-stratum 5 --all-seeds
@@ -49,7 +50,7 @@ from utils.graph_reader import GAME_COLUMNS, TAG_MAX_RANK, GraphReader, SeedGame
 STRATA = [("1", 1, 1), ("2-3", 2, 3), ("4-10", 4, 10), ("11+", 11, None)]
 REFERENCE_SEED_LIMIT = 60
 TOP_K = 50
-PATH_QUERIES = ("co_play_scores", "tag_concept_scores", "studio_scores", "game_popularity")
+PATH_QUERIES = ("co_play_scores", "tag_concepts", "tag_concept_scores", "studio_scores", "game_popularity")
 TIMED = PATH_QUERIES + ("games_by_appids",)
 UNKNOWN_PLAYER = "nobody"
 UNKNOWN_APPID = "999999999"
@@ -117,6 +118,46 @@ REFERENCE_TAG_CONCEPT_SCORES = (
     "ORDER BY score DESC, appid ASC"
 )
 
+# GraphReader.tag_concepts up to commit ccb366c, before the holders and the document frequency.
+REFERENCE_TAG_CONCEPTS = (
+    "MATCH (game:Game) WITH count(game) AS total "
+    "UNWIND $seeds AS seed_row "
+    "MATCH (seed:Game {appid: seed_row.appid})-[seed_tag:HAS_TAG]->(t:Tag) "
+    "WHERE NOT t:Feature AND (seed_tag.rank IS NULL OR seed_tag.rank <= $max_rank) "
+    "WITH DISTINCT total, seed, seed_row.weight AS seed_weight, split(t.tag_id, ':')[1] AS concept "
+    "ORDER BY seed_weight DESC, seed.appid ASC "
+    "WITH total, concept, sum(seed_weight) AS preference, head(collect(seed)) AS via "
+    "MATCH (tag:Tag) WHERE NOT tag:Feature AND split(tag.tag_id, ':')[1] = concept "
+    "WITH total, concept, preference, via, tag ORDER BY tag.tag_id ASC "
+    "WITH total, concept, preference, via, collect(tag) AS tags "
+    "UNWIND tags AS tag "
+    "MATCH (tag)<-[owner_tag:HAS_TAG]-(owner:Game) "
+    "WHERE owner_tag.rank IS NULL OR owner_tag.rank <= $max_rank "
+    "WITH total, concept, preference, via, tags, count(DISTINCT owner) AS document_frequency "
+    "WITH concept, via, tags, preference * log(toFloat(total) / document_frequency) AS weight "
+    "WHERE weight > 0 "
+    "WITH concept, via, tags, weight ORDER BY weight DESC, concept ASC LIMIT $concept_limit "
+    "RETURN concept, weight, via.appid AS seed_appid, via.name AS seed_name, head(tags).name AS name, "
+    "head(tags).name_ja AS name_ja, [tag IN tags | tag.tag_id] AS tag_ids"
+)
+
+# The holders and document frequency of concepts, written apart from TAG_CONCEPTS: the seeds with an edge
+# to a tag of the concept, by (w_s DESC, appid ASC), and the games with one.
+REFERENCE_TAG_HOLDERS = (
+    "UNWIND $concepts AS concept "
+    "MATCH (tag:Tag) WHERE NOT tag:Feature AND tag.tag_id ENDS WITH ':' + concept "
+    "OPTIONAL MATCH (tag)<-[edge:HAS_TAG]-(game:Game) WHERE edge.rank IS NULL OR edge.rank <= $max_rank "
+    "WITH concept, count(DISTINCT game) AS document_frequency "
+    "UNWIND $seeds AS seed_row "
+    "OPTIONAL MATCH (seed:Game {appid: seed_row.appid}) "
+    "WHERE EXISTS { (seed)-[edge:HAS_TAG]->(tag:Tag) WHERE NOT tag:Feature "
+    "AND (edge.rank IS NULL OR edge.rank <= $max_rank) AND tag.tag_id ENDS WITH ':' + concept } "
+    "WITH DISTINCT concept, document_frequency, seed, seed_row.weight AS weight "
+    "ORDER BY weight DESC, seed.appid ASC "
+    "RETURN concept, document_frequency, "
+    "collect(CASE WHEN seed IS NOT NULL THEN {appid: seed.appid, name: seed.name, weight: weight} END) AS holders"
+)
+
 # GraphReader.game_popularity up to commit ffa5fa3: the player's edge looked up for every game.
 REFERENCE_GAME_POPULARITY = (
     "MATCH (g:Game) WHERE NOT g.appid IN $played_appids "
@@ -138,7 +179,12 @@ PRECONDITIONS = {
 
 class ReferenceReader(GraphReader):
     """GraphReader with the statements its path queries replaced; games_by_appids reads played_count
-    through the shared GAME_COLUMNS, which walks every PLAYED edge of the game."""
+    through the shared GAME_COLUMNS, which walks every PLAYED edge of the game.
+
+    Those statements do not return what only the tag reason uses: the holders and document frequency of
+    each concept and the `matched` concepts of each candidate. The holders and document frequency are read
+    with REFERENCE_TAG_HOLDERS, `matched` is every match of the single tag statement, so that these fields
+    are compared with == as well."""
 
     def co_play_scores(self, player_id, seeds, played_appids, evidence_limit):
         return self.query(
@@ -149,15 +195,35 @@ class ReferenceReader(GraphReader):
             evidence_limit=evidence_limit,
         )
 
-    def tag_concept_scores(self, seeds, played_appids, concept_limit, evidence_limit):
-        return self.query(
+    def tag_concepts(self, seeds, concept_limit):
+        rows = self.query(REFERENCE_TAG_CONCEPTS, seeds=seeds, max_rank=TAG_MAX_RANK, concept_limit=concept_limit)
+        facts = self.query(
+            REFERENCE_TAG_HOLDERS, concepts=[row["concept"] for row in rows], seeds=seeds, max_rank=TAG_MAX_RANK
+        )
+        by_concept = {fact["concept"]: fact for fact in facts}
+        return [
+            dict(
+                row,
+                holders=by_concept[row["concept"]]["holders"],
+                document_frequency=by_concept[row["concept"]]["document_frequency"],
+            )
+            for row in rows
+        ]
+
+    def tag_concept_scores(self, seeds, played_appids, concept_limit, evidence_limit, concepts=None):
+        """The single statement reads its own concept table, so `concepts` is not used."""
+        rows = self.query(
             REFERENCE_TAG_CONCEPT_SCORES,
             seeds=seeds,
             played_appids=played_appids,
             max_rank=TAG_MAX_RANK,
             concept_limit=concept_limit,
-            evidence_limit=evidence_limit,
+            evidence_limit=concept_limit,
         )
+        return [
+            dict(row, matches=row["matches"][:evidence_limit], matched=[match["concept"] for match in row["matches"]])
+            for row in rows
+        ]
 
     def game_popularity(self, player_id, played_appids):
         return self.query(REFERENCE_GAME_POPULARITY, player_id=player_id, played_appids=played_appids)
@@ -281,8 +347,10 @@ def edge_cases(player_id: str, played: list[dict[str, Any]]) -> dict[str, Callab
         "no played_appids: tag_concept_scores": tags(seeds, []),
         "no played_appids: game_popularity": popularity([]),
         "no seeds: co_play_scores": co_play([], appids),
+        "no seeds: tag_concepts": lambda reader: reader.tag_concepts([], TAG_PREFERENCE_LIMIT),
         "no seeds: tag_concept_scores": tags([], appids),
         "unknown seed: co_play_scores": co_play(with_unknown, appids),
+        "unknown seed: tag_concepts": lambda reader: reader.tag_concepts(with_unknown, TAG_PREFERENCE_LIMIT),
         "unknown seed: tag_concept_scores": tags(with_unknown, appids),
     }
 

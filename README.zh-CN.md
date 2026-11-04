@@ -355,18 +355,19 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 | 路径 | 实例（`evidence`） | 说明文示例（英文界面） |
 |---|---|---|
 | 共玩 | 种子与 co(s, g) | 12 other players who played Portal 2 also played this game |
-| 标签 | 标签，以及带有该标签的种子（w_s 最大的那款） | Shares Puzzle, Physics with Portal 2; Sandbox with Terraria |
+| 标签 | 标签，以及带有该标签的种子（锚点带有时为锚点，否则为 w_s 最大的那款） | Shares Puzzle, Physics with Portal 2 |
 | 开发商・发行商 | 公司、种子、双方的角色（开发商还是发行商）、m | Developed by Valve, the developer of Half-Life 2 |
 | 热门 | deg(g) | Played by 340 other players |
 
-- 说明文只根据热门以外贡献最大的路径的实例生成，不写实例中没有的名称或数字。每个标签都附上带有该标签的种子。公司注明是开发商还是发行商。只有热门的实例时，才以热门为理由。
+- 说明文只根据热门以外贡献最大的路径的实例生成，不写实例中没有的名称或数字。公司注明是开发商还是发行商。只有热门的实例时，才以热门为理由。
+- 标签的说明文只写与 1 款种子（锚点）共有的标签。锚点是：把前 30 个标签中 g 带有的那些标签的项 weight(t) / √n(g)，按带有该标签的种子分别相加，和最大的种子（相同则取 w_s 较大者，再取 appid 较小者）。实例中没有锚点的实例时，使用第一个实例的种子。1,000 款以上的游戏带有的标签（Multiplayer、Singleplayer 等），在还有其他共同标签时不写。
 - `eval/explanation_check.py` 用另外编写的只读 Cypher 核对依据中的人数、标签归属和公司角色，并给出核对通过的比例（依据有效率）。
 
 ### 7.5 实现
 
 - 每个用户、每条路径执行 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各路径同时返回分数和产生该分数的实例。开发商・发行商和热门各 1 条。
 - 共玩先执行 1 条读取种子名称和人数的小 Cypher，再每 64 个种子执行 1 条计数的 Cypher。每个种子的 co(s, g) 打包在整数的位字段里计数，因此每条计数的 Cypher 中，每个其他玩家只展开 1 次。位字段的宽度由先读取的人数决定，因此执行期间不能写入图。
-- 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight 和带有该标签的种子），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。
+- 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight、带有该标签的种子和 df），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。锚点只对要推荐的游戏在 Python 里选。
 - 共玩和标签的各项在 Python 里相加。与 Cypher 的 `sum()` 一样从大的项开始依次相加，因此结果与直接写成 1 条的 Cypher 相同。这些 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
 - 种子的权重（ln(1 + 游玩时长) 或 1）、共玩的种子数（10 款或全部）以及 λ，在验证用户上决定（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`）。

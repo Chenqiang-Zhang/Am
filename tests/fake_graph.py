@@ -533,44 +533,71 @@ class FakeGraphReader:
         name = candidates[0][1]
         return name, tag_ja(name)
 
-    def tag_concept_scores(self, seeds, played_appids, concept_limit, evidence_limit):
-        self.calls.append("tag_concept_scores")
-        total = len(self.games)
-        concepts_by_game = {appid: self.concepts(appid) for appid in self.games}
-        preference: dict[str, float] = defaultdict(float)
-        via: dict[str, tuple[float, str]] = {}
+    def concept_table(self, seeds, concept_limit):
+        """The concept_limit concepts of the seeds with the largest weight(c) > 0, by (-weight, concept)."""
+        holders: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for seed in sorted(seeds, key=lambda seed: (-seed["weight"], seed["appid"])):  # the Cypher's order
-            for concept in concepts_by_game.get(seed["appid"], set()):
-                preference[concept] += seed["weight"]
-                via[concept] = min(via.get(concept, (math.inf, "")), (-seed["weight"], seed["appid"]))
-        weights = {}
-        for concept, pref in preference.items():
-            document_frequency = sum(1 for appid in self.games if concept in concepts_by_game[appid])
-            weight = pref * math.log(total / document_frequency)
+            for concept in sorted(self.concepts(seed["appid"]) if seed["appid"] in self.games else ()):
+                holders[concept].append(
+                    {"appid": seed["appid"], "name": self.games[seed["appid"]]["name"], "weight": seed["weight"]}
+                )
+        rows = []
+        for concept, held in holders.items():
+            preference = 0.0
+            for holder in held:  # one by one in this order, as the Cypher adds them
+                preference += holder["weight"]
+            document_frequency = sum(1 for appid in self.games if concept in self.concepts(appid))
+            weight = preference * math.log(len(self.games) / document_frequency)
             if weight > 0:
-                weights[concept] = weight
-        kept = sorted(weights, key=lambda concept: (-weights[concept], concept))[:concept_limit]
+                name, name_ja = self.concept_label(concept)
+                tag_ids = {
+                    current_tag_id
+                    for appid in self.games
+                    for current_tag_id, kind, _, _ in self.tag_edges(appid)
+                    if kind != "feature" and current_tag_id.split(":", 1)[1] == concept
+                }
+                rows.append(
+                    {
+                        "concept": concept,
+                        "weight": weight,
+                        "seed_appid": held[0]["appid"],
+                        "seed_name": held[0]["name"],
+                        "name": name,
+                        "name_ja": name_ja,
+                        "tag_ids": sorted(tag_ids),
+                        "holders": held,
+                        "document_frequency": document_frequency,
+                    }
+                )
+        rows.sort(key=lambda row: (-row["weight"], row["concept"]))
+        return rows[:concept_limit]
+
+    def tag_concepts(self, seeds, concept_limit):
+        self.calls.append("tag_concepts")
+        return self.answer(self.concept_table(seeds, concept_limit))
+
+    def tag_concept_scores(self, seeds, played_appids, concept_limit, evidence_limit, concepts=None):
+        """Always from its own concept table: `concepts` only spares the real reader a statement."""
+        self.calls.append("tag_concept_scores")
+        kept = self.concept_table(seeds, concept_limit)
         rows = []
         for appid in self.games:
             if appid in played_appids:
                 continue
-            own = concepts_by_game[appid]
-            instances = []
-            for concept in kept:
-                if concept in own:
-                    name, name_ja = self.concept_label(concept)
-                    seed_appid = via[concept][1]
-                    instances.append(
-                        {
-                            "concept": concept,
-                            "name": name,
-                            "name_ja": name_ja,
-                            "weight": weights[concept],
-                            "seed_appid": seed_appid,
-                            "seed_name": self.games[seed_appid]["name"],
-                            "term": weights[concept] / math.sqrt(len(own)),
-                        }
-                    )
+            own = self.concepts(appid)
+            instances = [
+                {
+                    "concept": concept["concept"],
+                    "name": concept["name"],
+                    "name_ja": concept["name_ja"],
+                    "weight": concept["weight"],
+                    "seed_appid": concept["seed_appid"],
+                    "seed_name": concept["seed_name"],
+                    "term": concept["weight"] / math.sqrt(len(own)),
+                }
+                for concept in kept
+                if concept["concept"] in own
+            ]
             if instances:
                 instances.sort(key=lambda item: (-item["term"], item["concept"]))
                 score = 0.0
@@ -583,6 +610,7 @@ class FakeGraphReader:
                         "concept_count": len(own),
                         "match_count": len(instances),
                         "matches": instances[:evidence_limit],
+                        "matched": [item["concept"] for item in instances],
                     }
                 )
         rows.sort(key=lambda row: (-row["score"], row["appid"]))

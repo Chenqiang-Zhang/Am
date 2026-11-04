@@ -1,7 +1,5 @@
-import math
 import random
 import re
-from collections import defaultdict
 
 from utils.graph_reader import (
     CO_PLAY_CONTEXT,
@@ -106,43 +104,9 @@ class TagConceptReader(StandInReader):
         return [self.candidates(**params)]
 
     def concepts(self, seeds, max_rank, concept_limit):
-        """The concept table; a concept's seed weights add up in the order (w_s DESC, appid ASC)."""
+        """The concept table as the formula gives it (FakeGraphReader.concept_table)."""
         assert max_rank == TAG_MAX_RANK, "FakeGraphReader.concepts() uses TAG_MAX_RANK"
-        holders = defaultdict(set)  # concept -> {(w_s, seed appid)}
-        for seed in seeds:
-            if seed["appid"] in self.graph.games:
-                for concept in self.graph.concepts(seed["appid"]):
-                    holders[concept].add((seed["weight"], seed["appid"]))
-        rows = []
-        for concept, held in holders.items():
-            ordered = sorted(held, key=lambda holder: (-holder[0], holder[1]))
-            preference = 0.0
-            for seed_weight, _ in ordered:
-                preference += seed_weight
-            document_frequency = sum(1 for appid in self.graph.games if concept in self.graph.concepts(appid))
-            weight = preference * math.log(len(self.graph.games) / document_frequency)
-            if weight > 0:
-                via = ordered[0][1]
-                name, name_ja = self.graph.concept_label(concept)
-                tag_ids = {
-                    tag_id
-                    for appid in self.graph.games
-                    for tag_id, kind, _, _ in self.graph.tag_edges(appid)
-                    if kind != "feature" and tag_id.split(":", 1)[1] == concept
-                }
-                rows.append(
-                    {
-                        "concept": concept,
-                        "weight": weight,
-                        "seed_appid": via,
-                        "seed_name": self.graph.games[via]["name"],
-                        "name": name,
-                        "name_ja": name_ja,
-                        "tag_ids": sorted(tag_ids),
-                    }
-                )
-        rows.sort(key=lambda row: (-row["weight"], row["concept"]))
-        return rows[:concept_limit]
+        return self.graph.concept_table(seeds, concept_limit)
 
     def candidates(self, tag_ids, played_appids, max_rank):
         """Per game outside played_appids the indices of the concepts whose tags it has, through an

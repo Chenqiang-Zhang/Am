@@ -217,11 +217,13 @@ def test_path_queries_equal_the_statements_they_replaced(reader, reference, play
 @pytest.mark.parametrize("player_id,hidden", CASES)
 def test_tag_and_popularity_rows_equal_the_statements_they_replaced(reader, reference, player_id, hidden):
     """Row for row, also with seeds outside played_appids, no played_appids, an unknown seed and an
-    unknown player."""
+    unknown player. The holders and document frequency of the concept table against their own statement."""
     played = reader.played_games(player_id, [])
     seeds = [{"appid": "999", "weight": 1.0}] + [
         {"appid": game["appid"], "weight": math.log1p(game["hours"])} for game in played
     ]
+    for concept_limit in (30, 2):
+        assert reader.tag_concepts(seeds, concept_limit) == reference.tag_concepts(seeds, concept_limit)
     visible = [game["appid"] for game in played if game["appid"] not in hidden]
     for played_appids in (visible, visible[::2], []):
         for concept_limit, evidence_limit in ((30, 3), (2, 1), (30, 20)):

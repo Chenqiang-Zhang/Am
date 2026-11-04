@@ -79,7 +79,15 @@ def test_without_concepts_the_candidates_are_not_read():
     reader = TagConceptReader(FakeGraphReader())
     assert reader.tag_concept_scores([], ["10"], 30, 3) == []
     assert reader.tag_concept_scores([{"appid": "140", "weight": 1.0}], [], 30, 3) == []  # November has no tags
+    assert reader.tag_concept_scores(SEEDS, [], 30, 3, []) == []
     assert reader.statements == [TAG_CONCEPTS, TAG_CONCEPTS]
+
+
+def test_a_concept_table_passed_in_is_not_read_again():
+    reader = CannedReader([{"appids": ["10"], "matched": [[0]], "concept_counts": [1]}])
+    [row] = reader.tag_concept_scores(SEEDS, [], 30, 3, [concept_row("a", 2.0)])
+    assert reader.statements == [TAG_CANDIDATES]
+    assert (row["appid"], row["score"], row["matched"]) == ("10", 2.0, ["a"])
 
 
 def test_a_candidate_is_built_from_the_concept_rows_it_matched():
@@ -95,6 +103,7 @@ def test_a_candidate_is_built_from_the_concept_rows_it_matched():
         ("20", 1.5, 4, 2),
     ]
     assert [(match["concept"], match["term"]) for match in rows[0]["matches"]] == [("a", 1.0), ("b", 1.0)]
+    assert [row["matched"] for row in rows] == [["a", "b", "c"], ["a"], ["b", "c"]]  # all, by (-term, concept)
     seed = {"seed_appid": "10", "seed_name": "Alpha"}
     assert rows[2]["matches"] == [
         {"concept": "b", "name": "B", "name_ja": None, "weight": 2.0, **seed, "term": 1.0},

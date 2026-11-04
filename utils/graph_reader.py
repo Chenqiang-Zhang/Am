@@ -125,6 +125,12 @@ class CoPlayCandidate(TypedDict):
     seeds: list[CoPlaySeed]
 
 
+class TagHolder(TypedDict):
+    appid: str
+    name: str
+    weight: float
+
+
 class TagConcept(TypedDict):
     concept: str
     weight: float
@@ -133,6 +139,8 @@ class TagConcept(TypedDict):
     name: str
     name_ja: str | None
     tag_ids: list[str]
+    holders: list[TagHolder]  # the seeds with the concept, by (-w_s, appid)
+    document_frequency: int
 
 
 class TagConceptMatch(TypedDict):
@@ -151,6 +159,7 @@ class TagConceptCandidate(TypedDict):
     concept_count: int
     match_count: int
     matches: list[TagConceptMatch]
+    matched: list[str]  # every matched concept, by (-term, concept)
 
 
 class StudioLink(TypedDict):
@@ -273,19 +282,22 @@ TAG_CONCEPTS = (
     "WHERE NOT t:Feature AND (seed_tag.rank IS NULL OR seed_tag.rank <= $max_rank) "
     "WITH DISTINCT total, seed, seed_row.weight AS seed_weight, split(t.tag_id, ':')[1] AS concept "
     "ORDER BY seed_weight DESC, seed.appid ASC "
-    "WITH total, concept, sum(seed_weight) AS preference, head(collect(seed)) AS via "
+    "WITH total, concept, sum(seed_weight) AS preference, head(collect(seed)) AS via, "
+    "collect({appid: seed.appid, name: seed.name, weight: seed_weight}) AS holders "
     "MATCH (tag:Tag) WHERE NOT tag:Feature AND split(tag.tag_id, ':')[1] = concept "
-    "WITH total, concept, preference, via, tag ORDER BY tag.tag_id ASC "
-    "WITH total, concept, preference, via, collect(tag) AS tags "
+    "WITH total, concept, preference, via, holders, tag ORDER BY tag.tag_id ASC "
+    "WITH total, concept, preference, via, holders, collect(tag) AS tags "
     "UNWIND tags AS tag "
     "MATCH (tag)<-[owner_tag:HAS_TAG]-(owner:Game) "
     "WHERE owner_tag.rank IS NULL OR owner_tag.rank <= $max_rank "
-    "WITH total, concept, preference, via, tags, count(DISTINCT owner) AS document_frequency "
-    "WITH concept, via, tags, preference * log(toFloat(total) / document_frequency) AS weight "
+    "WITH total, concept, preference, via, holders, tags, count(DISTINCT owner) AS document_frequency "
+    "WITH concept, via, holders, tags, document_frequency, "
+    "preference * log(toFloat(total) / document_frequency) AS weight "
     "WHERE weight > 0 "
-    "WITH concept, via, tags, weight ORDER BY weight DESC, concept ASC LIMIT $concept_limit "
+    "WITH concept, via, holders, tags, document_frequency, weight "
+    "ORDER BY weight DESC, concept ASC LIMIT $concept_limit "
     "RETURN concept, weight, via.appid AS seed_appid, via.name AS seed_name, head(tags).name AS name, "
-    "head(tags).name_ja AS name_ja, [tag IN tags | tag.tag_id] AS tag_ids"
+    "head(tags).name_ja AS name_ja, [tag IN tags | tag.tag_id] AS tag_ids, holders, document_frequency"
 )
 # $tag_ids holds the tag_ids of each concept of the table; `matched` are indices into it.
 TAG_CANDIDATES = (
@@ -302,13 +314,18 @@ TAG_CANDIDATES = (
 )
 
 
+def tag_term(weight: float, concept_count: int) -> float:
+    """A matched concept's term in the score of a game with concept_count concepts."""
+    return weight / math.sqrt(float(concept_count))
+
+
 def tag_candidate(
     appid: str, concept_count: int, concepts: list[TagConcept], evidence_limit: int
 ) -> TagConceptCandidate:
     """One candidate from the concept-table rows of the concepts it matched. The terms are added one by
     one in the order (-term, concept), as Cypher's sum() adds them after that ORDER BY."""
     terms = sorted(
-        ((concept["weight"] / math.sqrt(float(concept_count)), concept) for concept in concepts),
+        ((tag_term(concept["weight"], concept_count), concept) for concept in concepts),
         key=lambda item: (-item[0], item[1]["concept"]),
     )
     score = 0.0
@@ -327,7 +344,12 @@ def tag_candidate(
         for term, concept in terms[:evidence_limit]
     ]
     return TagConceptCandidate(
-        appid=appid, score=score, concept_count=concept_count, match_count=len(terms), matches=matches
+        appid=appid,
+        score=score,
+        concept_count=concept_count,
+        match_count=len(terms),
+        matches=matches,
+        matched=[concept["concept"] for _, concept in terms],
     )
 
 
@@ -540,18 +562,24 @@ class GraphReader:
             yield appid, degree, [(values[word] >> shift) & mask for word, shift, mask in fields]
 
     def tag_concept_scores(
-        self, seeds: list[SeedGame], played_appids: list[str], concept_limit: int, evidence_limit: int
+        self,
+        seeds: list[SeedGame],
+        played_appids: list[str],
+        concept_limit: int,
+        evidence_limit: int,
+        concepts: list[TagConcept] | None = None,
     ) -> list[TagConceptCandidate]:
         """A genre and a user tag with the same name are one concept (the part of tag_id after the
         colon); Feature tags are left out. IDF and matching both use edges with rank <= TAG_MAX_RANK
         or no rank. weight(c) = Σ_{seeds with c} w_s · ln(N / df(c)), kept for the top concepts;
         score(g) = Σ_{c of g} weight(c) / sqrt(number of concepts of g).
 
-        One statement reads the concept table (tag_concepts); a second one returns, as one columnar row,
-        the concepts each candidate matched and its number of concepts. The terms are added up here,
-        so the result equals that of the single statement this replaces (kept in
-        eval/check_reader_equivalence.py)."""
-        concepts = self.tag_concepts(seeds, concept_limit)
+        One statement reads the concept table (tag_concepts), unless the caller passes it as `concepts`;
+        a second one returns, as one columnar row, the concepts each candidate matched and its number of
+        concepts. The terms are added up here, so the result equals that of the single statement this
+        replaces (kept in eval/check_reader_equivalence.py)."""
+        if concepts is None:
+            concepts = self.tag_concepts(seeds, concept_limit)
         if not concepts:
             return []
         columns = self.query(
@@ -568,8 +596,8 @@ class GraphReader:
 
     def tag_concepts(self, seeds: list[SeedGame], concept_limit: int) -> list[TagConcept]:
         """The concept_limit concepts of the seeds with the largest weight(c), each with the seed of the
-        largest w_s that has it (ties by appid), the name of its tag with the smallest tag_id and the
-        tag_ids of all its tags."""
+        largest w_s that has it (ties by appid), the name of its tag with the smallest tag_id, the
+        tag_ids of all its tags, all seeds that have it and df(c)."""
         return self.query(TAG_CONCEPTS, seeds=seeds, max_rank=TAG_MAX_RANK, concept_limit=concept_limit)
 
     def studio_scores(
