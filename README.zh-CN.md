@@ -371,7 +371,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 - 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight、带有该标签的种子、df 和全部游戏数 N），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。锚点只对要推荐的游戏在 Python 里选。
 - 共玩和标签的各项在 Python 里相加。与 Cypher 的 `sum()` 一样从大的项开始依次相加，因此结果与直接写成 1 条的 Cypher 相同。这些 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
-- 默认的种子权重为 1，共玩使用全部种子，λ 为 1 / 0.1 / 0 / 0（`DEFAULT_SEED_SCHEME`、`DEFAULT_PATH_WEIGHTS`，在验证用户上选出，见 8.5）。由于使用全部种子，玩过的游戏越多的用户，共玩的计算越耗时。在验证用户中每层取 5 人测量 `recommend_games()`（前 10 名），中位数为：层 1 0.5 秒，2-3 0.9 秒，4-10 1.1 秒，11+ 2.9 秒（5 人中最长 8.2 秒）。可见游戏 1,307 款的用户要 20.5 秒，3,053 款的用户要 42.5 秒。共玩种子取 10 款的旧配置都在 1.6 秒以内（最长为 3,053 款用户的 1.53 秒）。测量时评估的采集也在运行（负载平均值 20 以上），因此时间偏长。
+- 默认的种子权重为 1，共玩使用全部种子，λ 为 1 / 0.1 / 0 / 0（`DEFAULT_SEED_SCHEME`、`DEFAULT_PATH_WEIGHTS`，在验证用户上选出，见 8.5）。由于使用全部种子，玩过的游戏越多的用户，共玩的计算越耗时。在验证用户中每层取 5 人测量 `recommend_games()`（前 10 名），中位数为：层 1 0.21 秒，2-3 0.43 秒，4-10 0.52 秒，11+ 1.6 秒（5 人中最长的是可见游戏 232 款的用户，4.3 秒）。可见游戏 1,307 款的用户要 10.9 秒，3,053 款的用户要 23.1 秒。共玩种子取 10 款的旧配置都在 0.9 秒以内。测量时数据库没有在做其他处理（负载平均值约 3）（`eval/static_latency.py` → `eval/results/static_latency_v1.json`）。
 - 改进前的方法（v0）为了比较，保留在 `app/api/static_recommend_v0.py`（`python -m eval.evaluate --rankers ... graph_v0`）。
 
 ## 8. 离线评估
