@@ -12,17 +12,25 @@ Python == between GraphReader and ReferenceReader: the rows of each path query a
 those 50 and the model_dump() of recommend_games() in en and ja. Then the edge cases of the same player
 (all games hidden, seeds outside played_appids, no played_appids, no seeds, an unknown seed), and once
 those of an unknown player. The median seconds of each path query, games_by_appids(),
-collect_path_scores() and recommend_games() (en) are printed for both readers. Exit code 1 on any
-mismatch or broken precondition. A player whose reference statements fail with a transient error (the
-database is shared) is reported as "reference failed" and not compared; exit code 2 if a reference
-failed and no player was compared. With --all-seeds the reference only runs for players with at most
-REFERENCE_SEED_LIMIT visible games: above that its co-play statement runs out of transaction memory.
---uniform --all-seeds is the shipped DEFAULT_SEED_SCHEME; without them the scheme is SeedScheme()
-(w_s = ln(1 + hours), the 10 longest-played seeds for co-play), which exercises the seed weights.
+collect_path_scores() and recommend_games() (en) are printed for both readers.
+
+With --all-seeds the reference only runs for players with at most REFERENCE_SEED_LIMIT visible games:
+above that its co-play statement runs out of transaction memory, so such a player is only timed with
+the new reader and counted as skipped for size. A call of either reader that fails with a transient
+error (the database is shared) is reported as "new failed" or "reference failed", and its player (or the
+unknown player) is not compared; when the preconditions or the player list fail, no player is. Exit code
+1 on any mismatch or broken precondition; otherwise 2 if a call failed and no player was compared, else
+0. A run that compares no player says "nothing compared for any player"; it exits with 0 when its
+players were only skipped for size. --uniform --all-seeds is the shipped DEFAULT_SEED_SCHEME; without
+them the scheme is SeedScheme() (w_s = ln(1 + hours), the 10 longest-played seeds for co-play), which
+exercises the seed weights.
 
     python -m eval.check_reader_equivalence --users-per-stratum 5
     python -m eval.check_reader_equivalence --users-per-stratum 5 --uniform --all-seeds
     python -m eval.check_reader_equivalence --players 0ebcdac87473bdce47327aef5ec69eeb --all-seeds
+
+The third one only times the new reader: that player has 234 visible games, more than
+REFERENCE_SEED_LIMIT, so nothing is compared.
 """
 
 import argparse
@@ -403,36 +411,47 @@ def main() -> None:
     new_reader, reference_reader = GraphReader(args.graph), ReferenceReader(args.graph)
     new, reference = Timed(new_reader), Timed(reference_reader)
     broken = 0
-    compared = rows_compared = cases_compared = mismatches = reference_failed = 0
+    compared = rows_compared = cases_compared = mismatches = skipped = 0
+    failed = {"new": 0, "reference": 0}  # players (and the unknown player) whose calls failed transiently
     seconds: dict[str, dict[str, list[float]]] = {"reference": defaultdict(list), "new": defaultdict(list)}
     try:
-        for name, cypher in PRECONDITIONS.items():
-            count = new_reader.query(cypher)[0]["n"]
-            broken += count
-            print(f"{name}: {count}")
-        rows = new_reader.query(
-            "MATCH (p:Player) RETURN p.player_id AS player_id, COUNT { (p)-[:PLAYED]->() } AS games"
-        )
-        players = args.players or pick_players({row["player_id"]: row["games"] for row in rows}, args.users_per_stratum)
+        try:
+            for name, cypher in PRECONDITIONS.items():
+                count = new_reader.query(cypher)[0]["n"]
+                broken += count
+                print(f"{name}: {count}")
+            rows = new_reader.query(
+                "MATCH (p:Player) RETURN p.player_id AS player_id, COUNT { (p)-[:PLAYED]->() } AS games"
+            )
+        except TransientError as error:
+            failed["new"] += 1
+            print(f"new failed: {error.code}", flush=True)
+            players = []
+        else:
+            players = args.players or pick_players(
+                {row["player_id"]: row["games"] for row in rows}, args.users_per_stratum
+            )
         print(f"graph={args.graph} scheme={scheme} players={len(players)}")
         for player_id in players:
-            played = new_reader.played_games(player_id, [])
-            hidden = hidden_game(player_id, [game["appid"] for game in played])
-            visible = len(played) - len(hidden)
-            line = f"{stratum_of(visible) or '-':5} {player_id} visible={visible:<5}"
-            if args.all_seeds and visible > REFERENCE_SEED_LIMIT:
-                _, new_seconds = player_results(new, player_id, hidden, scheme)
-                print(f"{line} new {new_seconds['collect_path_scores']:6.2f} s  (no reference)")
-                continue
-            new_results, new_seconds = player_results(new, player_id, hidden, scheme)
-            cases = edge_cases(player_id, played)
-            new_cases = case_results(new_reader, cases)
+            line, side = f"{'-':5} {player_id}", "new"
             try:
+                played = new_reader.played_games(player_id, [])
+                hidden = hidden_game(player_id, [game["appid"] for game in played])
+                visible = len(played) - len(hidden)
+                line = f"{stratum_of(visible) or '-':5} {player_id} visible={visible:<5}"
+                new_results, new_seconds = player_results(new, player_id, hidden, scheme)
+                if args.all_seeds and visible > REFERENCE_SEED_LIMIT:
+                    skipped += 1
+                    print(f"{line} new {new_seconds['collect_path_scores']:6.2f} s  (no reference: timed only)")
+                    continue
+                cases = edge_cases(player_id, played)
+                new_cases = case_results(new_reader, cases)
+                side = "reference"
                 reference_results, reference_seconds = player_results(reference, player_id, hidden, scheme)
                 reference_cases = case_results(reference_reader, cases)
             except TransientError as error:
-                reference_failed += 1
-                print(f"{line} reference failed: {error.code}", flush=True)
+                failed[side] += 1
+                print(f"{line} {side} failed: {error.code}", flush=True)
                 continue
             different = different_results(new_results, reference_results)
             different += different_results(new_cases, reference_cases)
@@ -452,14 +471,17 @@ def main() -> None:
                 flush=True,
             )
         if players:
-            cases = unknown_player_cases(new_reader.played_games(players[0], []))
-            new_cases = case_results(new_reader, cases)
+            side = "new"
             try:
-                different = different_results(new_cases, case_results(reference_reader, cases))
+                cases = unknown_player_cases(new_reader.played_games(players[0], []))
+                new_cases = case_results(new_reader, cases)
+                side = "reference"
+                reference_cases = case_results(reference_reader, cases)
             except TransientError as error:
-                reference_failed += 1
-                print(f"unknown player: reference failed: {error.code}")
+                failed[side] += 1
+                print(f"unknown player: {side} failed: {error.code}", flush=True)
             else:
+                different = different_results(new_cases, reference_cases)
                 cases_compared += len(cases)
                 mismatches += bool(different)
                 print(f"unknown player: {'DIFFERENT: ' + ', '.join(different) if different else 'same'}")
@@ -468,7 +490,9 @@ def main() -> None:
         reference_reader.close()
     print(
         f"compared {compared} players ({rows_compared} path query rows) and {cases_compared} edge cases: "
-        f"{mismatches} with a mismatch, {reference_failed} where the reference failed"
+        f"{mismatches} with a mismatch, {failed['reference']} where the reference failed, "
+        f"{failed['new']} where the new reader failed, {skipped} skipped for size (timed only)"
+        + ("; nothing compared for any player" if not compared else "")
     )
     if compared:
         print(f"median seconds over {compared} players: reference -> new")
@@ -478,7 +502,7 @@ def main() -> None:
             print(f"  {name:20} {reference_median:6.3f} -> {new_median:6.3f}")
     if broken or mismatches:
         sys.exit(1)
-    sys.exit(2 if reference_failed and not compared else 0)
+    sys.exit(2 if (failed["new"] or failed["reference"]) and not compared else 0)
 
 
 if __name__ == "__main__":
