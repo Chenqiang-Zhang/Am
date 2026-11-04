@@ -18,7 +18,9 @@ export type StudioRole = "developer" | "publisher";
  *   (`count` = number of games of the studio)
  * - popular: `count` other players -PLAYED-> this game
  * `share` is this instance's part of the recommendation's score (0 when the
- * score is 0).
+ * score is 0). For a tag instance it is the tag's whole term, which every seed
+ * with the tag adds to (Σ of w_s · ln(N / df) / √n(g) over those seeds), not
+ * only the named seed's part.
  */
 export interface Evidence {
   path: EvidencePath;
