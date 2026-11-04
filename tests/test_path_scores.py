@@ -231,6 +231,20 @@ def test_combine_rejects_an_unknown_studio_normalization():
         combine(EXAMPLE, 3, studio_normalization="sum")
 
 
+def test_totals_and_the_studio_divisor_are_added_from_left_to_right():
+    # 1 + 1e-16 + 1e-16 is 1 when added in order, as sum() does on Python 3.11 (the API image), but not with
+    # the compensated sum() of Python 3.12+, so this fails if combine() uses sum() on a newer Python.
+    tiny = 1e-16
+    assert math.fsum([1.0, tiny, tiny]) != 1.0
+    totals = synthetic(seed_weights=(1.0,), peer={"a": 1.0}, tag={"a": 1.0}, studio={"a": 1.0}, popular={"a": 1})
+    [ranked] = combine(totals, 1, {"peer": 1.0, "tag": tiny, "studio": tiny})
+    assert ranked["contributions"] == {"peer": 1.0, "tag": tiny, "studio": tiny}
+    assert ranked["score"] == 1.0
+    divisor = synthetic(seed_weights=(1.0, tiny, tiny), studio={"a": 1.0}, popular={"a": 1})
+    [ranked] = combine(divisor, 1, {"studio": 1.0})
+    assert ranked["contributions"] == {"studio": 1.0}
+
+
 def test_combine_never_returns_played_games_and_fills_the_whole_catalogue():
     path_scores = path_scores_of(FakeGraphReader(), "u1", {"30"})
     ranked = combine(path_scores, 100)

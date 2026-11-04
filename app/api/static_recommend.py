@@ -19,7 +19,7 @@ evidence: the path instances that produced the score.
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Mapping, TypedDict
+from typing import Any, Callable, Iterable, Literal, Mapping, TypedDict
 
 from utils.graph_reader import GraphReader, SeedGame
 
@@ -174,6 +174,15 @@ def collect_path_scores(
     )
 
 
+def ordered_sum(values: Iterable[float]) -> float:
+    """Add from left to right. From Python 3.12 on, sum() of floats compensates rounding and can differ in the
+    last bit from 3.11 (the API image), so totals are added in a plain loop to be the same on every version."""
+    total = 0.0
+    for value in values:
+        total += value
+    return total
+
+
 def combine(
     path_scores: PathScores,
     limit: int,
@@ -199,7 +208,7 @@ def combine(
         if path == "studio" and studio_normalization == "seed_weight":
             # All titles of one studio share one score, so dividing by the highest score would give every
             # title of the player's strongest studio the full λ.
-            divisor = sum(seed["weight"] for seed in path_scores["seeds"])
+            divisor = ordered_sum(seed["weight"] for seed in path_scores["seeds"])
         else:
             divisor = max((row["score"] for row in rows.values()), default=0.0)
         if weight == 0 or divisor <= 0:
@@ -208,7 +217,7 @@ def combine(
             if row["score"] > 0:
                 contributions.setdefault(appid, {})[path] = weight * row["score"] / divisor
 
-    totals = {appid: sum(parts.values()) for appid, parts in contributions.items()}
+    totals = {appid: ordered_sum(parts.values()) for appid, parts in contributions.items()}
     ranked_appids = sorted(totals, key=lambda appid: (-round(totals[appid], SCORE_DECIMALS), appid))[:limit]
     ranked = [
         RankedGame(appid=appid, score=totals[appid], contributions=contributions[appid], backfill=False)

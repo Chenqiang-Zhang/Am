@@ -38,7 +38,7 @@ import numpy as np
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
 from app.api import static_recommend
-from app.api.static_recommend import PATHS, SCORE_DECIMALS, PathScores, SeedScheme, collect_path_scores
+from app.api.static_recommend import PATHS, SCORE_DECIMALS, PathScores, SeedScheme, collect_path_scores, ordered_sum
 from app.api.static_recommend_v0 import recommend_games_v0
 
 V0 = "v0"
@@ -460,7 +460,7 @@ class HiddenRank:
                 np.array([score for _, score in chosen], dtype=np.float64),
             )
         self.highest = {path: max(rows.values(), default=0.0) for path, rows in self.scores.items()}
-        self.seed_weight = sum(record["seed_weights"])
+        self.seed_weight = ordered_sum(record["seed_weights"])
 
     def divisor(self, path: str, studio_normalization: str) -> float:
         if path == "studio" and studio_normalization == "seed_weight":
@@ -502,7 +502,7 @@ class HiddenRank:
             score = self.scores[path].get(appid, 0.0)
             if score > 0:
                 parts[path] = weight * score / divisor
-        return -round(sum(parts.values()), SCORE_DECIMALS), appid
+        return -round(ordered_sum(parts.values()), SCORE_DECIMALS), appid
 
 
 def full_ranking(path_scores: PathScores, weights: Mapping[str, float], studio_normalization: str) -> list[str]:
