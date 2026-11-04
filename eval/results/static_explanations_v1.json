@@ -24,7 +24,7 @@
     "interval": "percentile",
     "resampling": "users within each stratum; one B x n_s index matrix per stratum, strata in order, the same for every version",
     "statistic": "valid recommendations / recommendations over the resampled users",
-    "post_stratified": "Σ_s W_s · valid_s / recommendations_s on the same draws, W_s = counts.test_pool of the split"
+    "post_stratified": "Σ_s W_s · valid_s / recommendations_s over the strata whose users have recommendations, W_s = counts.test_pool of the split renormalised over them; the CI on the same draws, none when a replicate has no recommendation in one of them"
   },
   "code_defaults": {
     "weights": {
@@ -43,7 +43,7 @@
     "PYTHONHASHSEED": null
   },
   "git": {
-    "commit": "61f4a8f71fec617c72ad98d8e702e2185cae3057",
+    "commit": "e5155a838c34539e2d0ea1e619944a2fd63b8a8d",
     "dirty": false,
     "changes": []
   },
@@ -7763,19 +7763,19 @@
     }
   ],
   "wall_seconds": {
-    "users": 39.6,
-    "check": 779.5,
+    "users": 29.2,
+    "check": 749.8,
     "statistics": 0.1,
-    "total": 819.2,
-    "per_user": 2.6,
+    "total": 779.2,
+    "per_user": 2.5,
     "versions": {
       "current": {
-        "check": 224.8,
-        "recommend": 218.6
+        "check": 214.1,
+        "recommend": 210.7
       },
       "v0": {
-        "check": 32.5,
-        "recommend": 303.2
+        "check": 31.9,
+        "recommend": 292.6
       }
     }
   }
