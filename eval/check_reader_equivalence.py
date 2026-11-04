@@ -11,9 +11,11 @@ order), the whole collect_path_scores(), the combine() top 50, games_by_appids()
 model_dump() of recommend_games() in en and ja. Then the edge cases of the same player (all games
 hidden, seeds outside played_appids, no played_appids, no seeds, an unknown seed), and once those of
 an unknown player. The median seconds of each path query, games_by_appids(), collect_path_scores() and
-recommend_games() (en) are printed for both readers. Exit code 1 on any mismatch. With --all-seeds the
-reference only runs for players with at most REFERENCE_SEED_LIMIT visible games: above that its
-co-play statement runs out of transaction memory.
+recommend_games() (en) are printed for both readers. Exit code 1 on any mismatch or broken
+precondition. A player whose reference statements fail with a transient error (the database is
+shared) is reported as "reference failed" and not compared. With --all-seeds the reference only runs
+for players with at most REFERENCE_SEED_LIMIT visible games: above that its co-play statement runs out
+of transaction memory.
 
     python -m eval.check_reader_equivalence --users-per-stratum 5
     python -m eval.check_reader_equivalence --users-per-stratum 5 --all-seeds
@@ -29,6 +31,8 @@ import sys
 import time
 from collections import defaultdict
 from typing import Any, Callable
+
+from neo4j.exceptions import TransientError
 
 from app.api.static_recommend import (
     EVIDENCE_PER_PATH,
@@ -303,10 +307,8 @@ def different_results(new: dict[str, Any], reference: dict[str, Any]) -> list[st
     return [name for name in names if new.get(name) != reference.get(name)]
 
 
-def different_cases(
-    new: GraphReader, reference: GraphReader, cases: dict[str, Callable[[GraphReader], Any]]
-) -> list[str]:
-    return [name for name, case in cases.items() if case(new) != case(reference)]
+def case_results(reader: GraphReader, cases: dict[str, Callable[[GraphReader], Any]]) -> dict[str, Any]:
+    return {name: case(reader) for name, case in cases.items()}
 
 
 def main() -> None:
@@ -322,7 +324,7 @@ def main() -> None:
     new_reader, reference_reader = GraphReader(args.graph), ReferenceReader(args.graph)
     new, reference = Timed(new_reader), Timed(reference_reader)
     broken = 0
-    compared = rows_compared = cases_compared = mismatches = 0
+    compared = rows_compared = cases_compared = mismatches = reference_failed = 0
     seconds: dict[str, dict[str, list[float]]] = {"reference": defaultdict(list), "new": defaultdict(list)}
     try:
         for name, cypher in PRECONDITIONS.items():
@@ -344,10 +346,17 @@ def main() -> None:
                 print(f"{line} new {new_seconds['collect_path_scores']:6.2f} s  (no reference)")
                 continue
             new_results, new_seconds = player_results(new, player_id, hidden, scheme)
-            reference_results, reference_seconds = player_results(reference, player_id, hidden, scheme)
             cases = edge_cases(player_id, played)
+            new_cases = case_results(new_reader, cases)
+            try:
+                reference_results, reference_seconds = player_results(reference, player_id, hidden, scheme)
+                reference_cases = case_results(reference_reader, cases)
+            except TransientError as error:
+                reference_failed += 1
+                print(f"{line} reference failed: {error.code}", flush=True)
+                continue
             different = different_results(new_results, reference_results)
-            different += different_cases(new_reader, reference_reader, cases)
+            different += different_results(new_cases, reference_cases)
             path_rows = sum(len(new_results.get(name, [])) for name in PATH_QUERIES)
             compared += 1
             rows_compared += path_rows
@@ -365,16 +374,22 @@ def main() -> None:
             )
         if players:
             cases = unknown_player_cases(new_reader.played_games(players[0], []))
-            different = different_cases(new_reader, reference_reader, cases)
-            cases_compared += len(cases)
-            mismatches += bool(different)
-            print(f"unknown player: {'DIFFERENT: ' + ', '.join(different) if different else 'same'}")
+            new_cases = case_results(new_reader, cases)
+            try:
+                different = different_results(new_cases, case_results(reference_reader, cases))
+            except TransientError as error:
+                reference_failed += 1
+                print(f"unknown player: reference failed: {error.code}")
+            else:
+                cases_compared += len(cases)
+                mismatches += bool(different)
+                print(f"unknown player: {'DIFFERENT: ' + ', '.join(different) if different else 'same'}")
     finally:
         new_reader.close()
         reference_reader.close()
     print(
         f"compared {compared} players ({rows_compared} path query rows) and {cases_compared} edge cases: "
-        f"{mismatches} with a mismatch"
+        f"{mismatches} with a mismatch, {reference_failed} where the reference failed"
     )
     if compared:
         print(f"median seconds over {compared} players: reference -> new")
