@@ -93,12 +93,13 @@ def test_the_tag_sentence_states_the_tags_of_one_seed():
     assert describe_evidence(evidence, "ja")[1] == "『Alpha』と共通するタグ: Action、Shooter"
 
 
-def test_generic_tags_are_stated_only_when_the_seed_shares_no_other():
+def test_generic_tags_are_stated_only_if_all_instances_of_the_seed_are_generic():
     generic = {"multiplayer", "singleplayer"}
     evidence = [tag("Alpha", "Multiplayer"), tag("Alpha", "Shooter"), tag("Alpha", "Singleplayer")]
     reasons, text = describe_evidence(evidence, "en", "alpha", generic)
     assert text == "Shares Shooter with Alpha"
     assert [(reason.kind, reason.label) for reason in reasons] == [("game", "Alpha"), ("tag", "Shooter")]
+    # Only the instances count: Bravo's Shooter does not, nor would a tag of Alpha outside the 3.
     only_generic = [evidence[0], evidence[2], tag("Bravo", "Shooter")]
     assert describe_evidence(only_generic, "en", "alpha", generic)[1] == "Shares Multiplayer, Singleplayer with Alpha"
 

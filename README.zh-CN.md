@@ -355,12 +355,12 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 | 路径 | 实例（`evidence`） | 说明文示例（英文界面） |
 |---|---|---|
 | 共玩 | 种子与 co(s, g) | 12 other players who played Portal 2 also played this game |
-| 标签 | 标签，以及带有该标签的种子（锚点带有时为锚点，否则为 w_s 最大的那款） | Shares Puzzle, Physics with Portal 2 |
+| 标签 | 标签，以及带有该标签的种子（锚点带有时为锚点，否则为 w_s 最大的那款，相同则取 appid 较小者） | Shares Co-op, Sci-fi with Portal 2 |
 | 开发商・发行商 | 公司、种子、双方的角色（开发商还是发行商）、m | Developed by Valve, the developer of Half-Life 2 |
 | 热门 | deg(g) | Played by 340 other players |
 
 - 说明文只根据热门以外贡献最大的路径的实例生成，不写实例中没有的名称或数字。公司注明是开发商还是发行商。人数每 3 位用逗号分隔。只有热门的实例时，才以热门为理由。
-- 标签的说明文只写与 1 款种子（锚点）共有的标签。锚点是：把前 30 个标签中 g 带有的那些标签的项 weight(t) / √n(g)，按带有该标签的种子分别相加，和最大的种子（相同则取 w_s 较大者，再取 appid 较小者）。实例中没有锚点的实例时，使用第一个实例的种子。1,000 款以上的游戏带有的标签（Multiplayer、Singleplayer 等），在还有其他共同标签时不写。
+- 标签的说明文只写与 1 款种子（锚点）共有的标签。锚点是：把前 30 个标签中 g 带有的那些标签的项 weight(t) / √n(g)，按带有该标签的种子分别相加，和最大的种子（相同则取 w_s 较大者，再取 appid 较小者）。实例中没有锚点的实例时，使用第一个实例的种子。1,000 款以上的游戏带有的标签（Multiplayer、Singleplayer 等），在该种子的实例（最多 3 个）中还有此类以外的标签时不写。
 - `eval/explanation_check.py` 用另外编写的只读 Cypher 核对依据中的人数、标签归属和公司角色，并给出核对通过的比例（依据有效率）。
 
 ### 7.5 实现

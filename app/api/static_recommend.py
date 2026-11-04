@@ -285,7 +285,7 @@ def build_evidence(
     """The path instances behind one ranked game. The headline path comes first: the path other than
     popularity with the largest contribution, or popularity when nothing else contributed. A tag
     instance names the anchor seed (tag_anchor) if the anchor has the tag, else the seed of the largest
-    w_s that has it."""
+    w_s that has it (ties by appid)."""
     appid = ranked["appid"]
     if ranked["backfill"]:
         return [Evidence(path="popular", count=path_scores["paths"]["popular"][appid]["players"])]
@@ -372,9 +372,10 @@ def describe_evidence(
     evidence: list[Evidence], lang: Lang, anchor: str | None = None, generic: Collection[str] = ()
 ) -> tuple[list[Reason], str]:
     """Reason chips and sentence written from the headline evidence only. Tags are stated with one seed:
-    the anchor (tag_anchor) if a tag instance names it, else the seed of the first tag instance; tags in
-    `generic` are left out when that seed shares another tag. Studios are stated with their role for
-    both games. Player counts have thousands separators."""
+    the anchor (tag_anchor) if a tag instance names it, else the seed of the first tag instance. Of that
+    seed's instances, tags in `generic` are left out unless all of them are generic (other tags the seed
+    shares with the game but that are not among the instances do not count). Studios are stated with
+    their role for both games. Player counts have thousands separators."""
     if not evidence:
         return [], POPULAR_EXPLANATION[lang]
     headline = [item for item in evidence if item.path == evidence[0].path]
