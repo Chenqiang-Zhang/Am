@@ -570,6 +570,8 @@ def test_the_report_is_the_same_bytes_every_time(setup, run, tmp_path, capsys, m
         static_eval.main(["report", "--lang", "zh", *paths, "--explanations", str(tmp_path / "none.json")])
         outputs.append(capsys.readouterr().out.encode())
     assert outputs[0] == outputs[1] and "C1" in outputs[0].decode()
+    with pytest.raises(SystemExit):
+        static_eval.main(["report", "--lang", "ja", "--plan", str(setup.plan_path), "--tuning", str(tmp_path / "no")])
 
 
 # ---- the committed plan ----------------------------------------------------------------------------

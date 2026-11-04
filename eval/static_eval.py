@@ -685,8 +685,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "report":
         plan = load_plan(args.plan)
         paths = {name: getattr(args, name) or ROOT / plan["outputs"][name] for name in RESULT_FILES}
+        tuning, test = read_result(paths["tuning"]), read_result(paths["test"])
+        if tuning is None and test is None:
+            raise SystemExit(f"neither {paths['tuning']} nor {paths['test']} exists yet")
         c5 = c5_claim(paths["explanations"], relative(paths["explanations"]))
-        sys.stdout.write(static_report.render(args.lang, read_result(paths["tuning"]), read_result(paths["test"]), c5))
+        sys.stdout.write(static_report.render(args.lang, tuning, test, c5))
         return
 
     if args.command in ("tune", "test"):
