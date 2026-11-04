@@ -293,7 +293,7 @@ def build_evidence(
     """The path instances behind one ranked game. The headline path comes first: the path other than
     popularity with the largest contribution, or popularity when nothing else contributed. A tag
     instance names the anchor seed (tag_anchor) if the anchor has the tag, else the seed of the largest
-    w_s that has it (ties by appid)."""
+    w_s that has it (ties by appid as a string)."""
     appid = ranked["appid"]
     if ranked["backfill"]:
         return [Evidence(path="popular", count=path_scores["paths"]["popular"][appid]["players"])]

@@ -598,8 +598,8 @@ class GraphReader:
 
     def tag_concepts(self, seeds: list[SeedGame], concept_limit: int) -> list[TagConcept]:
         """The concept_limit concepts of the seeds with the largest weight(c), each with the seed of the
-        largest w_s that has it (ties by appid), the name of its tag with the smallest tag_id, the
-        tag_ids of all its tags, all seeds that have it, df(c) and the number of games N."""
+        largest w_s that has it (ties by appid as a string), the name of its tag with the smallest tag_id,
+        the tag_ids of all its tags, all seeds that have it, df(c) and the number of games N."""
         return self.query(TAG_CONCEPTS, seeds=seeds, max_rank=TAG_MAX_RANK, concept_limit=concept_limit)
 
     def studio_scores(
