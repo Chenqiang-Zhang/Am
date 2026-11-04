@@ -54,7 +54,9 @@ TEXT: dict[str, dict[str, str]] = {
         "hidden_1h_or_more": "1 時間以上",
         "hidden_valve": "Valve の作品",
         "hidden_not_valve": "Valve 以外",
-        "share": "回数の割合",
+        "group_header": "{name}（{evaluations} 回、事後層別 {share}）",
+        "primary": "主",
+        "secondary": "副",
         "beyond": "推薦の偏り（{users} 人、rep 0、上位 {k} 件）",
         "coverage": "カバレッジ@{k}（÷ {denominator}）",
         "distinct": "現れたゲーム",
@@ -86,7 +88,7 @@ TEXT: dict[str, dict[str, str]] = {
         "c1": "C1（实现检查，验证用户 {evaluations} 次）",
         "check": "检查",
         "baseline": "对照的方法",
-        "agreeing": "一致（名次相同，或都在第 50 名以后）",
+        "agreeing": "一致（名次相同，或都不在前 50 名中）",
         "result": "判定",
         "overall": "全体（测试用户 {users} 人、{evaluations} 次，事后分层，[95% CI]）",
         "method": "方法",
@@ -100,7 +102,7 @@ TEXT: dict[str, dict[str, str]] = {
         "C2": "peer_only − item_knn 的 95% CI 落在 [−{margin}, +{margin}] 内（等价）",
         "C3": "graph_tuned − peer_only > 0（{group}，Holm，97.5% CI）",
         "C4": "{contrast} 的 95% CI 下限 > {bound}",
-        "C5": "现行推荐的依据逐条全部成立的比例 = 1.0（v0 仅供参考）",
+        "C5": "现行推荐中依据全部成立的推荐所占的比例 = 1.0（按推荐计，v0 仅供参考）",
         "pass": "成立",
         "fail": "不成立",
         "pending": "未定",
@@ -112,7 +114,9 @@ TEXT: dict[str, dict[str, str]] = {
         "hidden_1h_or_more": "1 小时以上",
         "hidden_valve": "Valve 的作品",
         "hidden_not_valve": "Valve 以外",
-        "share": "次数占比",
+        "group_header": "{name}（{evaluations} 次，事后分层 {share}）",
+        "primary": "主检验",
+        "secondary": "次检验",
         "beyond": "推荐的偏向（{users} 人，rep 0，前 {k} 名）",
         "coverage": "覆盖率@{k}（÷ {denominator}）",
         "distinct": "出现的游戏",
@@ -272,7 +276,8 @@ def claims_table(report: Report, claims: Mapping[str, Any], c5: Mapping[str, Any
     ]
     for role, test in c3["tests"].items():
         value = f"{with_interval(test['ci_975'], 'delta')}, p(Holm) = {test['p_holm']:.4f}"
-        rows.append([f"C3 ({role})", t("C3", group=report.group(test["ci_975"]["group"])), value, t(test["status"])])
+        claim = t("C3", group=report.group(test["ci_975"]["group"]))
+        rows.append([f"C3（{t(role)}）", claim, value, t(test["status"])])
     for check in c4["checks"]:
         claim = t("C4", contrast=contrast_name(check["contrast"]), bound=f"{check['lower_bound_above']:+g}")
         rows.append(["C4", claim, with_interval(check, "delta"), t(check["status"])])
@@ -292,7 +297,8 @@ def descriptive_table(report: Report, descriptive: Mapping[str, Any]) -> None:
     t = report.t
     groups = descriptive["groups"]
     header = [t("method")] + [
-        f"{t(name)} ({group['evaluations']:,}, {group.get('share', 0.0):.1%})" for name, group in groups.items()
+        t("group_header", name=t(name), evaluations=f"{group['evaluations']:,}", share=f"{group.get('share', 0.0):.1%}")
+        for name, group in groups.items()
     ]
     filled = next(group for group in groups.values() if "estimates" in group)
 
