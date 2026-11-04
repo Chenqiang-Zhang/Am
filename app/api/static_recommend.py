@@ -370,7 +370,7 @@ def describe_evidence(
     """Reason chips and sentence written from the headline evidence only. Tags are stated with one seed:
     the anchor (tag_anchor) if a tag instance names it, else the seed of the first tag instance; tags in
     `generic` are left out when that seed shares another tag. Studios are stated with their role for
-    both games."""
+    both games. Player counts have thousands separators."""
     if not evidence:
         return [], POPULAR_EXPLANATION[lang]
     headline = [item for item in evidence if item.path == evidence[0].path]
@@ -378,7 +378,7 @@ def describe_evidence(
     japanese = lang == "ja"
     if first.path == "peer":
         explanation = (
-            f"『{first.seed_name}』を遊んだ他のプレイヤーのうち {first.count}人が、このゲームも遊んでいます"
+            f"『{first.seed_name}』を遊んだ他のプレイヤーのうち {first.count:,}人が、このゲームも遊んでいます"
             if japanese
             else f"{other_players(first.count)} who played {first.seed_name} also played this game"
         )
@@ -399,11 +399,11 @@ def describe_evidence(
         explanation = template.format(studio=first.bridge_name, seed=first.seed_name)
         return [Reason(kind="game", label=first.seed_name), Reason(kind="studio", label=first.bridge_name)], explanation
     if japanese:
-        explanation = f"他のプレイヤー {first.count}人が遊んでいるゲーム" if first.count else "まだ他のプレイヤーが遊んでいないゲーム"
+        explanation = f"他のプレイヤー {first.count:,}人が遊んでいるゲーム" if first.count else "まだ他のプレイヤーが遊んでいないゲーム"
     else:
         explanation = f"Played by {other_players(first.count)}" if first.count else "No other player has played this game yet"
     return [], explanation
 
 
 def other_players(count: int | None) -> str:
-    return "1 other player" if count == 1 else f"{count} other players"
+    return "1 other player" if count == 1 else f"{count:,} other players"

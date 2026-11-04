@@ -245,6 +245,15 @@ def test_co_play_states_the_exact_count_of_its_seed():
     assert describe_evidence([peer], "ja")[1] == "『Alpha』を遊んだ他のプレイヤーのうち 2人が、このゲームも遊んでいます"
 
 
+def test_counts_are_written_with_thousands_separators():
+    peer = Evidence(path="peer", seed_appid="10", seed_name="Alpha", count=31390, share=0.5)
+    assert describe_evidence([peer], "en")[1] == "31,390 other players who played Alpha also played this game"
+    assert describe_evidence([peer], "ja")[1] == "『Alpha』を遊んだ他のプレイヤーのうち 31,390人が、このゲームも遊んでいます"
+    popular = Evidence(path="popular", count=1234567, share=1.0)
+    assert describe_evidence([popular], "en")[1] == "Played by 1,234,567 other players"
+    assert describe_evidence([popular], "ja")[1] == "他のプレイヤー 1,234,567人が遊んでいるゲーム"
+
+
 def test_only_the_headline_path_is_stated():
     evidence = [
         Evidence(path="peer", seed_appid="10", seed_name="Alpha", count=2, share=0.5),
