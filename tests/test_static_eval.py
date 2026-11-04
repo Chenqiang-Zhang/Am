@@ -692,8 +692,9 @@ def test_the_report_is_the_same_bytes_every_time(setup, run, tmp_path, capsys, m
         static_eval.main(["report", "--lang", "zh", *paths, "--explanations", str(tmp_path / "none.json")])
         outputs.append(capsys.readouterr().out.encode())
     assert outputs[0] == outputs[1] and "C1" in outputs[0].decode()
-    with pytest.raises(SystemExit):
-        static_eval.main(["report", "--lang", "ja", "--plan", str(setup.plan_path), "--tuning", str(tmp_path / "no")])
+    missing = ["--tuning", str(tmp_path / "no"), "--test", str(tmp_path / "no")]  # not the committed results
+    with pytest.raises(SystemExit, match="neither"):
+        static_eval.main(["report", "--lang", "ja", "--plan", str(setup.plan_path), *missing])
 
 
 def test_the_claims_table_shows_the_post_stratified_v0_share_and_why_c5_is_unusable(run):
