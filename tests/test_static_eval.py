@@ -760,6 +760,7 @@ def test_c5_is_judged_only_on_an_explanation_check_of_the_test_runs_inputs(setup
         "k 5": {"k": 5},
         "rep 1": {"users_from": dict(clean["users_from"], rep=1)},
         "the v0 subset": {"users_from": dict(clean["users_from"], subset="v0")},
+        "one user per stratum": {"users_from": dict(clean["users_from"], limit_per_stratum=1)},
     }
     for name, change in changes.items():
         explanations.write_text(json.dumps(clean | change), encoding="utf-8")
