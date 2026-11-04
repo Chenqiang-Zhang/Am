@@ -385,7 +385,7 @@ UCSD のグラフで、ユーザが遊んだゲームを 1 本隠し、各手法
 - 隠すゲーム: ユーザの遊んだゲームを sha256('static-rec-eval-v1:hide:' + player_id + ':' + appid) の小さい順に並べ、rep r（r = 0, 1, 2）では r + 1 番目を隠す。rep の数は min(3, 遊んだ本数) で、1 回に隠すのは 1 本。
 - v0 用（`graph_v0` との比較）、説明用（C5）、偏り用（8.3 のカバレッジなど）のユーザは、テスト用のユーザからキーの順に取り、rep 0 だけを使う。偏り用は、1,000 人を W_s に比例させて層に分ける（最大剰余法）。
 - 層の重み W_s は、プールの層 s の人数 ÷ 63,670。
-- 分割は `eval/static_split.py` が作る（`eval/results/static_split_v1.json`）。分割には `PLAYED` の数と sha256 を記録してあり、グラフがこれと違えば評価は動かない。
+- 分割は `eval/static_split.py` が作る（`eval/results/static_split_v1.json`）。分割には `PLAYED` の数と sha256 を記録してあり、グラフがこれと違えば評価は動かない。タグと開発元・販売元のつながり（`HAS_TAG`、`DEVELOPED_BY`、`PUBLISHED_BY`）の sha256 は、保存した経路スコアと調整の結果に記録し、違えば動かない。
 
 | ユーザ | 1 | 2-3 | 4-10 | 11+ | 計 | 評価の回数 |
 |---|---|---|---|---|---|---|
@@ -433,7 +433,7 @@ UCSD のグラフで、ユーザが遊んだゲームを 1 本隠し、各手法
 ### 8.4 統計、設定の選び方、判定
 
 - 推定値は事後層別とする。ユーザごとの値の層ごとの平均を、W_s で重み付けして足す。全体、1-3（層 1 と 2-3 を、その 2 層の W_s で足す）、各層について出す。
-- 信頼区間は、層の中でユーザを選び直すブートストラップで求める（B = 10,000、numpy の `default_rng(0)`、パーセンタイル法の 95% 区間）。層ごとの B 回の選び直しをすべての行で共有するので、行どうしの差は対応のある比較になる。差の両側 p 値は、B 個の差のうち 0 以下と 0 以上の少ない方の数を m として、min(1, 2(m + 1) / (B + 1))。
+- 信頼区間は、層の中でユーザを選び直すブートストラップで求める（B = 10,000、numpy の `default_rng(0)`、パーセンタイル法の 95% 区間）。層ごとの B 回の選び直しをすべての行で共有するので、行どうしの差は対応のある比較になる。差の両側 p 値は、B 個の差のうち 0 以下と 0 以上の少ない方の数を m として、min(1, 2(m + 1) / (B + 1))。絶対値が 1e-12 以下の差は 0 とする（紙の上では 0 の差に残る float の誤差）。
 - 隠したゲームのプレイ時間（1 時間未満・以上）と、Valve が開発または販売したゲームかどうかで分けた結果は、記述的なものとして出す。ユーザごとに、グループに入る rep の指標の和と、その回数を、それぞれ rep の数で割り、両者の事後層別の平均の比を推定値とする。差は NDCG@10 だけ。
 
 設定の選び方（検証用のユーザだけで行う）:
@@ -441,7 +441,7 @@ UCSD のグラフで、ユーザが遊んだゲームを 1 本隠し、各手法
 - 候補は、λ_peer = 1、λ_tag ∈ {0, 0.1, 0.25, 0.5, 1}、λ_studio ∈ {0, 0.5, 1, 2}（Σ_s w_s で割る）、λ_pop ∈ {0, 0.1, 0.25, 0.5} と、6 通りのシードの決め方を組み合わせた 480 通り。`graph_v1_default` は比べるだけで、候補にしない。
 - 目的関数は、検証用のユーザでの事後層別の NDCG@10（全体）。
 - 目的関数が最大の設定を best とする。best より小さい分が、その差のブートストラップ標準誤差（B = 2,000、`default_rng(0)`）以内の設定のうち、次の順で最初のものを選ぶ: 共プレイのシードが 10 本、30 本、全部の順 → w_s が ln(1 + プレイ時間)、1 の順 → λ_tag、λ_studio、λ_pop のうち 0 が多い → Σλ が小さい → (λ_tag, λ_studio, λ_pop) が小さい。
-- 選んだ設定は、テストの前に `DEFAULT_PATH_WEIGHTS` と `DEFAULT_SEED_SCHEME` としてコミットする。テストは、調整の結果が、同じ計画と分割で、検証用のユーザで 480 通りすべてを並べたものであり、選んだ設定がコードの既定値と同じでなければ動かない。テストの結果を見てから、調整し直すことはしない。
+- 選んだ設定は、テストの前に、調整の結果（`static_tuning_v1.json`）と一緒に `DEFAULT_PATH_WEIGHTS` と `DEFAULT_SEED_SCHEME` としてコミットする。テストは、調整の結果が、同じ計画、分割、グラフで、検証用のユーザで 480 通りすべてを並べたもので、その行からこの規則で選ぶと同じ設定になり、選んだ設定がコードの既定値と同じでなければ動かない。テストの結果を見てから、調整し直すことはしない。
 
 判定は次の 5 つで、ほかの結果はすべて記述的なものとする。結果にかかわらず、すべての行、差、判定を報告する。
 
@@ -463,18 +463,18 @@ UCSD のグラフで、ユーザが遊んだゲームを 1 本隠し、各手法
 
 ### 8.7 実行
 
-リポジトリのルートで、`requirements.txt` を入れた Python から実行する。グラフは UCSD で、`.env` の `UCSD_NEO4J_*` で接続する（ホストで実行するときは、ホストから届く URI にする）。`tune` と `test` は、計画のファイルがコミットされていることを git で確かめるので、git のない `app` コンテナでは動かない。
+リポジトリのルートで、`requirements.txt` を入れた Python から実行する。グラフは UCSD で、`.env` の `UCSD_NEO4J_*` で接続する（ホストで実行するときは、ホストから届く URI にする）。`tune` と `test` は計画のファイルが、`test` はさらに調整の結果と `app/api/static_recommend.py` がコミットされていることを git で確かめるので、git のない `app` コンテナでは動かない。
 
 ```bash
 python -m eval.static_eval collect --stage validation --schemes all --workers 8   # 検証用のユーザの経路スコアを保存する（data/static_eval_cache/。止めても続きから再開できる）
 python -m eval.static_eval tune --workers 8                                       # 480 通りを並べて設定を選び、C1 を確かめる → static_tuning_v1.json
-# 選んだ設定を、app/api/static_recommend.py の DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME としてコミットする
+# static_tuning_v1.json と、選んだ設定にした app/api/static_recommend.py の DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME をコミットする
 python -m eval.static_eval collect --stage test --schemes log1p_10,<選んだシードの決め方> --workers 8
 python -m eval.static_eval test --workers 8                                       # v0 も実行し、すべての行、差、判定を出す → static_test_v1.json、static_test_v1_ranks.jsonl.gz
 python -m eval.static_eval report --lang ja                                       # 8.5 と 8.6 の表（中国語は --lang zh）
 ```
 
 - `verify --stage <validation|test|smoke> --schemes <…>` は、保存した経路スコアを `combine()` で並べた上位 50 件が `recommend_games()` と同じか、速い順位の計算が `combine()` と同じかを確かめる。`--stage smoke` は、検証用のユーザのうちキーの小さい 30 人で、実行の確認だけに使う。
-- 結果の JSON には、git のコミット、計画と分割の sha256、Python の版、段階ごとの時間を記録する。Python 3.12 から float の `sum()` の結果が変わるので、`tune`、`test` とその再現は、同じ版の Python で実行する。`tune` と `test` は、Item-KNN の float32 の和の順序を固定するため、`PYTHONHASHSEED=0` で自分を起動し直す。
+- 結果の JSON には、git のコミット、計画と分割の sha256、グラフの数とつながりの sha256、Python の版、段階ごとの時間を記録する。Python 3.12 から float の `sum()` の結果が変わるので、`tune`、`test` とその再現は、同じ版の Python で実行する。`tune` と `test` は、Item-KNN の float32 の和の順序を固定するため、`PYTHONHASHSEED=0` で自分を起動し直す。
 - C5 の `eval/results/static_explanations_v1.json` は、`eval/explanation_check.py` を説明用のユーザで実行して作る（分割からユーザを取るオプションは、これから足す）。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` は、手早い評価として残す。毎回ユーザと隠すゲームを選び直して `--runs` 回（既定 5）繰り返し、各指標を 平均 ± 標準偏差 で表示する（差の信頼区間は出さない）。静的なおすすめについて報告する数字は、`eval/static_eval.py` のものとする。

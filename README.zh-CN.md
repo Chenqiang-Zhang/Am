@@ -384,7 +384,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 - 被隐藏的游戏：把用户玩过的游戏按 sha256('static-rec-eval-v1:hide:' + player_id + ':' + appid) 从小到大排列，rep r（r = 0, 1, 2）隐藏第 r + 1 款。rep 数为 min(3, 玩过的款数)，每次只隐藏 1 款。
 - v0 用户（与 `graph_v0` 比较）、解释用户（C5）、偏向用户（8.3 的覆盖率等）按键的顺序从测试用户中选取，只用 rep 0。偏向用户把 1,000 人按 W_s 的比例分到各层（最大余数法）。
 - 层的权重 W_s 为测试池中层 s 的人数 ÷ 63,670。
-- 划分由 `eval/static_split.py` 生成（`eval/results/static_split_v1.json`）。划分中记有 `PLAYED` 的数量和 sha256，图与之不同时，评估不会运行。
+- 划分由 `eval/static_split.py` 生成（`eval/results/static_split_v1.json`）。划分中记有 `PLAYED` 的数量和 sha256，图与之不同时，评估不会运行。标签和开发商、发行商的连接（`HAS_TAG`、`DEVELOPED_BY`、`PUBLISHED_BY`）的 sha256 记录在缓存的路径分数和调参结果中，不同时也不会运行。
 
 | 用户 | 1 | 2-3 | 4-10 | 11+ | 合计 | 评估次数 |
 |---|---|---|---|---|---|---|
@@ -432,7 +432,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 ### 8.4 统计、配置的选法与判定
 
 - 估计值为事后分层：把各层用户值的平均以 W_s 加权相加。给出全体、1-3（层 1 和层 2-3 以这两层的 W_s 相加）和各层的值。
-- 置信区间用在层内重抽用户的 bootstrap 求出（B = 10,000，numpy 的 `default_rng(0)`，百分位法 95% 区间）。每层的 B 次重抽由所有行共用，因此行与行之差是配对的比较。差的双侧 p 值：设 B 个差中 ≤ 0 与 ≥ 0 的个数中较少者为 m，p = min(1, 2(m + 1) / (B + 1))。
+- 置信区间用在层内重抽用户的 bootstrap 求出（B = 10,000，numpy 的 `default_rng(0)`，百分位法 95% 区间）。每层的 B 次重抽由所有行共用，因此行与行之差是配对的比较。差的双侧 p 值：设 B 个差中 ≤ 0 与 ≥ 0 的个数中较少者为 m，p = min(1, 2(m + 1) / (B + 1))。绝对值不超过 1e-12 的差视为 0（理论上为 0 的差残留的 float 误差）。
 - 按被隐藏游戏的游玩时长（不足 1 小时、1 小时以上）以及是否为 Valve 开发或发行的游戏划分的结果，作为描述性结果给出：对每个用户，把落在该组的 rep 的指标之和与次数分别除以 rep 数，以两者事后分层均值之比为估计值。差只看 NDCG@10。
 
 配置的选法（只用验证用户）：
@@ -440,7 +440,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 - 候选为 λ_peer = 1，λ_tag ∈ {0, 0.1, 0.25, 0.5, 1}，λ_studio ∈ {0, 0.5, 1, 2}（除以 Σ_s w_s），λ_pop ∈ {0, 0.1, 0.25, 0.5}，与 6 种种子方案组合，共 480 个。`graph_v1_default` 只用来比较，不是候选。
 - 目标函数为验证用户上事后分层的 NDCG@10（全体）。
 - 目标函数最大的配置记为 best。在比 best 低的幅度不超过该差的 bootstrap 标准误（B = 2,000，`default_rng(0)`）的配置中，按以下顺序取第一个：共玩种子 10 款、30 款、全部 → w_s 为 ln(1 + 游玩时长)、1 → λ_tag、λ_studio、λ_pop 中为 0 的更多 → Σλ 更小 → (λ_tag, λ_studio, λ_pop) 更小。
-- 选定的配置在测试之前作为 `DEFAULT_PATH_WEIGHTS` 和 `DEFAULT_SEED_SCHEME` 提交。只有当调参结果是用同一份计划和划分、在验证用户上对全部 480 个配置排序得到的，且选定的配置与代码默认值相同时，测试才会运行。看过测试结果后不再调参。
+- 选定的配置在测试之前，与调参结果（`static_tuning_v1.json`）一起作为 `DEFAULT_PATH_WEIGHTS` 和 `DEFAULT_SEED_SCHEME` 提交。只有当调参结果是用同一份计划、划分和图、在验证用户上对全部 480 个配置排序得到的，按此规则从其各行选出的是同一个配置，且选定的配置与代码默认值相同时，测试才会运行。看过测试结果后不再调参。
 
 判定为以下 5 项，其余结果都是描述性的。无论结果如何，报告所有的行、差和判定。
 
@@ -462,18 +462,18 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 ### 8.7 运行
 
-在仓库根目录下，用安装了 `requirements.txt` 的 Python 运行。使用的图为 UCSD，通过 `.env` 的 `UCSD_NEO4J_*` 连接（在主机上运行时，填写主机能访问的 URI）。`tune` 和 `test` 用 git 确认计划文件已提交，因此在没有 git 的 `app` 容器中无法运行。
+在仓库根目录下，用安装了 `requirements.txt` 的 Python 运行。使用的图为 UCSD，通过 `.env` 的 `UCSD_NEO4J_*` 连接（在主机上运行时，填写主机能访问的 URI）。`tune` 和 `test` 用 git 确认计划文件已提交，`test` 还确认调参结果和 `app/api/static_recommend.py` 已提交，因此在没有 git 的 `app` 容器中无法运行。
 
 ```bash
 python -m eval.static_eval collect --stage validation --schemes all --workers 8   # 保存验证用户的路径分数（data/static_eval_cache/，中断后可从断点继续）
 python -m eval.static_eval tune --workers 8                                       # 对 480 个配置排序、选定配置并检查 C1 → static_tuning_v1.json
-# 把选定的配置作为 app/api/static_recommend.py 的 DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME 提交
+# 提交 static_tuning_v1.json，以及改为选定配置的 app/api/static_recommend.py 的 DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME
 python -m eval.static_eval collect --stage test --schemes log1p_10,<选定的种子方案> --workers 8
 python -m eval.static_eval test --workers 8                                       # 也运行 v0，给出所有的行、差和判定 → static_test_v1.json、static_test_v1_ranks.jsonl.gz
 python -m eval.static_eval report --lang zh                                       # 8.5 和 8.6 的表（日语为 --lang ja）
 ```
 
 - `verify --stage <validation|test|smoke> --schemes <…>` 检查：用 `combine()` 对保存的路径分数排出的前 50 名与 `recommend_games()` 相同，快速的名次计算与 `combine()` 相同。`--stage smoke` 为验证用户中键最小的 30 人，只用于确认能否运行。
-- 结果的 JSON 记录 git 的提交、计划和划分的 sha256、Python 的版本以及各阶段的耗时。Python 3.12 起 float 的 `sum()` 结果有变化，因此 `tune`、`test` 及其复现用同一版本的 Python 运行。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
+- 结果的 JSON 记录 git 的提交、计划和划分的 sha256、图的数量和连接的 sha256、Python 的版本以及各阶段的耗时。Python 3.12 起 float 的 `sum()` 结果有变化，因此 `tune`、`test` 及其复现用同一版本的 Python 运行。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
 - C5 用的 `eval/results/static_explanations_v1.json`，由 `eval/explanation_check.py` 在解释用户上运行生成（从划分中取用户的选项尚待加入）。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` 保留为快速评估：每次重新选择用户和被隐藏的游戏，重复 `--runs` 次（默认 5），各指标以 平均 ± 标准差 显示（不给出差的置信区间）。静态推荐报告的数字取 `eval/static_eval.py` 的结果。

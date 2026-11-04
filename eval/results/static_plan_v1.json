@@ -3,7 +3,8 @@
   "purpose": "The pre-registered evaluation of the static recommender (README §7; the protocol in README §8): committed before any validation or test result exists and not changed afterwards. python -m eval.static_eval reads it; tune and test record its commit and sha256 and refuse to run on the real stages while it has uncommitted changes.",
   "rules": [
     "λ and the seed scheme are chosen on the validation users only, by the selection rule below; the validation users serve tuning and C1, nothing else.",
-    "The chosen config is committed as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME (studio_normalization 'seed_weight' is combine()'s default) before the test run; the test run refuses to start otherwise, or when the tuning result is not a run over the whole grid on the validation users of this plan and split.",
+    "The chosen config is committed as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME (studio_normalization 'seed_weight' is combine()'s default), together with static_tuning_v1.json, before the test run; the test run refuses to start otherwise, when the tuning result is not a run over the whole grid on the validation users of this plan, split and graph, or when its best and chosen configs are not those the selection rule gives on its rows.",
+    "The graph is not rebuilt between the validation collection and the test run: the split pins the PLAYED edges, and the runner keeps a sha256 of every HAS_TAG, DEVELOPED_BY and PUBLISHED_BY link in its caches and results and refuses a cache or tuning result of other links.",
     "No re-tuning after any test result. Every row, contrast and claim below is reported whatever the outcome, including contrasts in the unfavourable direction and failed claims.",
     "Only C1-C5 are claims; everything else is descriptive."
   ],
@@ -145,7 +146,7 @@
       "resampling": "users within each stratum; one index matrix per stratum shared by every row, so every contrast is paired (eval/static_stats.py)"
     },
     "se": "the standard deviation (ddof 1) of the B replicates",
-    "p_value": "two-sided, of a contrast: 2 · (min(#{δ* <= 0}, #{δ* >= 0}) + 1) / (B + 1), at most 1, over the B replicates δ* of the difference",
+    "p_value": "two-sided, of a contrast: 2 · (min(#{δ* <= 0}, #{δ* >= 0}) + 1) / (B + 1), at most 1, over the B replicates δ* of the difference; |δ*| <= 1e-12 counts as 0 (float noise of a difference that is 0 on paper)",
     "groups": ["all", "1-3", "1", "2-3", "4-10", "11+"]
   },
   "contrasts": {
@@ -252,7 +253,7 @@
   "commands": [
     "python -m eval.static_eval collect --stage validation --schemes all --workers 8",
     "python -m eval.static_eval tune --workers 8",
-    "commit the chosen config as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME in app/api/static_recommend.py",
+    "commit static_tuning_v1.json and the chosen config as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME in app/api/static_recommend.py",
     "python -m eval.static_eval collect --stage test --schemes log1p_10,<chosen scheme> --workers 8",
     "eval/explanation_check.py on the explanations subset writes eval/results/static_explanations_v1.json (C5)",
     "python -m eval.static_eval test --workers 8",
