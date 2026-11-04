@@ -527,9 +527,25 @@ def test_the_test_stage_writes_every_row_contrast_and_claim(setup, run, tmp_path
     with gzip.open(tmp_path / "results" / "static_test_v1_ranks.jsonl.gz", "rt") as handle:
         lines = [json.loads(line) for line in handle]
     assert [(line["player_id"], line["rep"]) for line in lines] == [(player_id, rep) for player_id, _, rep, _ in cases]
-    first = lines[0]
-    assert set(first["ranks"]) <= set(static_plan.ROW_NAMES) and set(first["top10"]) == set(first["ranks"])
-    assert all(len(top) == 10 for top in first["top10"].values() if top is not None)
+    v0_users = {player_id for players in static_plan.v0_players(setup.split, "test").values() for player_id in players}
+    owned = {}
+    for player_id, appid, _, _ in PLAYS_ALL:
+        owned.setdefault(player_id, set()).add(appid)
+    played = len({appid for _, appid, _, _ in PLAYS_ALL})
+    for line in lines:
+        v0 = {"graph_v0"} if line["rep"] == 0 and line["player_id"] in v0_users else set()
+        assert set(line["ranks"]) == set(rows) | v0
+        if line["rep"]:
+            assert "top10" not in line
+            continue
+        assert set(line["top10"]) == set(line["ranks"])
+        candidates = played - (len(owned[line["player_id"]]) - 1)
+        for name, top in line["top10"].items():
+            rank = line["ranks"][name]
+            listed = top.index(line["hidden"]) + 1 if line["hidden"] in top else None
+            assert len(top) <= 10 and listed == (rank if rank is not None and rank <= 10 else None)
+            if name != "graph_v0":  # v0 has no popularity backfill, so its list can be shorter
+                assert len(top) >= min(10, candidates)
 
 
 def test_graph_rows_of_the_test_equal_recommend_games(setup, run):
