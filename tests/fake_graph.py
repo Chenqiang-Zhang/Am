@@ -539,8 +539,8 @@ class FakeGraphReader:
         concepts_by_game = {appid: self.concepts(appid) for appid in self.games}
         preference: dict[str, float] = defaultdict(float)
         via: dict[str, tuple[float, str]] = {}
-        for seed in seeds:
-            for concept in concepts_by_game[seed["appid"]]:
+        for seed in sorted(seeds, key=lambda seed: (-seed["weight"], seed["appid"])):  # the Cypher's order
+            for concept in concepts_by_game.get(seed["appid"], set()):
                 preference[concept] += seed["weight"]
                 via[concept] = min(via.get(concept, (math.inf, "")), (-seed["weight"], seed["appid"]))
         weights = {}
@@ -573,10 +573,13 @@ class FakeGraphReader:
                     )
             if instances:
                 instances.sort(key=lambda item: (-item["term"], item["concept"]))
+                score = 0.0
+                for item in instances:  # one by one in this order, as the Cypher adds them
+                    score += item["term"]
                 rows.append(
                     {
                         "appid": appid,
-                        "score": sum(item["term"] for item in instances),
+                        "score": score,
                         "concept_count": len(own),
                         "match_count": len(instances),
                         "matches": instances[:evidence_limit],

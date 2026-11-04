@@ -8,7 +8,9 @@ from tests.fake_graph import FakeGraphReader
 from tests.recording_reader import (
     UNIQUE_SORT_KEYS,
     CoPlayReader,
+    PopularityReader,
     RecordingGraphReader,
+    TagConceptReader,
     last_sort_key,
     order_by_clauses,
 )
@@ -88,7 +90,8 @@ def test_v0_tag_reason_does_not_depend_on_hit_order():
 
 
 SEEDS = [{"appid": "10", "weight": 1.0}]
-# co_play_scores sorts in Python: test_co_play_scores_sorts_rows_and_evidence_itself.
+# co_play_scores, game_popularity and the candidates of tag_concept_scores are sorted in Python (tested
+# at the end of this file); the concept table of tag_concept_scores is still sorted in Cypher.
 RANKING_QUERIES = {
     "popular_games": lambda reader: reader.popular_games(10),
     "played_games": lambda reader: reader.played_games("u1", []),
@@ -98,7 +101,6 @@ RANKING_QUERIES = {
     "games_from_played_studios": lambda reader: reader.games_from_played_studios([], [], 10),
     "tag_concept_scores": lambda reader: reader.tag_concept_scores(SEEDS, ["10"], 30, 3),
     "studio_scores": lambda reader: reader.studio_scores(SEEDS, ["10"], 1.0, 0.5, 3),
-    "game_popularity": lambda reader: reader.game_popularity("u1", ["10"]),
 }
 
 
@@ -145,3 +147,29 @@ def test_co_play_scores_sorts_rows_and_evidence_itself(player_id, hidden):
         assert row["seeds"] == sorted(row["seeds"], key=lambda seed: (-seed["term"], seed["appid"]))
     for shuffle_seed in range(5):
         assert CoPlayReader(FakeGraphReader(), shuffle_seed=shuffle_seed).co_play_scores(*args) == expected
+
+
+@pytest.mark.parametrize("player_id,hidden", [("u1", ["30"]), ("p6", []), ("p8", ["150"])])
+def test_tag_concept_scores_sorts_rows_and_evidence_itself(player_id, hidden):
+    """Rows by (-score, appid), the matches of a row by (-term, concept), whatever order the database
+    returns the concepts, the candidates and their matched concepts in."""
+    played = FakeGraphReader().played_games(player_id, hidden)
+    seeds = [{"appid": game["appid"], "weight": 1.0} for game in played]  # equal weights make ties
+    args = (seeds, [game["appid"] for game in played], 30, 3)
+    expected = TagConceptReader(FakeGraphReader()).tag_concept_scores(*args)
+    assert expected == sorted(expected, key=lambda row: (-row["score"], row["appid"]))
+    for row in expected:
+        assert row["matches"] == sorted(row["matches"], key=lambda match: (-match["term"], match["concept"]))
+    for shuffle_seed in range(5):
+        assert TagConceptReader(FakeGraphReader(), shuffle_seed=shuffle_seed).tag_concept_scores(*args) == expected
+
+
+@pytest.mark.parametrize("player_id,hidden", [("u1", ["30"]), ("p8", ["150"]), ("nobody", [])])
+def test_game_popularity_sorts_rows_itself(player_id, hidden):
+    """Rows by (-players, appid), whatever order the database collects the games in."""
+    played_appids = [game["appid"] for game in FakeGraphReader().played_games(player_id, hidden)]
+    expected = PopularityReader(FakeGraphReader()).game_popularity(player_id, played_appids)
+    assert expected == sorted(expected, key=lambda row: (-row["players"], row["appid"]))
+    for shuffle_seed in range(5):
+        reader = PopularityReader(FakeGraphReader(), shuffle_seed=shuffle_seed)
+        assert reader.game_popularity(player_id, played_appids) == expected

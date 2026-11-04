@@ -21,8 +21,9 @@ import kg.neo4j_loader
 import utils.graph_reader as graph_reader
 from app.api.static_recommend import SeedScheme, collect_path_scores, recommend_games
 from app.api.static_recommend_v0 import recommend_games_v0
+from eval.check_reader_equivalence import ReferenceReader
 from eval.explanation_check import CypherFacts, check_evidence, check_recommendations
-from tests.fake_graph import PLAYER_IDS, FakeGraphReader, write_loader_input
+from tests.fake_graph import GAMES, PLAYER_IDS, FakeGraphReader, write_loader_input
 from tests.test_explanation_check import FakeFacts
 from utils import settings
 from utils.graph_reader import GraphReader
@@ -77,6 +78,14 @@ def reader(tmp_path_factory):
     graph_reader = GraphReader(GRAPH_NAME)
     yield graph_reader
     graph_reader.close()
+
+
+@pytest.fixture(scope="module")
+def reference(reader):
+    """The statements the path queries replaced, on the same database."""
+    reference_reader = ReferenceReader(GRAPH_NAME)
+    yield reference_reader
+    reference_reader.close()
 
 
 def normalize(value):
@@ -145,9 +154,10 @@ SCHEMES = [
     SeedScheme(weighting="uniform", peer_limit=None),
     SeedScheme(peer_limit=1),
 ]
+SCHEME_IDS = ["default", "all", "uniform-all", "one-peer-seed"]
 
 
-@pytest.mark.parametrize("scheme", SCHEMES, ids=["default", "all", "uniform-all", "one-peer-seed"])
+@pytest.mark.parametrize("scheme", SCHEMES, ids=SCHEME_IDS)
 @pytest.mark.parametrize("player_id,hidden", CASES)
 def test_path_queries_match_the_formulas(reader, player_id, hidden, scheme):
     hidden_appids = frozenset(hidden)
@@ -178,6 +188,49 @@ def test_co_play_counts_do_not_depend_on_batch_or_word_size(
     monkeypatch.setattr(graph_reader, "SEED_BATCH", seed_batch)
     monkeypatch.setattr(graph_reader, "WORD_BITS", word_bits)
     assert reader.co_play_scores(*args) == expected
+
+
+@pytest.mark.parametrize("scheme", SCHEMES, ids=SCHEME_IDS)
+@pytest.mark.parametrize("player_id,hidden", CASES + [("nobody", [])])
+def test_path_queries_equal_the_statements_they_replaced(reader, reference, player_id, hidden, scheme):
+    """Exactly, as eval/check_reader_equivalence.py checks on the real graph."""
+    hidden_appids = frozenset(hidden)
+    assert collect_path_scores(reader, player_id, hidden_appids, scheme) == collect_path_scores(
+        reference, player_id, hidden_appids, scheme
+    )
+    for lang in ("en", "ja"):
+        actual = recommend_games(reader, player_id, 20, lang, hidden_appids, scheme=scheme)
+        expected = recommend_games(reference, player_id, 20, lang, hidden_appids, scheme=scheme)
+        assert [item.model_dump() for item in actual] == [item.model_dump() for item in expected]
+
+
+@pytest.mark.parametrize("player_id,hidden", CASES)
+def test_tag_and_popularity_rows_equal_the_statements_they_replaced(reader, reference, player_id, hidden):
+    """Row for row, also with seeds outside played_appids, no played_appids, an unknown seed and an
+    unknown player."""
+    played = reader.played_games(player_id, [])
+    seeds = [{"appid": "999", "weight": 1.0}] + [
+        {"appid": game["appid"], "weight": math.log1p(game["hours"])} for game in played
+    ]
+    visible = [game["appid"] for game in played if game["appid"] not in hidden]
+    for played_appids in (visible, visible[::2], []):
+        for concept_limit, evidence_limit in ((30, 3), (2, 1), (30, 20)):
+            args = (seeds, played_appids, concept_limit, evidence_limit)
+            assert reader.tag_concept_scores(*args) == reference.tag_concept_scores(*args)
+        for popularity_of in (player_id, "nobody"):
+            assert reader.game_popularity(popularity_of, played_appids) == reference.game_popularity(
+                popularity_of, played_appids
+            )
+
+
+def test_games_by_appids_equals_the_statement_it_replaced(reader, reference):
+    appids = [game["appid"] for game in reversed(GAMES)] + ["999"]
+
+    def rows(graph_reader):  # the database does not fix the order of a game's tags
+        return [dict(row, tags=sorted(row["tags"], key=repr)) for row in graph_reader.games_by_appids(appids)]
+
+    assert rows(reader) == rows(reference)
+    assert [row["appid"] for row in rows(reader)] == appids[:-1]
 
 
 @pytest.mark.parametrize("recommend", [recommend_games, recommend_games_v0], ids=["current", "v0"])
