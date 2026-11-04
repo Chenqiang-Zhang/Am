@@ -134,6 +134,21 @@ def test_a_failure_of_the_new_reader_is_reported_and_counted(monkeypatch, capsys
     assert any(line.startswith("unknown player: new failed: ") for line in lines)  # its seeds are u1's games
 
 
+class FailingInAnEdgeCase(StandIn):
+    """The new reader failing transiently only in one of u1's edge cases: co-play without played_appids."""
+
+    def co_play_scores(self, player_id, seeds, played_appids, evidence_limit):
+        if player_id == "u1" and not played_appids:
+            raise TransientError("forced")
+        return super().co_play_scores(player_id, seeds, played_appids, evidence_limit)
+
+
+def test_a_failure_of_the_new_reader_in_an_edge_case_is_the_new_readers(monkeypatch, capsys):
+    code, lines = run(monkeypatch, capsys, "--players", "u1", "p8", new=FailingInAnEdgeCase())
+    assert code == 0 and verdicts(lines, "u1").startswith("new failed: ") and verdicts(lines, "p8") == "same"
+    assert "0 where the reference failed, 1 where the new reader failed" in summary(lines)
+
+
 def test_a_failing_precondition_query_compares_nothing(monkeypatch, capsys):
     class Busy(StandIn):
         def query(self, cypher, **params):

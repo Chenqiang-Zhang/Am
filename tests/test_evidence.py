@@ -317,6 +317,14 @@ def test_the_anchor_is_a_seed_with_a_listed_tag_that_is_not_generic():
     assert tag_anchor(path_scores, ranked, {"multiplayer", "niche_0", "niche_1"}) == "10"
 
 
+def test_recommendations_pass_the_generic_tags_to_the_anchor():
+    # p4, w_s = 1, tag path only. For India(90) the listed tags are Open World and RPG (generic in the fixture,
+    # on 3 or more of its 22 games) and Strategy. Foxtrot owns the largest part but has only the generic two;
+    # Hotel has Strategy, so the reason names Hotel and a tag that says something.
+    items = {item.appid: item for item in recommend_games(FakeGraphReader(), "p4", 10, "en", weights={"tag": 1.0})}
+    assert items["90"].explanation == "Shares Strategy with Hotel"
+
+
 @pytest.mark.parametrize("games,fewest", [(UCSD_GAMES, 1000), (100, 11), (len(GAMES), 3)])
 def test_generic_tags_are_on_the_same_share_of_the_games_of_any_graph(games, fewest):
     # 1,000 of UCSD's 9,192 games, 11 of 100 (10.9), 3 of the fixture's 22 (2.4).
