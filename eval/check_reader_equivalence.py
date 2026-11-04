@@ -16,15 +16,15 @@ those of an unknown player.
 The median seconds over the compared players are printed for both readers: co_play_scores, the tag path
 (tag_concepts + tag_concept_scores, which the two readers split differently), studio_scores,
 game_popularity, games_by_appids(), collect_path_scores() and recommend_games() (en). They are not
-old-vs-new speed-ups: the reference's tag_concepts runs REFERENCE_TAG_CONCEPTS and REFERENCE_TAG_HOLDERS,
-which the replaced code did not run and which exist only for this comparison, and the reference's tag
-path, collect_path_scores() and recommend_games() times include them.
+old-vs-new speed-ups: the reference's tag_concepts runs REFERENCE_TAG_CONCEPTS, REFERENCE_TAG_HOLDERS and
+REFERENCE_GAME_COUNT, which the replaced code did not run and which exist only for this comparison, and the
+reference's tag path, collect_path_scores() and recommend_games() times include them.
 
 With --all-seeds the reference only runs for players with at most REFERENCE_SEED_LIMIT visible games:
 above that its co-play statement runs out of transaction memory, so such a player is only timed with
 the new reader and counted as skipped for size. A call of either reader that fails with a transient
-error (the database is shared) is reported as "new failed" or "reference failed", and its player (or the
-unknown player) is not compared; when the preconditions or the player list fail, no player is. Exit code
+error (the database is shared; Neo4j also counts running out of transaction memory as transient) is
+reported as "new failed" or "reference failed", and its player (or the unknown player) is not compared; when the preconditions or the player list fail, no player is. Exit code
 1 on any mismatch or broken precondition; otherwise 2 if a call failed and no player was compared, else
 0. A run that compares no player says "nothing compared for any player"; it exits with 0 when its
 players were only skipped for size. --uniform --all-seeds is the shipped DEFAULT_SEED_SCHEME; without
@@ -36,7 +36,7 @@ exercises the seed weights.
     python -m eval.check_reader_equivalence --players 0ebcdac87473bdce47327aef5ec69eeb --all-seeds
 
 The third one only times the new reader: that player has 234 visible games, more than
-REFERENCE_SEED_LIMIT, so nothing is compared.
+REFERENCE_SEED_LIMIT, so nothing about that player is compared (only the unknown player's edge cases are).
 """
 
 import argparse

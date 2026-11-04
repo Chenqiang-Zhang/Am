@@ -313,7 +313,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 | u | 生成推荐的用户 |
 | s | 种子。u 玩过的游戏（评估时去掉被隐藏的游戏） |
 | g | 候选。u 没有玩过的所有游戏（包括评估时被隐藏的游戏） |
-| w_s | 种子的权重。默认为 1（`SeedScheme(weighting="log_hours")` 时为 `ln(1 + s 的游玩时长)`） |
+| w_s | 种子的权重。默认（`DEFAULT_SEED_SCHEME`）为 1；`SeedScheme(weighting="log_hours")` 时为 `ln(1 + s 的游玩时长)`（不带参数的 `SeedScheme()` 即此方案，共玩种子取前 10 款） |
 | deg(g) | 玩过 g 的玩家数（不含 u） |
 | co(s, g) | s 和 g 都玩过的玩家数（不含 u） |
 
@@ -368,10 +368,10 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 - 每个用户、每条路径执行 Cypher（`utils/graph_reader.py` 的 `co_play_scores`、`tag_concept_scores`、`studio_scores`、`game_popularity`）。各路径同时返回分数和产生该分数的实例。开发商・发行商和热门各 1 条。
 - 共玩先执行 1 条读取种子名称和人数的小 Cypher，再每 64 个种子执行 1 条计数的 Cypher。每个种子的 co(s, g) 打包在整数的位字段里计数，因此每条计数的 Cypher 中，每个其他玩家只展开 1 次。位字段的宽度由先读取的人数决定，因此执行期间不能写入图。
-- 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight、带有该标签的种子和 df），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。锚点只对要推荐的游戏在 Python 里选。
+- 标签先执行 1 条生成 weight 最大的前 30 个标签的表（weight、带有该标签的种子、df 和全部游戏数 N），再执行 1 条对每个候选返回它带有表中的哪些标签以及 n(g)。锚点只对要推荐的游戏在 Python 里选。
 - 共玩和标签的各项在 Python 里相加。与 Cypher 的 `sum()` 一样从大的项开始依次相加，因此结果与直接写成 1 条的 Cypher 相同。这些 Cypher 作为基准保留在 `eval/check_reader_equivalence.py`，在真实图上对照。
 - `collect_path_scores()` 的结果可以保存为 JSON，用 `combine()` 改变 λ 后重新排序。API 与评估使用同一个 `combine()`。
-- 默认的种子权重为 1，共玩使用全部种子，λ 为 1 / 0.1 / 0 / 0（`SeedScheme`、`DEFAULT_PATH_WEIGHTS`，在验证用户上选出，见 8.5）。由于使用全部种子，玩过的游戏越多的用户，共玩的计算越耗时。在验证用户中每层取 5 人测量 `recommend_games()`（前 10 名），中位数为：层 1 0.5 秒，2-3 0.9 秒，4-10 1.1 秒，11+ 2.9 秒（5 人中最长 8.2 秒）。可见游戏 1,307 款的用户要 20.5 秒，3,053 款的用户要 42.5 秒。共玩种子取 10 款的旧配置都在 1.6 秒以内（最长为 3,053 款用户的 1.53 秒）。测量时评估的采集也在运行（负载平均值 20 以上），因此时间偏长。
+- 默认的种子权重为 1，共玩使用全部种子，λ 为 1 / 0.1 / 0 / 0（`DEFAULT_SEED_SCHEME`、`DEFAULT_PATH_WEIGHTS`，在验证用户上选出，见 8.5）。由于使用全部种子，玩过的游戏越多的用户，共玩的计算越耗时。在验证用户中每层取 5 人测量 `recommend_games()`（前 10 名），中位数为：层 1 0.5 秒，2-3 0.9 秒，4-10 1.1 秒，11+ 2.9 秒（5 人中最长 8.2 秒）。可见游戏 1,307 款的用户要 20.5 秒，3,053 款的用户要 42.5 秒。共玩种子取 10 款的旧配置都在 1.6 秒以内（最长为 3,053 款用户的 1.53 秒）。测量时评估的采集也在运行（负载平均值 20 以上），因此时间偏长。
 - 改进前的方法（v0）为了比较，保留在 `app/api/static_recommend_v0.py`（`python -m eval.evaluate --rankers ... graph_v0`）。
 
 ## 8. 离线评估

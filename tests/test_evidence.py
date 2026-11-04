@@ -195,6 +195,12 @@ def test_anchor_parts_tie_to_score_decimals_and_appids_compare_as_strings():
     assert tag_anchor(path_scores, ranked) == "102700"
 
 
+def test_anchor_parts_that_differ_before_the_12th_decimal_do_not_tie():
+    # Seed 20's part is larger by 1e-9, so it is the anchor although "102700" comes first as a string.
+    path_scores, ranked = tag_only(concept("a", 2.0 + 1e-9, ("20", 1.0)), concept("b", 2.0, ("102700", 1.0)))
+    assert tag_anchor(path_scores, ranked) == "20"
+
+
 def test_without_an_instance_of_the_anchor_the_first_instance_names_the_seed():
     # Seed 2 holds five weaker concepts that add up to more than seed 1's three, which fill the evidence. Seed 1
     # is the only seed with a listed tag, so it is the anchor, unless all of its tags are generic: then every

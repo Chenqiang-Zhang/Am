@@ -109,6 +109,22 @@ def test_a_mismatch_exits_1_and_a_run_without_a_comparison_2(monkeypatch, capsys
             assert verdicts(lines, player_id) == "same"
 
 
+def test_a_mismatch_of_the_unknown_player_exits_1(monkeypatch, capsys):
+    code, lines = run(monkeypatch, capsys, "--players", "u1", "p8", reference=StandIn(different={"nobody"}))
+    unknown = next(line for line in lines if line.startswith("unknown player: "))
+    assert code == 1 and unknown.startswith("unknown player: DIFFERENT: ") and unknown.endswith("game_popularity")
+    assert "1 with a mismatch" in summary(lines)
+
+
+def test_the_tag_path_median_adds_both_tag_calls():
+    seconds = {"co_play_scores": 0.5, "tag_concepts": 1.0, "tag_concept_scores": 2.0, "collect_path_scores": 4.0}
+    assert check_reader_equivalence.median_terms(seconds) == {
+        "co_play_scores": 0.5,
+        "tag path": 3.0,
+        "collect_path_scores": 4.0,
+    }
+
+
 def test_a_failure_of_the_new_reader_is_reported_and_counted(monkeypatch, capsys):
     code, lines = run(monkeypatch, capsys, "--players", "p8", "u1", new=StandIn(failing={"u1"}))
     assert code == 0 and verdicts(lines, "u1").startswith("new failed: ") and verdicts(lines, "p8") == "same"
