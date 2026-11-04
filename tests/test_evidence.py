@@ -30,6 +30,13 @@ U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}),
 U1_RANKED = {item["appid"]: item for item in combine(U1_PATH_SCORES, len(GAMES), ALL_PATHS)}
 
 
+def test_the_fixtures_share_one_configuration():
+    # The anchors of U1's items are taken from U1_PATH_SCORES and U1_RANKED.
+    assert [(item.appid, item.score, item.contributions) for item in U1] == [
+        (appid, ranked["score"], ranked["contributions"]) for appid, ranked in U1_RANKED.items()
+    ]
+
+
 def test_every_recommendation_carries_evidence_that_explains_its_score():
     assert len(U1) == len(GAMES) - 3  # every game u1 has not played
     generic = generic_tags(U1_PATH_SCORES)
