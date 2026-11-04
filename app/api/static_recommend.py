@@ -130,7 +130,7 @@ def recommend_games(
     generic = generic_tags(path_scores)
     recommendations = []
     for item in ranked:
-        anchor = tag_anchor(path_scores, item)
+        anchor = tag_anchor(path_scores, item, generic)
         evidence = build_evidence(path_scores, item, lang, anchor)
         reasons, explanation = describe_evidence(evidence, lang, anchor, generic)
         recommendations.append(
@@ -255,12 +255,14 @@ def combine(
     return ranked
 
 
-def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
+def tag_anchor(path_scores: PathScores, ranked: RankedGame, generic: Collection[str] = ()) -> str | None:
     """The seed a tag reason is about: the one with the largest part of the game's tag score. Each matched
     concept's term is split among the seeds that have it by their weight, term · w_s / Σ_{seeds with c} w
-    = w_s · ln(N / df(c)) / sqrt(n(g)), so a seed is credited with its own part only. Ties (totals that agree
-    to SCORE_DECIMALS decimals) go to the larger w_s, then to the smaller appid as a string ("102700" before
-    "20"). None unless the tag path contributed."""
+    = w_s · ln(N / df(c)) / sqrt(n(g)), so a seed is credited with its own part only. Only seeds that have
+    one of the listed instances (the row's matches) outside `generic` are candidates, so that the reason can
+    state a tag that is not generic; when no seed has one, every seed with a matched concept is. Ties (totals
+    that agree to SCORE_DECIMALS decimals) go to the larger w_s, then to the smaller appid as a string
+    ("102700" before "20"). None unless the tag path contributed."""
     if "tag" not in ranked["contributions"]:
         return None
     row = path_scores["paths"]["tag"][ranked["appid"]]
@@ -273,7 +275,14 @@ def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
         for holder in entry["holders"]:
             totals[holder["appid"]] = totals.get(holder["appid"], 0.0) + term * holder["weight"] / held
             weights[holder["appid"]] = holder["weight"]
-    return min(totals, key=lambda appid: (-round(totals[appid], SCORE_DECIMALS), -weights[appid], appid))
+    specific = {
+        holder["appid"]
+        for match in row["matches"]
+        if match["concept"] not in generic
+        for holder in path_scores["tag_concepts"][match["concept"]]["holders"]
+    }
+    candidates = [appid for appid in totals if appid in specific] or list(totals)
+    return min(candidates, key=lambda appid: (-round(totals[appid], SCORE_DECIMALS), -weights[appid], appid))
 
 
 def generic_tags(path_scores: PathScores) -> set[str]:

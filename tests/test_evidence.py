@@ -49,7 +49,7 @@ def test_every_recommendation_carries_evidence_that_explains_its_score():
         assert item.contributions is not None
         assert item.score == pytest.approx(sum(item.contributions.values()))
         assert sum(evidence.share for evidence in item.evidence) <= 1 + 1e-9
-        anchor = tag_anchor(U1_PATH_SCORES, U1_RANKED[item.appid])
+        anchor = tag_anchor(U1_PATH_SCORES, U1_RANKED[item.appid], generic)
         assert describe_evidence(item.evidence, "en", anchor, generic) == (item.reasons, item.explanation)
 
 
@@ -196,14 +196,18 @@ def test_anchor_parts_tie_to_score_decimals_and_appids_compare_as_strings():
 
 
 def test_without_an_instance_of_the_anchor_the_first_instance_names_the_seed():
-    # Seed 2 holds five weaker concepts that add up to more than seed 1's three, which fill the evidence.
+    # Seed 2 holds five weaker concepts that add up to more than seed 1's three, which fill the evidence. Seed 1
+    # is the only seed with a listed tag, so it is the anchor, unless all of its tags are generic: then every
+    # seed is a candidate, seed 2 owns the most, and the reason names the first instance's seed instead.
     strong = [concept(name, 3.0, ("1", 3.0)) for name in "abc"]
     weak = [concept(name, 2.0, ("2", 1.0)) for name in "vwxyz"]
     path_scores, ranked = tag_only(*strong, *weak)
-    assert tag_anchor(path_scores, ranked) == "2"
+    assert tag_anchor(path_scores, ranked) == "1"
+    generic = {"a", "b", "c"}
+    assert tag_anchor(path_scores, ranked, generic) == "2"
     evidence = build_evidence(path_scores, ranked, "en", "2")
     assert {item.seed_appid for item in evidence} == {"1"}
-    assert describe_evidence(evidence, "en", "2")[1] == "Shares A, B, C with Seed 1"
+    assert describe_evidence(evidence, "en", "2", generic)[1] == "Shares A, B, C with Seed 1"
 
 
 def test_a_tag_instance_names_the_anchor_if_the_anchor_has_the_tag():
@@ -279,10 +283,40 @@ def test_a_seed_played_for_a_minute_is_not_the_anchor_over_one_played_for_500_ho
     assert describe_evidence(evidence, "en", "100")[1] == "Shares Roguelike, Pixel Graphics with Seed 100"
 
 
+def test_the_anchor_is_a_seed_with_a_listed_tag_that_is_not_generic():
+    # w_s = 1. Seed 10 owns the most of the tag score through four tags on 900 games each, which are not
+    # among the 3 listed instances; its only listed one is Multiplayer (generic, shared by five seeds). Seed 70
+    # has Roguelike and Pixel Graphics, both listed. Among the seeds with a listed tag that is not generic,
+    # seed 70 owns the most, so the reason names it and states its tags instead of only Multiplayer.
+    concepts = [
+        idf_concept("multiplayer", 1328, *[(appid, 1.0) for appid in ("10", "20", "30", "40", "50")]),
+        idf_concept("roguelike", 150, ("70", 1.0)),
+        idf_concept("pixel_graphics", 300, ("70", 1.0)),
+        *[idf_concept(f"niche_{index}", 900, ("10", 1.0)) for index in range(4)],
+    ]
+    path_scores, ranked = tag_only(*concepts)
+    row = path_scores["paths"]["tag"]["g"]
+    assert [match["concept"] for match in row["matches"]] == ["multiplayer", "roguelike", "pixel_graphics"]
+    generic = generic_tags(path_scores)
+    assert generic == {"multiplayer"}
+    assert tag_anchor(path_scores, ranked) == "10"  # by its own part alone
+    assert describe_evidence(build_evidence(path_scores, ranked, "en", "10"), "en", "10", generic)[1] == (
+        "Shares Multiplayer with Seed 10"
+    )
+    assert tag_anchor(path_scores, ranked, generic) == "70"
+    evidence = build_evidence(path_scores, ranked, "en", "70")
+    assert describe_evidence(evidence, "en", "70", generic)[1] == "Shares Roguelike, Pixel Graphics with Seed 70"
+    # When every listed instance is generic, the seed with the largest part is the anchor again.
+    path_scores, ranked = tag_only(concepts[0], *concepts[3:])
+    assert tag_anchor(path_scores, ranked, {"multiplayer", "niche_0", "niche_1"}) == "10"
+
+
 @pytest.mark.parametrize("games,fewest", [(UCSD_GAMES, 1000), (100, 11), (len(GAMES), 3)])
 def test_generic_tags_are_on_the_same_share_of_the_games_of_any_graph(games, fewest):
     # 1,000 of UCSD's 9,192 games, 11 of 100 (10.9), 3 of the fixture's 22 (2.4).
-    rows = [dict(concept(f"on_{df}", 1.0, ("1", 1.0)), document_frequency=df, games=games) for df in (fewest - 1, fewest)]
+    rows = [
+        dict(concept(f"on_{df}", 1.0, ("1", 1.0)), document_frequency=df, games=games) for df in (fewest - 1, fewest)
+    ]
     assert generic_tags({"tag_concepts": {row["concept"]: row for row in rows}}) == {f"on_{fewest}"}
 
 
