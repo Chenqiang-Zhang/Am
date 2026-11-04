@@ -374,29 +374,106 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 ## 8. 离线评估
 
-使用 UCSD 数据库的用户历史，评估静态推荐。
+在 UCSD 的图上，隐藏用户玩过的 1 款游戏，测量各方法把它排在第几名。流程、比较的行、配置的选法和判定，在验证与测试的结果出来之前就写入 `eval/results/static_plan_v1.json` 并已提交（8.1-8.4 是它的摘要）。报告的数字由 `eval/static_eval.py` 给出。
 
-### 8.1 比较的方法
+### 8.1 流程
 
-- 热门度排序
-- Item-KNN
-- 静态推荐的方法（第 7 节）
+- 对象：玩过 2 款以上的 64,670 名玩家。按可见游戏数（玩过的款数 − 1）分为 1 / 2-3 / 4-10 / 11+ 共 4 层。
+- 键 sha256('static-rec-eval-v1:user:' + player_id) 最小的 1,000 人为验证用户，其余 63,670 人为测试池。验证用户只用于选择配置（8.4）和 C1。
+- 测试用户：测试池中层 1 和层 2-3 的全部，层 4-10 键最小的 1,500 人，层 11+ 键最小的 2,500 人。
+- 被隐藏的游戏：把用户玩过的游戏按 sha256('static-rec-eval-v1:hide:' + player_id + ':' + appid) 从小到大排列，rep r（r = 0, 1, 2）隐藏第 r + 1 款。rep 数为 min(3, 玩过的款数)，每次只隐藏 1 款。
+- v0 用户（与 `graph_v0` 比较）、解释用户（C5）、偏向用户（8.3 的覆盖率等）按键的顺序从测试用户中选取，只用 rep 0。偏向用户把 1,000 人按 W_s 的比例分到各层（最大余数法）。
+- 层的权重 W_s 为测试池中层 s 的人数 ÷ 63,670。
+- 划分由 `eval/static_split.py` 生成（`eval/results/static_split_v1.json`）。划分中记有 `PLAYED` 的数量和 sha256，图与之不同时，评估不会运行。
 
-### 8.2 评估指标
+| 用户 | 1 | 2-3 | 4-10 | 11+ | 合计 | 评估次数 |
+|---|---|---|---|---|---|---|
+| 对象 | 2,346 | 3,914 | 9,991 | 48,419 | 64,670 | |
+| 验证用户 | 44 | 67 | 163 | 726 | 1,000 | 2,956 |
+| 测试池 | 2,302 | 3,847 | 9,828 | 47,693 | 63,670 | |
+| 测试用户 | 2,302 | 3,847 | 1,500 | 2,500 | 10,149 | 28,145 |
+| v0 用户 | 500 | 500 | 500 | 500 | 2,000 | 2,000 |
+| 解释用户 | 75 | 75 | 75 | 75 | 300 | 300 |
+| 偏向用户 | 36 | 61 | 154 | 749 | 1,000 | 1,000 |
 
-K 取 10、20、50。逐用户计算，再对全部用户取平均。
+### 8.2 比较的行
+
+| 行 | 内容 |
+|---|---|
+| `popularity` | 热门度排序（`eval/rankers.py`）。不计被评估用户的记录，相同则按 appid |
+| `item_knn` | Item-KNN（`eval/rankers.py`）。与可见游戏的余弦相似度之和，不计被评估用户的记录，用 float32 计算 |
+| `graph_v0` | 改进前的方法（`app/api/static_recommend_v0.py`）。只返回前 50 名，第 51 名以后算未命中。只在 v0 用户和偏向用户上运行 |
+| `graph_v1_default` | 调参前的配置：λ 为 1 / 1 / 0.5 / 0.1，开发商・发行商除以最大值（旧规则），w_s = ln(1 + 游玩时长)，共玩的种子取前 10 款 |
+| `graph_tuned` | 按 8.4 的规则选出、并设为代码默认值的配置 |
+| `graph_tuned_minus_peer`、`_tag`、`_studio`、`_pop` | 把 `graph_tuned` 的一个 λ 设为 0（其余不重新调整） |
+| `peer_only` | 选定的种子方案，只用共玩（λ_peer = 1，其余为 0） |
+| `content_only` | 选定的种子方案，只用标签和开发商・发行商（选定的 λ；两者都为 0 时都取 1） |
+| `pop_only` | 只用热门（λ_pop = 1，其余为 0）。用来确认名次与 `popularity` 相同 |
+
+- 图的各行先保存 `collect_path_scores()` 的路径分数，再用 `combine()` 改变 λ 排序。名次是在 9,192 款中去掉可见游戏后的全部游戏（包括无人玩过的游戏）中的名次；`popularity` 和 `item_knn` 是在有人玩过的 8,523 款中的名次。
+- 种子方案（`SeedScheme`）共 6 种：w_s 取 ln(1 + 游玩时长)（`log1p`）或 1（`uniform`），共玩的种子取游玩时长最长的前 10 款、前 30 款或全部（`log1p_10` … `uniform_all`）。标签和开发商・发行商始终使用全部种子。
+- `graph_v0` 以外的行在测试用户的全部 rep 上排序。与 `graph_v0` 的比较只用 v0 用户的 rep 0，其他行也只取这些次。
+
+### 8.3 评估指标
+
+设被隐藏游戏的名次为 r（不在 `graph_v0` 的前 50 名中时为未命中）。K 取 10、20、50，主要指标为 NDCG@10。HR 和 NDCG 先对每个用户的 rep 取平均，再按 8.4 估计。
 
 | 指标 | 定义 |
 |---|---|
-| HR@K | 被隐藏的游戏进入前 K 名则为 1，否则为 0 |
-| NDCG@K | 设被隐藏游戏的名次为 r。r 不超过 K 则为 1 / log2(r + 1)，否则为 0 |
-| 覆盖率@K | 在全部用户的前 K 名中至少出现过 1 次的游戏数 ÷ 候选游戏数（不做用户平均） |
-| 多样性@K | 对从前 K 名中任选 2 款的所有组合，求标签集合的距离（1 − Jaccard 系数）并取平均 |
-| 新颖性@K | 前 K 名游戏的 −log2(p) 的平均值。p 为玩过该游戏的用户数 ÷ 全部用户数 |
+| HR@K | r 不超过 K 则为 1，否则为 0 |
+| NDCG@K | r 不超过 K 则为 1 / log2(r + 1)，否则为 0 |
+| 覆盖率@K | 在偏向用户（n = 1,000，rep 0）的前 K 名中至少出现过 1 次的游戏数 ÷ 8,523（有人玩过的游戏数，不做用户平均）。无人玩过的游戏也计入分子，并另外给出其数量 |
+| 多样性@K | 对从前 K 名中任选 2 款的所有组合，求标签集合的距离（1 − Jaccard 系数）并取平均。标签为 `rank` 不超过 10 或没有 `rank` 的 `HAS_TAG` 的 `tag_id`，包括功能（`Feature`），名称相同的类型和用户标签分开计数（与 7.2 的标签路径不同） |
+| 新颖性@K | 前 K 名游戏的 −log2(p) 的平均值。p 为玩过该游戏的玩家数 ÷ 全部玩家数（67,894），被评估用户也计入。无人玩过的游戏按 1 人计 |
+| 热门前 100 款的占比 | 前 K 名的位置中，玩家数最多的 100 款（相同则按 appid）所占的比例 |
 
-### 8.3 评估的运行
+- 覆盖率、多样性、新颖性和热门前 100 款的占比，取 K = 10，在偏向用户上对所有行（包括 `graph_v0`）计算。多样性和新颖性对用户取平均。
 
-`docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R`。对每个用户，隐藏其玩过的游戏中的 1 款，测量该游戏是否进入前 K 名。`--runs` 次（默认 5），每次重新选择用户和被隐藏的游戏，各指标以 平均 ± 标准差 显示。
+### 8.4 统计、配置的选法与判定
 
-- 使用的图，无论 `.env` 的 `GRAPH` 如何，始终为 UCSD。
-- 热门度排序和 Item-KNN，在构建时排除被评估用户自身的记录（避免被隐藏的 1 款计入热门度或相似度）。
+- 估计值为事后分层：把各层用户值的平均以 W_s 加权相加。给出全体、1-3（层 1 和层 2-3 以这两层的 W_s 相加）和各层的值。
+- 置信区间用在层内重抽用户的 bootstrap 求出（B = 10,000，numpy 的 `default_rng(0)`，百分位法 95% 区间）。每层的 B 次重抽由所有行共用，因此行与行之差是配对的比较。差的双侧 p 值：设 B 个差中 ≤ 0 与 ≥ 0 的个数中较少者为 m，p = min(1, 2(m + 1) / (B + 1))。
+- 按被隐藏游戏的游玩时长（不足 1 小时、1 小时以上）以及是否为 Valve 开发或发行的游戏划分的结果，作为描述性结果给出：对每个用户，把落在该组的 rep 的指标之和与次数分别除以 rep 数，以两者事后分层均值之比为估计值。差只看 NDCG@10。
+
+配置的选法（只用验证用户）：
+
+- 候选为 λ_peer = 1，λ_tag ∈ {0, 0.1, 0.25, 0.5, 1}，λ_studio ∈ {0, 0.5, 1, 2}（除以 Σ_s w_s），λ_pop ∈ {0, 0.1, 0.25, 0.5}，与 6 种种子方案组合，共 480 个。`graph_v1_default` 只用来比较，不是候选。
+- 目标函数为验证用户上事后分层的 NDCG@10（全体）。
+- 目标函数最大的配置记为 best。在比 best 低的幅度不超过该差的 bootstrap 标准误（B = 2,000，`default_rng(0)`）的配置中，按以下顺序取第一个：共玩种子 10 款、30 款、全部 → w_s 为 ln(1 + 游玩时长)、1 → λ_tag、λ_studio、λ_pop 中为 0 的更多 → Σλ 更小 → (λ_tag, λ_studio, λ_pop) 更小。
+- 选定的配置在测试之前作为 `DEFAULT_PATH_WEIGHTS` 和 `DEFAULT_SEED_SCHEME` 提交。只有当调参结果是用同一份计划和划分、在验证用户上对全部 480 个配置排序得到的，且选定的配置与代码默认值相同时，测试才会运行。看过测试结果后不再调参。
+
+判定为以下 5 项，其余结果都是描述性的。无论结果如何，报告所有的行、差和判定。
+
+| | 比较的对象 | 成立的条件 |
+|---|---|---|
+| C1 | 实现检查。在验证用户的全部 rep 上，`peer_only`（`uniform_all`）与 `item_knn`、`pop_only` 与 `popularity` 的名次 | 名次相同或都在第 50 名以后的比例，两者都在 99.9% 以上 |
+| C2 | `peer_only` − `item_knn`（全体，NDCG@10） | 95% CI 落在 [−0.01, +0.01] 内。只有这时才称为等价 |
+| C3 | `graph_tuned` − `peer_only`（NDCG@10）。主检验为全体，次检验为 1-3 | 对两个 p 值用 Holm 法（两项检验的族错误率 0.05）：p 较小的一个以 0.025 判断，它被拒绝后，另一个以 0.05 判断；被拒绝且差为正则成立。C3 的判定取主检验的结果。同时给出 97.5% CI |
+| C4 | `graph_tuned` − `popularity` 和 `graph_tuned` − `item_knn`（全体，NDCG@10） | 95% CI 的下限分别大于 0 和 −0.01 |
+| C5 | 在解释用户（rep 0，前 10 名）上，现行推荐中依据的断言全部成立的推荐所占的比例（`eval/explanation_check.py` 写入 `eval/results/static_explanations_v1.json`） | 1.0。v0 的值及对用户 bootstrap 的 CI 仅供参考。该文件生成之前为未定 |
+
+### 8.5 调参结果
+
+在验证用户上调参之后，在这里放入由 `eval/results/static_tuning_v1.json` 生成的表（8.7 的 `report`）。
+
+### 8.6 结果
+
+在测试用户上只运行 1 次之后，在这里放入由 `eval/results/static_test_v1.json` 生成的表。
+
+### 8.7 运行
+
+在仓库根目录下，用安装了 `requirements.txt` 的 Python 运行。使用的图为 UCSD，通过 `.env` 的 `UCSD_NEO4J_*` 连接（在主机上运行时，填写主机能访问的 URI）。`tune` 和 `test` 用 git 确认计划文件已提交，因此在没有 git 的 `app` 容器中无法运行。
+
+```bash
+python -m eval.static_eval collect --stage validation --schemes all --workers 8   # 保存验证用户的路径分数（data/static_eval_cache/，中断后可从断点继续）
+python -m eval.static_eval tune --workers 8                                       # 对 480 个配置排序、选定配置并检查 C1 → static_tuning_v1.json
+# 把选定的配置作为 app/api/static_recommend.py 的 DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME 提交
+python -m eval.static_eval collect --stage test --schemes log1p_10,<选定的种子方案> --workers 8
+python -m eval.static_eval test --workers 8                                       # 也运行 v0，给出所有的行、差和判定 → static_test_v1.json、static_test_v1_ranks.jsonl.gz
+python -m eval.static_eval report --lang zh                                       # 8.5 和 8.6 的表（日语为 --lang ja）
+```
+
+- `verify --stage <validation|test|smoke> --schemes <…>` 检查：用 `combine()` 对保存的路径分数排出的前 50 名与 `recommend_games()` 相同，快速的名次计算与 `combine()` 相同。`--stage smoke` 为验证用户中键最小的 30 人，只用于确认能否运行。
+- 结果的 JSON 记录 git 的提交、计划和划分的 sha256、Python 的版本以及各阶段的耗时。Python 3.12 起 float 的 `sum()` 结果有变化，因此 `tune`、`test` 及其复现用同一版本的 Python 运行。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
+- C5 用的 `eval/results/static_explanations_v1.json`，由 `eval/explanation_check.py` 在解释用户上运行生成（从划分中取用户的选项尚待加入）。
+- `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` 保留为快速评估：每次重新选择用户和被隐藏的游戏，重复 `--runs` 次（默认 5），各指标以 平均 ± 标准差 显示（不给出差的置信区间）。静态推荐报告的数字取 `eval/static_eval.py` 的结果。
