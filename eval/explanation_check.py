@@ -25,8 +25,10 @@ nothing, so it is valid; their number is reported as without_evidence). Per vers
   numpy default_rng(0) draws one B × n_s index matrix per stratum, strata in order (the same draws for
   every version), B = 10,000, and a replicate's share is its valid recommendations / recommendations.
   The subset has the same number of users in every stratum, so this share weighs the strata equally.
-  With --split also the post-stratified share Σ_s W_s · valid_s / recommendations_s, W_s the stratum's
-  share of the test pool as in the accuracy estimates, with its CI from the same draws
+  With --split also the post-stratified share Σ_s W_s · valid_s / recommendations_s over the strata
+  whose users have recommendations, W_s the stratum's share of the test pool as in the accuracy
+  estimates, renormalised over those strata, with its CI from the same draws (none when a replicate
+  draws no recommendation in one of those strata)
 - headline validity per headline path (the path of the first evidence item): every assertion of the
   evidence items of that path holds
 - per assertion, secondary: verified assertions / assertions. The versions make different numbers
@@ -91,7 +93,9 @@ BOOTSTRAP = {
     "resampling": "users within each stratum; one B x n_s index matrix per stratum, strata in order, the same "
     "for every version",
     "statistic": "valid recommendations / recommendations over the resampled users",
-    "post_stratified": "Σ_s W_s · valid_s / recommendations_s on the same draws, W_s = counts.test_pool of the split",
+    "post_stratified": "Σ_s W_s · valid_s / recommendations_s over the strata whose users have recommendations, "
+    "W_s = counts.test_pool of the split renormalised over them; the CI on the same draws, none when a replicate "
+    "has no recommendation in one of them",
 }
 
 User = tuple[str, str, str]  # (player_id, stratum, hidden appid)
@@ -363,11 +367,13 @@ def validity_statistics(
     """The CI of the recommendation validity and the validity per stratum with its CI, from the stratified
     bootstrap of the module docstring. strata: player_id -> stratum of every user, in the users' order.
     pool: the users per stratum of the population (the split's test pool); given, the post-stratified
-    validity and its CI on the same draws, over the strata with recommendations in every replicate (W_s
-    renormalised over them)."""
+    validity over the strata whose users have recommendations (W_s renormalised over them), which the
+    draws do not change, and its CI on the same draws, None when a replicate has no recommendation in
+    one of those strata."""
     rng = np.random.default_rng(seed)
     total = np.zeros((replicates, 2), dtype=np.int64)
     weighted = np.zeros(replicates)
+    every_replicate = True  # every replicate has recommendations in every stratum of the post-stratified share
     weights = {}
     point = 0.0
     by_stratum = {}
@@ -387,16 +393,19 @@ def validity_statistics(
             "recommendation_validity": share,
             "recommendation_validity_ci": share_interval(drawn, level),
         }
-        if pool is not None and share is not None and np.all(drawn[:, 0] > 0):
+        if pool is not None and share is not None:
             weights[name] = pool[name]
             point += pool[name] * share
-            weighted += pool[name] * drawn[:, 1] / drawn[:, 0]
+            if np.all(drawn[:, 0] > 0):
+                weighted += pool[name] * drawn[:, 1] / drawn[:, 0]
+            else:
+                every_replicate = False
     result: dict[str, Any] = {"recommendation_validity_ci": share_interval(total, level), "by_stratum": by_stratum}
     if pool is not None:
         whole = sum(weights.values())
         result["recommendation_validity_post_stratified"] = point / whole if whole else None
         result["recommendation_validity_post_stratified_ci"] = (
-            list(interval(weighted / whole, level)) if whole else None
+            list(interval(weighted / whole, level)) if whole and every_replicate else None
         )
         result["post_stratification_weights"] = {name: count / whole for name, count in weights.items()}
     return result

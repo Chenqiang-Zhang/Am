@@ -142,6 +142,11 @@ def with_interval(row: Mapping[str, Any], value: str = "estimate", sign: bool = 
     return f"{form(row[value])} [{form(row['lo'])}, {form(row['hi'])}]"
 
 
+def share_with_interval(value: float, ci: Sequence[float] | None) -> str:
+    """A share and its CI, or the share alone when it has no CI."""
+    return number(value) + (f" [{number(ci[0])}, {number(ci[1])}]" if ci else "")
+
+
 def contrast_name(name: str) -> str:
     return name.replace(" - ", " − ")
 
@@ -283,11 +288,10 @@ def claims_table(report: Report, claims: Mapping[str, Any], c5: Mapping[str, Any
         rows.append(["C4", claim, with_interval(check, "delta"), t(check["status"])])
     value = c5.get("error", "–")
     if c5["status"] in ("pass", "fail"):
-        low, high = c5["v0_ci"]
-        value = f"{c5['current']:.4f}（v0 {c5['v0']:.4f} [{low:.4f}, {high:.4f}]"
+        value = f"{c5['current']:.4f}（v0 {share_with_interval(c5['v0'], c5['v0_ci'])}"
         if c5.get("v0_post_stratified") is not None:
-            low, high = c5["v0_post_stratified_ci"]
-            value += f"; {t('post_stratified')} {c5['v0_post_stratified']:.4f} [{low:.4f}, {high:.4f}]"
+            post_stratified = share_with_interval(c5["v0_post_stratified"], c5.get("v0_post_stratified_ci"))
+            value += f"; {t('post_stratified')} {post_stratified}"
         value += "）"
     rows.append(["C5", t("C5"), value, t(c5["status"])])
     report.section(t("claims"), table(["", t("claim"), t("value"), t("result")], rows))

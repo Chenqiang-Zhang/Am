@@ -711,6 +711,9 @@ def test_the_claims_table_shows_the_post_stratified_v0_share_and_why_c5_is_unusa
         "ja", tuning, test, c5
     )
     assert "事后分层 0.6900 [0.6000, 0.7700]" in static_report.render("zh", tuning, test, c5)
+    # A replicate without recommendations in a stratum of the post-stratified share leaves it without a CI.
+    without_ci = dict(c5, v0_post_stratified_ci=None)
+    assert "（v0 0.7400 [0.6650, 0.8100]; 事後層別 0.6900）" in static_report.render("ja", tuning, test, without_ci)
     unusable = static_report.render("ja", tuning, test, {"status": "error", "error": "made from uncommitted code"})
     assert "| C5 |" in unusable and "made from uncommitted code | 使えない |" in unusable
 

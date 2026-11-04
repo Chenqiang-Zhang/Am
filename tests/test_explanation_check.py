@@ -290,25 +290,52 @@ def test_the_statistic_is_the_pooled_share_not_the_mean_of_the_users_shares():
 
 
 def reference_statistics(by_user, strata, pool, replicates, seed, level):
-    """validity_statistics written out: per stratum in order, one replicates x n_s draw of users."""
+    """validity_statistics written out: per stratum in order, one replicates x n_s draw of users. The
+    post-stratified share is over the strata whose users have recommendations; an interval is None when
+    a replicate has no recommendation."""
     rng = np.random.default_rng(seed)
-    totals = np.zeros((replicates, 2))
-    weighted, weights = np.zeros(replicates), {}
+    quantiles = ((1 - level) / 2, (1 + level) / 2)
+
+    def percentiles(tallies):
+        if any(recommendations == 0 for recommendations, _ in tallies):
+            return None
+        shares = np.array([valid / recommendations for recommendations, valid in tallies])
+        return [float(np.quantile(shares, q)) for q in quantiles]
+
+    totals = [[0, 0] for _ in range(replicates)]
+    weighted, every_replicate = [0.0] * replicates, True
+    by_stratum, weights, point = {}, {}, 0.0
     for name in STRATA:
         users = [player_id for player_id in strata if strata[player_id] == name]
         if not users:
+            by_stratum[name] = None
             continue
-        draws = rng.integers(0, len(users), size=(replicates, len(users)))
-        tallies = np.array([[sum(by_user[users[i]][j] for i in row) for j in (0, 1)] for row in draws])
-        totals += tallies
-        weights[name] = pool[name]
-        weighted += pool[name] * tallies[:, 1] / tallies[:, 0]
-    low, high = (1 - level) / 2, (1 + level) / 2
+        draws = rng.integers(0, len(users), size=(replicates, len(users))).tolist()
+        tallies = [[sum(by_user[users[i]][j] for i in row) for j in (0, 1)] for row in draws]
+        for total, (recommendations, valid) in zip(totals, tallies):
+            total[0] += recommendations
+            total[1] += valid
+        by_stratum[name] = percentiles(tallies)
+        recommendations = sum(by_user[player_id][0] for player_id in users)
+        if recommendations:
+            weights[name] = pool[name]
+            point += pool[name] * (sum(by_user[player_id][1] for player_id in users) / recommendations)
+            if all(drawn > 0 for drawn, _ in tallies):
+                for index, (drawn, valid) in enumerate(tallies):
+                    weighted[index] += pool[name] * valid / drawn
+            else:
+                every_replicate = False
     whole = sum(weights.values())
-    return (
-        [float(np.quantile(totals[:, 1] / totals[:, 0], q)) for q in (low, high)],
-        [float(np.quantile(weighted / whole, q)) for q in (low, high)],
-    )
+    post_stratified_ci = None
+    if every_replicate:
+        post_stratified_ci = [float(np.quantile(np.array(weighted) / whole, q)) for q in quantiles]
+    return {
+        "pooled": percentiles(totals),
+        "by_stratum": by_stratum,
+        "post_stratified": point / whole,
+        "post_stratified_ci": post_stratified_ci,
+        "weights": {name: count / whole for name, count in weights.items()},
+    }
 
 
 def test_the_bootstrap_is_the_written_out_stratified_resampling():
@@ -324,9 +351,13 @@ def test_the_bootstrap_is_the_written_out_stratified_resampling():
     first = validity_statistics(report, strata, replicates=400, level=0.9, pool=pool)
     second = validity_statistics(report, strata, replicates=400, level=0.9, pool=pool)
     assert first == second  # a new generator on every call
-    pooled, post_stratified = reference_statistics(by_user, strata, pool, 400, 0, 0.9)
-    assert first["recommendation_validity_ci"] == pytest.approx(pooled, abs=1e-12)
-    assert first["recommendation_validity_post_stratified_ci"] == pytest.approx(post_stratified, abs=1e-12)
+    expected = reference_statistics(by_user, strata, pool, 400, 0, 0.9)
+    assert first["recommendation_validity_ci"] == pytest.approx(expected["pooled"], abs=1e-12)
+    post_stratified_ci = first["recommendation_validity_post_stratified_ci"]
+    assert post_stratified_ci == pytest.approx(expected["post_stratified_ci"], abs=1e-12)
+    for name in ("1", "2-3", "11+"):
+        stratum_ci = first["by_stratum"][name]["recommendation_validity_ci"]
+        assert stratum_ci == pytest.approx(expected["by_stratum"][name], abs=1e-12)
     shares = {
         name: sum(by_user[p][1] for p in strata if strata[p] == name) / sum(by_user[p][0] for p in strata if strata[p] == name)
         for name in ("1", "2-3", "11+")
@@ -339,12 +370,50 @@ def test_the_bootstrap_is_the_written_out_stratified_resampling():
 
 
 def test_post_stratification_weighs_the_strata_by_the_pool():
-    report = VersionReport(by_user={"a": [10, 10], "b": [10, 10], "c": [10, 0], "d": [10, 0]})
+    report = VersionReport(by_user={"a": [10, 10], "b": [10, 10], "c": [10, 0], "d": [10, 0], "e": [0, 0]})
     pool = {"1": 1, "2-3": 5, "4-10": 7, "11+": 3}
-    statistics = validity_statistics(report, {"a": "1", "b": "1", "c": "11+", "d": "11+"}, pool=pool)
+    statistics = validity_statistics(report, {"a": "1", "b": "1", "c": "11+", "d": "11+", "e": "4-10"}, pool=pool)
     assert statistics["recommendation_validity_ci"] == [0.5, 0.5]  # equal strata in the subset
-    assert statistics["recommendation_validity_post_stratified"] == 1 / 4  # W_1 = 1 / (1 + 3) over the strata with users
+    # W_1 = 1 / (1 + 3) over the strata with recommendations: 2-3 has no users, e in 4-10 no recommendation.
+    assert statistics["post_stratification_weights"] == {"1": 1 / 4, "11+": 3 / 4}
+    assert statistics["recommendation_validity_post_stratified"] == 1 / 4
     assert statistics["recommendation_validity_post_stratified_ci"] == [1 / 4, 1 / 4]
+
+
+# counts.test_pool of eval/results/static_split_v1.json
+TEST_POOL = {"1": 2302, "2-3": 3847, "4-10": 9828, "11+": 47693}
+
+
+def test_the_post_stratified_share_does_not_depend_on_the_draws():
+    # Stratum 1: one user with 10 invalid recommendations and 74 without any, so that about a third of the
+    # replicates draw no recommendation there; the other strata: 75 users with 10 valid ones each.
+    by_user = {"one-0": [10, 0]} | {f"one-{index}": [0, 0] for index in range(1, 75)}
+    strata = dict.fromkeys(by_user, "1")
+    for name in ("2-3", "4-10", "11+"):
+        for index in range(75):
+            by_user[f"{name}-{index}"] = [10, 10]
+            strata[f"{name}-{index}"] = name
+    report = VersionReport(by_user=by_user)
+    statistics = validity_statistics(report, strata, pool=TEST_POOL)
+    whole = sum(TEST_POOL.values())
+    assert statistics["by_stratum"]["1"]["recommendation_validity"] == 0.0
+    assert statistics["by_stratum"]["1"]["recommendation_validity_ci"] is None
+    # Stratum 1 counts with its share 0: 1 - W_1 = 0.9638, not 1.0 over the other three strata.
+    assert statistics["recommendation_validity_post_stratified"] == (whole - TEST_POOL["1"]) / whole
+    assert statistics["post_stratification_weights"] == {name: count / whole for name, count in TEST_POOL.items()}
+    assert statistics["recommendation_validity_post_stratified_ci"] is None  # as the CI of stratum 1
+    estimates = {
+        validity_statistics(report, strata, replicates=replicates, seed=seed, pool=TEST_POOL)[
+            "recommendation_validity_post_stratified"
+        ]
+        for replicates in (1, 20)
+        for seed in range(5)
+    }
+    assert estimates == {(whole - TEST_POOL["1"]) / whole}
+    expected = reference_statistics(by_user, strata, TEST_POOL, 200, 0, 0.95)
+    statistics = validity_statistics(report, strata, replicates=200, pool=TEST_POOL)
+    assert statistics["recommendation_validity_post_stratified"] == expected["post_stratified"]
+    assert expected["post_stratified_ci"] is None and expected["weights"] == statistics["post_stratification_weights"]
 
 
 def test_a_recommendation_without_evidence_is_valid_and_counted_apart():
