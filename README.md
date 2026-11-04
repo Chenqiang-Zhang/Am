@@ -362,7 +362,7 @@ docker compose up -d api web           # バックエンドと UI  http://localh
 
 - 説明文は、人気以外で寄与の最も大きい経路の実例だけから作り、実例にない名前や数は書かない。会社は、開発元か販売元かを書く。人数は 3 桁ごとにカンマで区切る。人気の実例しかないときだけ、人気を理由にする。
 - タグの説明文は、1 本のシード（アンカー）と共通するタグだけを書く。アンカーは、上位 30 個のタグのうち g が持つものの項 weight(t) / √n(g) を、そのタグを持つシードごとに足し、和が最大のシード（同じなら w_s の大きい方、次に appid の小さい方）とする。実例にアンカーのものがなければ、最初の実例のシードを使う。1,000 本以上のゲームが持つタグ（Multiplayer、Singleplayer など）は、そのシードの実例（3 件まで）にそれ以外のタグがあれば書かない。
-- `eval/explanation_check.py` は、根拠の人数・タグの所属・会社の役割を、別に書いた読み取り専用の Cypher で確かめ、確かめられた割合（根拠の有効率）を出す。
+- `eval/explanation_check.py` は、根拠の人数・タグの所属・会社の役割を、別に書いた読み取り専用の Cypher で確かめる。主な結果は、根拠の主張がすべて成り立つ推薦の割合（推薦ごとの有効率、C5）で、主張ごとの割合は補助の表に出す。
 
 ### 7.5 実装
 
@@ -477,5 +477,5 @@ python -m eval.static_eval report --lang ja                                     
 
 - `verify --stage <validation|test|smoke> --schemes <…>` は、保存した経路スコアを `combine()` で並べた上位 50 件が `recommend_games()` と同じか、速い順位の計算が `combine()` と同じかを確かめる。`--stage smoke` は、検証用のユーザのうちキーの小さい 30 人で、実行の確認だけに使う。
 - 結果の JSON には、git のコミット、計画と分割の sha256、グラフの数とつながりの sha256、Python の版、段階ごとの時間を記録する。`combine()` と速い順位の計算は float を前から順に足す（Python 3.12 からの `sum()` は誤差を補正して最後の桁が変わることがあるため）ので、Python 3.11 と 3.13 で同じ結果になる。`tune` と `test` は、Item-KNN の float32 の和の順序を固定するため、`PYTHONHASHSEED=0` で自分を起動し直す。
-- C5 の `eval/results/static_explanations_v1.json` は、選んだ設定をコミットした後、`python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` で作る（説明用のユーザの rep 0 で、現行の推薦と v0 を確かめる）。
+- C5 の `eval/results/static_explanations_v1.json` は、選んだ設定をコミットした後、`python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` で作る（説明用のユーザの rep 0 で、現行の推薦と v0 を確かめる）。説明用のユーザは各層 75 人なので、全体の割合は層を同じ重さで足したものになる。W_s で重みを付けた割合（事後層別）とその CI も、同じブートストラップで出す。ファイルには、コードの既定値、タグと会社のつながりの sha256、コミットを書く。`test` は、これらがテストの実行と同じで、説明用のユーザ全員を使い、コミット済みのコードで作ったファイルでなければ、C5 を「使えない」とする。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` は、手早い評価として残す。毎回ユーザと隠すゲームを選び直して `--runs` 回（既定 5）繰り返し、各指標を 平均 ± 標準偏差 で表示する（差の信頼区間は出さない）。静的なおすすめについて報告する数字は、`eval/static_eval.py` のものとする。

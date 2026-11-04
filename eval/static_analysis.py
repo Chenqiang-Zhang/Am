@@ -93,8 +93,10 @@ def contrast_claims(claims: Mapping[str, Any], bootstrap: PairedBootstrap) -> di
     }
 
 
-def c5_claim(path: Path, source: str) -> dict[str, Any]:
-    """Per-recommendation evidence validity from eval/explanation_check.py's result, once it exists."""
+def c5_claim(path: Path, source: str, expected: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Per-recommendation evidence validity from eval/explanation_check.py's result, once it exists.
+    expected: the split_sha256, k, code_defaults and links_sha256 the result must have been made with; a
+    result made otherwise, on part of the subset or from uncommitted code gives an error, not a verdict."""
     path = Path(path)
     if not path.exists():
         return {"source": source, "status": "pending"}
@@ -105,7 +107,32 @@ def c5_claim(path: Path, source: str) -> dict[str, Any]:
         found = {"current": current, "v0": v0["recommendation_validity"], "v0_ci": v0["recommendation_validity_ci"]}
     except (KeyError, TypeError) as error:
         return {"source": source, "status": "error", "error": f"missing {error}"}
+    problems = c5_problems(data, expected) if expected is not None else []
+    if problems:
+        return {"source": source, "status": "error", "error": "; ".join(problems)}
+    if v0.get("recommendation_validity_post_stratified") is not None:
+        found["v0_post_stratified"] = v0["recommendation_validity_post_stratified"]
+        found["v0_post_stratified_ci"] = v0["recommendation_validity_post_stratified_ci"]
     return {"source": source, **found, "status": "pass" if current == 1.0 else "fail"}
+
+
+def c5_problems(data: Mapping[str, Any], expected: Mapping[str, Any]) -> list[str]:
+    """Why the explanation result is not the one C5 asks for: the whole explanations subset of this split
+    at rep 0, k, the code defaults and the tag and studio links of the test run, committed code."""
+    users_from, problems = data.get("users_from") or {}, []
+    if users_from.get("split_sha256") != expected["split_sha256"]:
+        problems.append("made from another split")
+    if (users_from.get("subset"), users_from.get("rep"), users_from.get("limit_per_stratum")) != ("explanations", 0, None):
+        problems.append("not the whole explanations subset at rep 0")
+    if data.get("k") != expected["k"]:
+        problems.append(f"k = {data.get('k')}, not {expected['k']}")
+    if data.get("code_defaults") != expected["code_defaults"]:
+        problems.append("made with other code defaults than the test run")
+    if (data.get("graph") or {}).get("links_sha256") != expected["links_sha256"]:
+        problems.append("made on other tag or studio links")
+    if (data.get("git") or {}).get("dirty") is not False:
+        problems.append("made from uncommitted code")
+    return problems
 
 
 def descriptive_groups(

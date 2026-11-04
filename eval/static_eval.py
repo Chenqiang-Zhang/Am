@@ -659,7 +659,16 @@ def run_test(setup: Setup, stage: str, tuning_path: Path, output_dir: Path, expl
         "claims": {
             "C1": dict(tuning["C1"], stage=tuning["stage"]),
             **contrast_claims(plan["claims"], bootstrap),
-            "C5": c5_claim(explanations_path, relative(explanations_path)),
+            "C5": c5_claim(
+                explanations_path,
+                relative(explanations_path),
+                {
+                    "split_sha256": setup.split_sha256,
+                    "k": TOP,
+                    "code_defaults": code_defaults(),
+                    "links_sha256": setup.graph["links_sha256"],
+                },
+            ),
         },
         "pop_only_agreement": agreement(
             {key: value[0] for key, value in results["pop_only"].items()},
@@ -775,7 +784,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         tuning, test = read_result(paths["tuning"]), read_result(paths["test"])
         if tuning is None and test is None:
             raise SystemExit(f"neither {paths['tuning']} nor {paths['test']} exists yet")
-        c5 = c5_claim(paths["explanations"], relative(paths["explanations"]))
+        expected = None
+        if test is not None:
+            expected = {
+                "split_sha256": test["split"]["sha256"],
+                "k": TOP,
+                "code_defaults": test["code_defaults"],
+                "links_sha256": test["graph"]["links_sha256"],
+            }
+        c5 = c5_claim(paths["explanations"], relative(paths["explanations"]), expected)
         sys.stdout.write(static_report.render(args.lang, tuning, test, c5))
         return
 

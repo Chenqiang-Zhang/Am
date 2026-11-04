@@ -361,7 +361,7 @@ docker compose up -d api web           # 后端和 UI  http://localhost:5173
 
 - 说明文只根据热门以外贡献最大的路径的实例生成，不写实例中没有的名称或数字。公司注明是开发商还是发行商。人数每 3 位用逗号分隔。只有热门的实例时，才以热门为理由。
 - 标签的说明文只写与 1 款种子（锚点）共有的标签。锚点是：把前 30 个标签中 g 带有的那些标签的项 weight(t) / √n(g)，按带有该标签的种子分别相加，和最大的种子（相同则取 w_s 较大者，再取 appid 较小者）。实例中没有锚点的实例时，使用第一个实例的种子。1,000 款以上的游戏带有的标签（Multiplayer、Singleplayer 等），在该种子的实例（最多 3 个）中还有此类以外的标签时不写。
-- `eval/explanation_check.py` 用另外编写的只读 Cypher 核对依据中的人数、标签归属和公司角色，并给出核对通过的比例（依据有效率）。
+- `eval/explanation_check.py` 用另外编写的只读 Cypher 核对依据中的人数、标签归属和公司角色。主要结果是依据的断言全部成立的推荐所占的比例（逐条推荐的有效率，C5），按断言计算的比例放在辅助表中。
 
 ### 7.5 实现
 
@@ -476,5 +476,5 @@ python -m eval.static_eval report --lang zh                                     
 
 - `verify --stage <validation|test|smoke> --schemes <…>` 检查：用 `combine()` 对保存的路径分数排出的前 50 名与 `recommend_games()` 相同，快速的名次计算与 `combine()` 相同。`--stage smoke` 为验证用户中键最小的 30 人，只用于确认能否运行。
 - 结果的 JSON 记录 git 的提交、计划和划分的 sha256、图的数量和连接的 sha256、Python 的版本以及各阶段的耗时。`combine()` 和快速名次计算按从前到后的顺序累加 float（Python 3.12 起的 `sum()` 会补偿误差，最后一位可能不同），因此在 Python 3.11 和 3.13 上结果相同。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
-- C5 用的 `eval/results/static_explanations_v1.json`，在提交选定的配置之后，用 `python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` 生成（在解释用户的 rep 0 上核对现行推荐和 v0）。
+- C5 用的 `eval/results/static_explanations_v1.json`，在提交选定的配置之后，用 `python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` 生成（在解释用户的 rep 0 上核对现行推荐和 v0）。解释用户每层 75 人，因此整体比例相当于各层等权相加。按 W_s 加权的比例（事后分层）及其 CI 也用同一 bootstrap 给出。文件中记录代码的默认值、标签和公司连接的 sha256 以及提交。若这些与测试运行不一致、没有用全部解释用户，或不是用已提交的代码生成的，`test` 把 C5 记为“无法使用”。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` 保留为快速评估：每次重新选择用户和被隐藏的游戏，重复 `--runs` 次（默认 5），各指标以 平均 ± 标准差 显示（不给出差的置信区间）。静态推荐报告的数字取 `eval/static_eval.py` 的结果。

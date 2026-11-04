@@ -46,7 +46,8 @@ TEXT: dict[str, dict[str, str]] = {
         "pass": "成立",
         "fail": "不成立",
         "pending": "未確定",
-        "error": "読めない",
+        "error": "使えない",
+        "post_stratified": "事後層別",
         "v0": "v0 との比較（v0 用のユーザ {users} 人、rep 0、[95% CI]）",
         "descriptive": "隠したゲームで分けた結果（記述的、NDCG@10、[95% CI]）",
         "hidden_under_1h": "1 時間未満",
@@ -103,7 +104,8 @@ TEXT: dict[str, dict[str, str]] = {
         "pass": "成立",
         "fail": "不成立",
         "pending": "未定",
-        "error": "无法读取",
+        "error": "无法使用",
+        "post_stratified": "事后分层",
         "v0": "与 v0 的比较（v0 用户 {users} 人，rep 0，[95% CI]）",
         "descriptive": "按被隐藏游戏划分的结果（描述性，NDCG@10，[95% CI]）",
         "hidden_under_1h": "不足 1 小时",
@@ -274,10 +276,14 @@ def claims_table(report: Report, claims: Mapping[str, Any], c5: Mapping[str, Any
     for check in c4["checks"]:
         claim = t("C4", contrast=contrast_name(check["contrast"]), bound=f"{check['lower_bound_above']:+g}")
         rows.append(["C4", claim, with_interval(check, "delta"), t(check["status"])])
-    value = "–"
+    value = c5.get("error", "–")
     if c5["status"] in ("pass", "fail"):
         low, high = c5["v0_ci"]
-        value = f"{c5['current']:.4f}（v0 {c5['v0']:.4f} [{low:.4f}, {high:.4f}]）"
+        value = f"{c5['current']:.4f}（v0 {c5['v0']:.4f} [{low:.4f}, {high:.4f}]"
+        if c5.get("v0_post_stratified") is not None:
+            low, high = c5["v0_post_stratified_ci"]
+            value += f"; {t('post_stratified')} {c5['v0_post_stratified']:.4f} [{low:.4f}, {high:.4f}]"
+        value += "）"
     rows.append(["C5", t("C5"), value, t(c5["status"])])
     report.section(t("claims"), table(["", t("claim"), t("value"), t("result")], rows))
 

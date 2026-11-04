@@ -696,6 +696,24 @@ def test_the_report_is_the_same_bytes_every_time(setup, run, tmp_path, capsys, m
         static_eval.main(["report", "--lang", "ja", "--plan", str(setup.plan_path), "--tuning", str(tmp_path / "no")])
 
 
+def test_the_claims_table_shows_the_post_stratified_v0_share_and_why_c5_is_unusable(run):
+    tuning, test = run
+    c5 = {
+        "status": "pass",
+        "current": 1.0,
+        "v0": 0.74,
+        "v0_ci": [0.665, 0.81],
+        "v0_post_stratified": 0.69,
+        "v0_post_stratified_ci": [0.6, 0.77],
+    }
+    assert "1.0000（v0 0.7400 [0.6650, 0.8100]; 事後層別 0.6900 [0.6000, 0.7700]）" in static_report.render(
+        "ja", tuning, test, c5
+    )
+    assert "事后分层 0.6900 [0.6000, 0.7700]" in static_report.render("zh", tuning, test, c5)
+    unusable = static_report.render("ja", tuning, test, {"status": "error", "error": "made from uncommitted code"})
+    assert "| C5 |" in unusable and "made from uncommitted code | 使えない |" in unusable
+
+
 def test_git_state_keeps_the_first_changed_path_whole(monkeypatch):
     outputs = {"rev-parse": "abc123\n", "status": " M eval/x.py\n?? notes.txt\n?? new.py\nA  app/y.py\n"}
 

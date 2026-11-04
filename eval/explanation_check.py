@@ -23,11 +23,18 @@ nothing, so it is valid; their number is reported as without_evidence). Per vers
 - recommendation validity (claim C5 of the plan): valid recommendations / recommendations, overall
   and per stratum, with 95% percentile CIs from a bootstrap that resamples users within each stratum:
   numpy default_rng(0) draws one B × n_s index matrix per stratum, strata in order (the same draws for
-  every version), B = 10,000, and a replicate's share is its valid recommendations / recommendations
+  every version), B = 10,000, and a replicate's share is its valid recommendations / recommendations.
+  The subset has the same number of users in every stratum, so this share weighs the strata equally.
+  With --split also the post-stratified share Σ_s W_s · valid_s / recommendations_s, W_s the stratum's
+  share of the test pool as in the accuracy estimates, with its CI from the same draws
 - headline validity per headline path (the path of the first evidence item): every assertion of the
   evidence items of that path holds
 - per assertion, secondary: verified assertions / assertions. The versions make different numbers
   and kinds of assertions per recommendation, so these shares do not compare across versions.
+
+With --split the graph must be the split's (its PLAYED edges), and the result records the code defaults,
+the digest of the tag and studio links and the commit, which the test run checks before it reports C5.
+A user whose queries fail with a transient error (the database may be shared) is retried as a whole.
 
     python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 \\
         --output eval/results/static_explanations_v1.json
@@ -51,8 +58,19 @@ from kg.ids import to_snake_case
 from utils.graph_reader import TAG_MAX_RANK, GraphReader
 
 from .rankers import PlayRecord, group_appids_by_player
-from .static_cache import log
-from .static_eval import Timer, file_sha256, git_state, graph_counts, relative, write_json
+from .static_cache import log, with_retries
+from .static_eval import (
+    Timer,
+    code_defaults,
+    environment,
+    file_sha256,
+    git_state,
+    graph_counts,
+    graph_links,
+    load_play_records,
+    relative,
+    write_json,
+)
 from .static_split import STRATA, cases, load_split, stratum
 from .static_stats import LEVEL, REPLICATES, SEED, interval
 
@@ -69,6 +87,7 @@ BOOTSTRAP = {
     "resampling": "users within each stratum; one B x n_s index matrix per stratum, strata in order, the same "
     "for every version",
     "statistic": "valid recommendations / recommendations over the resampled users",
+    "post_stratified": "Σ_s W_s · valid_s / recommendations_s on the same draws, W_s = counts.test_pool of the split",
 }
 
 User = tuple[str, str, str]  # (player_id, stratum, hidden appid)
@@ -335,11 +354,18 @@ def validity_statistics(
     replicates: int = REPLICATES,
     seed: int = SEED,
     level: float = LEVEL,
+    pool: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """The CI of the recommendation validity and the validity per stratum with its CI, from the stratified
-    bootstrap of the module docstring. strata: player_id -> stratum of every user, in the users' order."""
+    bootstrap of the module docstring. strata: player_id -> stratum of every user, in the users' order.
+    pool: the users per stratum of the population (the split's test pool); given, the post-stratified
+    validity and its CI on the same draws, over the strata with recommendations in every replicate (W_s
+    renormalised over them)."""
     rng = np.random.default_rng(seed)
     total = np.zeros((replicates, 2), dtype=np.int64)
+    weighted = np.zeros(replicates)
+    weights = {}
+    point = 0.0
     by_stratum = {}
     for name in STRATA:
         tallies = [report.by_user[player_id] for player_id, group in strata.items() if group == name]
@@ -349,14 +375,27 @@ def validity_statistics(
             drawn = counts[rng.integers(0, len(tallies), size=(replicates, len(tallies)))].sum(axis=1)
         total += drawn
         recommendations, valid = (int(value) for value in counts.sum(axis=0))
+        share = valid / recommendations if recommendations else None
         by_stratum[name] = {
             "users": len(tallies),
             "recommendations": recommendations,
             "valid": valid,
-            "recommendation_validity": valid / recommendations if recommendations else None,
+            "recommendation_validity": share,
             "recommendation_validity_ci": share_interval(drawn, level),
         }
-    return {"recommendation_validity_ci": share_interval(total, level), "by_stratum": by_stratum}
+        if pool is not None and share is not None and np.all(drawn[:, 0] > 0):
+            weights[name] = pool[name]
+            point += pool[name] * share
+            weighted += pool[name] * drawn[:, 1] / drawn[:, 0]
+    result: dict[str, Any] = {"recommendation_validity_ci": share_interval(total, level), "by_stratum": by_stratum}
+    if pool is not None:
+        whole = sum(weights.values())
+        result["recommendation_validity_post_stratified"] = point / whole if whole else None
+        result["recommendation_validity_post_stratified_ci"] = (
+            list(interval(weighted / whole, level)) if whole else None
+        )
+        result["post_stratification_weights"] = {name: count / whole for name, count in weights.items()}
+    return result
 
 
 def sample_players(play_records: list[PlayRecord], users: int, seed: int) -> tuple[list[str], dict[str, str]]:
@@ -405,19 +444,38 @@ def check_recommendations(
     reports = {version: VersionReport() for version in versions}
     for done, player_id in enumerate(players, start=1):
         hidden_appids = frozenset({hidden[player_id]}) if player_id in hidden else frozenset()
-        visible = {appid: name for appid, name in facts.played(player_id).items() if appid not in hidden_appids}
-        for version in versions:
-            report = reports[version]
-            started = time.perf_counter()
-            recommendations = RECOMMENDERS[version](reader, player_id, k, lang, hidden_appids)
-            recommended = time.perf_counter()
-            checked = [(item, check_recommendation(facts, player_id, visible, item)) for item in recommendations]
-            report.seconds["recommend"] += recommended - started
-            report.seconds["check"] += time.perf_counter() - recommended
-            report.add_user(player_id, checked)
+        results = with_retries(
+            lambda: check_user(reader, facts, player_id, hidden_appids, k, versions, lang), f"user {player_id}"
+        )
+        for version, (checked, seconds) in results.items():
+            reports[version].seconds.update(seconds)
+            reports[version].add_user(player_id, checked)
         if progress:
             progress(done)
     return reports
+
+
+def check_user(
+    reader: GraphReader,
+    facts: GraphFacts,
+    player_id: str,
+    hidden_appids: frozenset[str],
+    k: int,
+    versions: list[str],
+    lang: str,
+) -> dict[str, tuple[list[tuple[Recommendation, list[Checked]]], dict[str, float]]]:
+    """Per version, one user's recommendations with their checked assertions, and the seconds spent
+    recommending and checking. Nothing is counted until every version is done, so a retry starts clean."""
+    visible = {appid: name for appid, name in facts.played(player_id).items() if appid not in hidden_appids}
+    results = {}
+    for version in versions:
+        started = time.perf_counter()
+        recommendations = RECOMMENDERS[version](reader, player_id, k, lang, hidden_appids)
+        recommended = time.perf_counter()
+        checked = [(item, check_recommendation(facts, player_id, visible, item)) for item in recommendations]
+        seconds = {"recommend": recommended - started, "check": time.perf_counter() - recommended}
+        results[version] = (checked, seconds)
+    return results
 
 
 def ratio(part: int, whole: int) -> str:
@@ -433,6 +491,11 @@ def print_results(versions: Mapping[str, Mapping[str, Any]]) -> None:
     for version, result in versions.items():
         print(f"{version}: {result['recommendations']} recommendations, {result['without_evidence']} without evidence")
         print(f"  per recommendation {share_text(result)}")
+        post_stratified, ci = result.get("recommendation_validity_post_stratified"), result.get(
+            "recommendation_validity_post_stratified_ci"
+        )
+        if post_stratified is not None:
+            print(f"  post-stratified {post_stratified:.4f}" + (f" [{ci[0]:.4f}, {ci[1]:.4f}]" if ci else ""))
         for name, row in result["by_stratum"].items():
             print(f"    {name}: {row['users']} users, {share_text(row)}")
         headline = result["headline_validity"]
@@ -446,16 +509,19 @@ def print_results(versions: Mapping[str, Mapping[str, Any]]) -> None:
 
 
 def select_users(
-    reader: GraphReader, graph: Mapping[str, Any], args: argparse.Namespace
-) -> tuple[list[User], dict[str, Any]]:
-    """The users to check, and where they come from."""
+    reader: GraphReader, graph: dict[str, Any], args: argparse.Namespace
+) -> tuple[list[User], dict[str, Any], Mapping[str, int] | None]:
+    """The users to check, where they come from and, with --split, the users per stratum of the test pool.
+    With --split, adds the split's played_sha256 to graph once the PLAYED edges are found to be the split's."""
     if args.split is None:
         users = sampled_users(reader.all_play_records(), args.users, args.seed)
-        return users, {"sample": "run 0 of eval/evaluate.py", "users": args.users, "seed": args.seed}
+        return users, {"sample": "run 0 of eval/evaluate.py", "users": args.users, "seed": args.seed}, None
     split = load_split(args.split)
     expected = {name: split["graph"][name] for name in ("players", "games", "played")}
     if {name: graph[name] for name in expected} != expected:
         raise SystemExit(f"the graph {graph} is not the graph of the split {expected}")
+    load_play_records(reader, split)  # refuses PLAYED edges other than the split's
+    graph["played_sha256"] = split["graph"]["played_sha256"]
     source = {
         "split": relative(args.split),
         "split_sha256": file_sha256(args.split),
@@ -463,7 +529,8 @@ def select_users(
         "rep": 0,
         "limit_per_stratum": args.limit_per_stratum,
     }
-    return split_users(split, args.limit_per_stratum), source
+    pool = {name: split["counts"]["test_pool"][name] for name in STRATA}
+    return split_users(split, args.limit_per_stratum), source, pool
 
 
 def user_rows(users: Sequence[User], reports: Mapping[str, VersionReport]) -> list[dict[str, Any]]:
@@ -500,7 +567,8 @@ def main() -> None:
     reader = GraphReader(args.graph)
     try:
         graph = {"name": args.graph, **graph_counts(reader)}
-        users, source = select_users(reader, graph, args)
+        users, source, pool = select_users(reader, graph, args)
+        graph["links_sha256"] = graph_links(reader)
         if not users:
             raise SystemExit("no users to check")
         timer.mark("users")
@@ -518,7 +586,7 @@ def main() -> None:
         reader.close()
     strata = {player_id: name for player_id, name, _ in users}
     versions = {
-        version: report.summary() | validity_statistics(report, strata) | {"failures": report.failures}
+        version: report.summary() | validity_statistics(report, strata, pool=pool) | {"failures": report.failures}
         for version, report in reports.items()
     }
     timer.mark("statistics")
@@ -541,6 +609,8 @@ def main() -> None:
             "k": args.k,
             "lang": args.lang,
             "bootstrap": BOOTSTRAP,
+            "code_defaults": code_defaults(),
+            "environment": environment(),
             "git": git,
             "versions": versions,
             "users": user_rows(users, reports),

@@ -7,7 +7,9 @@ import random
 import sys
 from collections import Counter
 
+import numpy as np
 import pytest
+from neo4j.exceptions import TransientError
 
 import eval.evaluate
 import eval.explanation_check as explanation_check
@@ -22,7 +24,9 @@ from eval.explanation_check import (
 )
 from eval.rankers import build_graph_ranker, build_graph_v0_ranker
 from eval.static_analysis import c5_claim
-from eval.static_split import STRATA, build_split, dumps
+from eval.static_cache import with_retries
+from eval.static_eval import code_defaults
+from eval.static_split import STRATA, build_split, dumps, stratum
 from tests.fake_graph import GAMES, PLAYS, FakeGraphReader, tag_ja
 from utils.graph_reader import TAG_MAX_RANK
 
@@ -187,6 +191,7 @@ def test_command_line_prints_and_writes_a_report(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(explanation_check, "GraphReader", lambda graph_name: FakeGraphReader())
     monkeypatch.setattr(explanation_check, "CypherFacts", FakeFacts)
     monkeypatch.setattr(explanation_check, "graph_counts", fake_graph_counts)
+    monkeypatch.setattr(explanation_check, "graph_links", fake_graph_links)
     output = tmp_path / "report.json"
     monkeypatch.setattr(sys, "argv", ["explanation_check", "--users", "5", "--output", str(output)])
     explanation_check.main()
@@ -203,7 +208,7 @@ def test_command_line_prints_and_writes_a_report(tmp_path, monkeypatch, capsys):
 
 # ---- per-recommendation validity and the split's users (claim C5) -------------------------------------
 
-V1_WEIGHTS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}  # every path on, whatever the defaults
+V1_WEIGHTS = ALL_PATHS  # every path on, whatever the defaults
 
 
 def break_one_assertion(item):
@@ -276,6 +281,107 @@ def test_the_bootstrap_resamples_users_within_strata_and_pools_their_recommendat
     assert pooled["recommendation_validity_ci"] == [1 / 4, 1.0]  # draws ee, ef and ff: 1/4, 1/2 and 1
 
 
+def test_the_statistic_is_the_pooled_share_not_the_mean_of_the_users_shares():
+    report = VersionReport(by_user={"a": [1, 1], "b": [9, 0]})
+    statistics = validity_statistics(report, {"a": "11+", "b": "11+"}, level=0.4)
+    # Draws aa, ab or ba, bb (1/4, 1/2, 1/4): pooled 1, 1/10, 0; the mean of the users' shares would give 1/2.
+    assert statistics["by_stratum"]["11+"]["recommendation_validity_ci"] == [0.1, 0.1]
+    assert statistics["recommendation_validity_ci"] == [0.1, 0.1]
+
+
+def reference_statistics(by_user, strata, pool, replicates, seed, level):
+    """validity_statistics written out: per stratum in order, one replicates x n_s draw of users."""
+    rng = np.random.default_rng(seed)
+    totals = np.zeros((replicates, 2))
+    weighted, weights = np.zeros(replicates), {}
+    for name in STRATA:
+        users = [player_id for player_id in strata if strata[player_id] == name]
+        if not users:
+            continue
+        draws = rng.integers(0, len(users), size=(replicates, len(users)))
+        tallies = np.array([[sum(by_user[users[i]][j] for i in row) for j in (0, 1)] for row in draws])
+        totals += tallies
+        weights[name] = pool[name]
+        weighted += pool[name] * tallies[:, 1] / tallies[:, 0]
+    low, high = (1 - level) / 2, (1 + level) / 2
+    whole = sum(weights.values())
+    return (
+        [float(np.quantile(totals[:, 1] / totals[:, 0], q)) for q in (low, high)],
+        [float(np.quantile(weighted / whole, q)) for q in (low, high)],
+    )
+
+
+def test_the_bootstrap_is_the_written_out_stratified_resampling():
+    rng = random.Random(11)
+    names = ["1"] * 3 + ["2-3"] * 4 + ["11+"] * 5
+    strata = {f"u{index}": name for index, name in enumerate(names)}
+    by_user = {}
+    for player_id in strata:
+        recommendations = rng.randint(3, 10)
+        by_user[player_id] = [recommendations, rng.randint(0, recommendations)]
+    pool = {"1": 30, "2-3": 50, "4-10": 70, "11+": 600}
+    report = VersionReport(by_user=by_user)
+    first = validity_statistics(report, strata, replicates=400, level=0.9, pool=pool)
+    second = validity_statistics(report, strata, replicates=400, level=0.9, pool=pool)
+    assert first == second  # a new generator on every call
+    pooled, post_stratified = reference_statistics(by_user, strata, pool, 400, 0, 0.9)
+    assert first["recommendation_validity_ci"] == pytest.approx(pooled, abs=1e-12)
+    assert first["recommendation_validity_post_stratified_ci"] == pytest.approx(post_stratified, abs=1e-12)
+    shares = {
+        name: sum(by_user[p][1] for p in strata if strata[p] == name) / sum(by_user[p][0] for p in strata if strata[p] == name)
+        for name in ("1", "2-3", "11+")
+    }
+    assert first["post_stratification_weights"] == {"1": 30 / 680, "2-3": 50 / 680, "11+": 600 / 680}
+    assert first["recommendation_validity_post_stratified"] == pytest.approx(
+        sum(pool[name] * share for name, share in shares.items()) / 680, abs=1e-15
+    )
+    assert "recommendation_validity_post_stratified" not in validity_statistics(report, strata, replicates=400)
+
+
+def test_post_stratification_weighs_the_strata_by_the_pool():
+    report = VersionReport(by_user={"a": [10, 10], "b": [10, 10], "c": [10, 0], "d": [10, 0]})
+    pool = {"1": 1, "2-3": 5, "4-10": 7, "11+": 3}
+    statistics = validity_statistics(report, {"a": "1", "b": "1", "c": "11+", "d": "11+"}, pool=pool)
+    assert statistics["recommendation_validity_ci"] == [0.5, 0.5]  # equal strata in the subset
+    assert statistics["recommendation_validity_post_stratified"] == 1 / 4  # W_1 = 1 / (1 + 3) over the strata with users
+    assert statistics["recommendation_validity_post_stratified_ci"] == [1 / 4, 1 / 4]
+
+
+def test_a_recommendation_without_evidence_is_valid_and_counted_apart():
+    report = VersionReport()
+    bare = recommend_games(READER, "u1", 1, "en", frozenset({"30"}))[0].model_copy(update={"evidence": None})
+    assert report.add("u1", bare, []) is True
+    assert (report.recommendations, report.valid, report.without_evidence, report.explained) == (1, 1, 1, 0)
+    assert report.summary()["headline_validity"] == {}
+
+
+def test_sampled_users_have_the_stratum_of_their_visible_games():
+    users = explanation_check.sampled_users(READER.all_play_records(), len(PLAYERS), 0)
+    games = {player_id: len(appids) for player_id, appids in READER.games_by_player.items()}
+    assert users and all(name == stratum(games[player_id] - 1) for player_id, name, _ in users)
+    assert {name for _, name, _ in users} >= {"2-3"}
+
+
+def test_a_user_whose_queries_fail_transiently_is_retried_and_counted_once(monkeypatch):
+    calls = Counter()
+
+    def flaky(reader, player_id, k, lang, hidden_appids):
+        calls[player_id] += 1
+        if player_id == "p2" and calls[player_id] == 1:
+            raise TransientError("the database is busy")
+        return EVERY_PATH(reader, player_id, k, lang, hidden_appids)
+
+    monkeypatch.setitem(explanation_check.RECOMMENDERS, "current", flaky)
+    monkeypatch.setattr(explanation_check, "with_retries", functools.partial(with_retries, sleep=lambda seconds: None))
+    report = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current", "v0"])
+    assert calls["p2"] == 2 and all(calls[player_id] == 1 for player_id in PLAYERS if player_id != "p2")
+    monkeypatch.setitem(explanation_check.RECOMMENDERS, "current", EVERY_PATH)
+    once = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current", "v0"])
+    for version in ("current", "v0"):
+        assert report[version].by_user == once[version].by_user
+        assert report[version].assertions == once[version].assertions
+
+
 APPIDS = [game["appid"] for game in GAMES]
 
 
@@ -298,6 +404,10 @@ SPLIT_SIZES = {
 }
 
 
+def fake_graph_links(reader):
+    return hashlib.sha256(json.dumps(sorted(reader.games)).encode()).hexdigest()
+
+
 def fake_graph_counts(reader):
     records = reader.all_play_records()
     return {
@@ -318,6 +428,7 @@ def run_command_line(monkeypatch, output, *arguments, plays=SPLIT_PLAYS, facts=F
     monkeypatch.setattr(explanation_check, "GraphReader", lambda graph_name: FakeGraphReader(plays=plays))
     monkeypatch.setattr(explanation_check, "CypherFacts", facts)
     monkeypatch.setattr(explanation_check, "graph_counts", fake_graph_counts)
+    monkeypatch.setattr(explanation_check, "graph_links", fake_graph_links)
     argv = ["explanation_check", *(str(argument) for argument in arguments), "--output", str(output)]
     monkeypatch.setattr(sys, "argv", argv)
     explanation_check.main()
@@ -367,8 +478,45 @@ def test_the_same_input_gives_the_same_output_but_for_the_times(split_file, tmp_
     second = run_command_line(monkeypatch, tmp_path / "second.json", "--split", split_file)
     assert first.pop("wall_seconds")["total"] >= 0 and second.pop("wall_seconds")["per_user"] >= 0
     assert first == second
-    assert set(first) == {"graph", "users_from", "k", "lang", "bootstrap", "git", "versions", "users"}
+    assert set(first) == {
+        "graph",
+        "users_from",
+        "k",
+        "lang",
+        "bootstrap",
+        "code_defaults",
+        "environment",
+        "git",
+        "versions",
+        "users",
+    }
     assert first["bootstrap"]["B"] == 10_000 and first["bootstrap"]["seed"] == 0
+    assert first["code_defaults"] == code_defaults()
+    split = json.loads(split_file.read_text())
+    assert first["graph"]["played_sha256"] == split["graph"]["played_sha256"]
+    assert first["graph"]["links_sha256"] == fake_graph_links(FakeGraphReader(plays=SPLIT_PLAYS))
+    pool = split["counts"]["test_pool"]
+    for version in ("current", "v0"):
+        by_stratum = first["versions"][version]["by_stratum"]
+        present = [name for name in STRATA if by_stratum[name]["recommendations"]]  # v0 lists nothing for "1"
+        weights = first["versions"][version]["post_stratification_weights"]
+        assert weights == {name: pool[name] / sum(pool[s] for s in present) for name in present}
+    assert tuple(first["versions"]["current"]["post_stratification_weights"]) == tuple(STRATA)
+
+
+def test_a_graph_with_other_played_edges_but_the_same_counts_is_refused(split_file, tmp_path, monkeypatch):
+    # One play moved to another game the player had not played: the same counts, other PLAYED edges.
+    owned = {}
+    for player_id, appid, _, _ in SPLIT_PLAYS:
+        owned.setdefault(player_id, set()).add(appid)
+    index = next(i for i, play in enumerate(SPLIT_PLAYS) if play[0] == "s00")
+    player_id, appid, hours, last = SPLIT_PLAYS[index]
+    other = next(candidate for candidate in APPIDS if candidate not in owned[player_id])
+    moved = list(SPLIT_PLAYS)
+    moved[index] = (player_id, other, hours, last)
+    assert fake_graph_counts(FakeGraphReader(plays=moved)) == fake_graph_counts(FakeGraphReader(plays=SPLIT_PLAYS))
+    with pytest.raises(SystemExit, match="PLAYED edges"):
+        run_command_line(monkeypatch, tmp_path / "moved.json", "--split", split_file, plays=moved)
 
 
 class MisspelledGames(FakeFacts):
@@ -387,12 +535,40 @@ def test_c5_reads_the_written_result(split_file, tmp_path, monkeypatch):
         "current": 1.0,
         "v0": v0["recommendation_validity"],
         "v0_ci": v0["recommendation_validity_ci"],
+        "v0_post_stratified": v0["recommendation_validity_post_stratified"],
+        "v0_post_stratified_ci": v0["recommendation_validity_post_stratified_ci"],
         "status": "pass",
     }
     assert v0["recommendation_validity"] < 1.0 and len(claim["v0_ci"]) == 2
     run_command_line(monkeypatch, failing, "--split", split_file, facts=MisspelledGames)
     claim = c5_claim(failing, "explanations")
     assert claim["status"] == "fail" and claim["current"] < 1.0
+
+
+def test_c5_refuses_a_result_made_otherwise_than_the_test_run(split_file, tmp_path, monkeypatch):
+    path = tmp_path / "explanations.json"
+    result = run_command_line(monkeypatch, path, "--split", split_file)
+    expected = {
+        "split_sha256": hashlib.sha256(split_file.read_bytes()).hexdigest(),
+        "k": 10,
+        "code_defaults": code_defaults(),
+        "links_sha256": result["graph"]["links_sha256"],
+    }
+    clean = dict(result, git={"commit": "0" * 40, "dirty": False, "changes": []})
+    path.write_text(json.dumps(clean))
+    assert c5_claim(path, "explanations", expected)["status"] == "pass"
+    changes = {
+        "made from another split": {"users_from": dict(clean["users_from"], split_sha256="0" * 64)},
+        "not the whole explanations subset": {"users_from": dict(clean["users_from"], limit_per_stratum=1)},
+        "k = 5": {"k": 5},
+        "other code defaults": {"code_defaults": dict(clean["code_defaults"], weighting="log_hours")},
+        "other tag or studio links": {"graph": dict(clean["graph"], links_sha256="0" * 64)},
+        "uncommitted code": {"git": dict(clean["git"], dirty=True)},
+    }
+    for reason, change in changes.items():
+        path.write_text(json.dumps(clean | change))
+        claim = c5_claim(path, "explanations", expected)
+        assert claim["status"] == "error" and reason in claim["error"], reason
 
 
 def test_evaluate_runs_all_four_rankers(monkeypatch, capsys):
