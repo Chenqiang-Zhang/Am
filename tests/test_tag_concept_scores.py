@@ -1,6 +1,7 @@
 """tag_concept_scores reads the concept table, then the concepts each candidate matched, and adds the
 terms up in Python. Against a stand-in for Neo4j it must equal the formula, written concept by concept
-in FakeGraphReader.tag_concept_scores."""
+in FakeGraphReader.tag_concept_scores. The stand-in answers TAG_CONCEPTS with a concept table of its own,
+which must equal FakeGraphReader.concept_table; that one is pinned where the appid order decides."""
 
 import math
 
@@ -45,6 +46,41 @@ def concept_row(concept, weight):
         "name_ja": None,
         "tag_ids": [f"genre:{concept}", f"usertag:{concept}"],
     }
+
+
+def test_the_concept_table_with_equal_seed_weights_orders_seeds_by_appid_as_a_string():
+    # p8's games as seeds with w_s = 1, as under the default scheme: Mike(130) comes before India(90).
+    seeds = [{"appid": appid, "weight": 1.0} for appid in sorted(FakeGraphReader().games_by_player["p8"], key=int)]
+    table = FakeGraphReader().concept_table(seeds, 30)
+    assert [
+        (row["concept"], [holder["appid"] for holder in row["holders"]], row["seed_appid"], row["document_frequency"])
+        for row in table
+    ] == [
+        ("strategy", ["80", "90"], "80", 2),
+        ("indie", ["130", "90"], "130", 4),
+        ("puzzle", ["130", "90"], "130", 4),
+        ("multiplayer", ["90"], "90", 2),
+        ("relaxing", ["90"], "90", 2),
+        ("simulation", ["90"], "90", 2),
+        ("open_world", ["90"], "90", 3),
+        ("rpg", ["90"], "90", 3),
+        ("shooter", ["90"], "90", 3),
+        ("action", ["90"], "90", 6),
+    ]
+    for row in table:
+        assert row["games"] == 22
+        assert row["weight"] == len(row["holders"]) * math.log(22 / row["document_frequency"])
+        assert row["seed_name"] == row["holders"][0]["name"]
+
+
+@pytest.mark.parametrize("player_id,hidden", CASES)
+@pytest.mark.parametrize("weight", [math.log1p, lambda hours: 1.0], ids=["log_hours", "uniform"])
+def test_the_concept_table_equals_the_formula(player_id, hidden, weight):
+    seeds = [{"appid": "999", "weight": 3.0}] + arguments(player_id, hidden, weight)[0]
+    for concept_limit in (1, 3, 30):
+        reader = TagConceptReader(FakeGraphReader())
+        assert reader.tag_concepts(seeds, concept_limit) == FakeGraphReader().tag_concepts(seeds, concept_limit)
+        assert reader.statements == [TAG_CONCEPTS]
 
 
 @pytest.mark.parametrize("player_id,hidden", CASES)
