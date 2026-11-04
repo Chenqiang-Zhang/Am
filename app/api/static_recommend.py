@@ -253,9 +253,11 @@ def combine(
 
 
 def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
-    """The seed a tag reason is about: the one whose tags make up the largest part of the game's tag score
-    (the sum of the terms of the matched concepts it holds), ties by larger w_s, then smaller appid. None
-    unless the tag path contributed."""
+    """The seed a tag reason is about: the one with the largest part of the game's tag score. Each matched
+    concept's term is split among the seeds that have it by their weight, term · w_s / Σ_{seeds with c} w
+    = w_s · ln(N / df(c)) / sqrt(n(g)), so a seed is credited with its own part only. Ties (totals that agree
+    to SCORE_DECIMALS decimals) go to the larger w_s, then to the smaller appid as a string ("102700" before
+    "20"). None unless the tag path contributed."""
     if "tag" not in ranked["contributions"]:
         return None
     row = path_scores["paths"]["tag"][ranked["appid"]]
@@ -264,10 +266,11 @@ def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
     for concept in row["matched"]:
         entry = path_scores["tag_concepts"][concept]
         term = tag_term(entry["weight"], row["concept_count"])
+        held = ordered_sum(holder["weight"] for holder in entry["holders"])
         for holder in entry["holders"]:
-            totals[holder["appid"]] = totals.get(holder["appid"], 0.0) + term
+            totals[holder["appid"]] = totals.get(holder["appid"], 0.0) + term * holder["weight"] / held
             weights[holder["appid"]] = holder["weight"]
-    return min(totals, key=lambda appid: (-totals[appid], -weights[appid], appid))
+    return min(totals, key=lambda appid: (-round(totals[appid], SCORE_DECIMALS), -weights[appid], appid))
 
 
 def generic_tags(path_scores: PathScores) -> set[str]:

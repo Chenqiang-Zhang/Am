@@ -1,5 +1,7 @@
 """M4: evidence as paths. The reason text states nothing but evidence fields."""
 
+import math
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +17,7 @@ from app.api.static_recommend import (
     combine,
     describe_evidence,
     generic_tags,
+    ordered_sum,
     recommend_games,
     tag_anchor,
 )
@@ -28,6 +31,7 @@ ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
 U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}), weights=ALL_PATHS, scheme=SeedScheme())
 U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}), SeedScheme())
 U1_RANKED = {item["appid"]: item for item in combine(U1_PATH_SCORES, len(GAMES), ALL_PATHS)}
+UCSD_GAMES = 9192
 
 
 def test_the_fixtures_share_one_configuration():
@@ -153,10 +157,12 @@ def tag_only(*concepts):
 
 
 def test_the_anchor_holds_the_largest_part_of_the_tag_score():
-    # Seed 1 has the strongest concept a and is the heaviest seed with b, but seed 2's b, c and d add up to
-    # more. d is not among the 3 evidence instances and still counts: without it seed 1 is the anchor.
+    # A seed is credited with its own part of a matched concept's term, term · w_s / Σ w of the seeds with the
+    # concept. Seed 1 has the strongest concept a and 3/4 of b, but seed 2's 1/4 of b, c and d add up to more
+    # (2.25 against 2.0). d is not among the 3 evidence instances and still counts: without it seed 1 is the
+    # anchor.
     concepts = [
-        concept("a", 3.0, ("1", 3.0)),
+        concept("a", 2.5, ("1", 3.0)),
         concept("b", 2.0, ("1", 3.0), ("2", 1.0)),
         concept("c", 2.0, ("2", 1.0)),
         concept("d", 2.0, ("2", 1.0)),
@@ -181,6 +187,13 @@ def test_anchor_ties_go_to_the_larger_seed_weight_then_the_smaller_appid(weight_
     assert tag_anchor(path_scores, ranked) == anchor
 
 
+def test_anchor_parts_tie_to_score_decimals_and_appids_compare_as_strings():
+    # Seed 20's part is larger only in the 15th decimal, so the parts tie; "102700" comes before "20".
+    path_scores, ranked = tag_only(concept("a", 2.0 + 1e-14, ("20", 1.0)), concept("b", 2.0, ("102700", 1.0)))
+    assert path_scores["paths"]["tag"]["g"]["matched"] == ["a", "b"]
+    assert tag_anchor(path_scores, ranked) == "102700"
+
+
 def test_without_an_instance_of_the_anchor_the_first_instance_names_the_seed():
     # Seed 2 holds five weaker concepts that add up to more than seed 1's three, which fill the evidence.
     strong = [concept(name, 3.0, ("1", 3.0)) for name in "abc"]
@@ -193,31 +206,92 @@ def test_without_an_instance_of_the_anchor_the_first_instance_names_the_seed():
 
 
 def test_a_tag_instance_names_the_anchor_if_the_anchor_has_the_tag():
-    # India(90) for u1: Alpha (100 h) is the heaviest seed with Action and Shooter, but Bravo's Action,
-    # Indie and Puzzle make up more of India's tag score. Puzzle is not in the evidence, but without it
-    # Alpha would be the anchor. Shooter, which Bravo does not have, keeps Alpha.
-    india = next(item for item in U1 if item.appid == "90")
-    assert tag_anchor(U1_PATH_SCORES, U1_RANKED["90"]) == "20"
-    assert [(item.bridge_id, item.seed_name) for item in india.evidence if item.path == "tag"] == [
-        ("action", "Bravo"),
-        ("shooter", "Alpha"),
-        ("indie", "Bravo"),
+    # p8 with the default seeds (w_s = 1), tag path only. Mike(130) and India(90) both have Indie and Puzzle,
+    # and the heaviest seed with them is Mike: equal w_s, and "130" comes before "90" as a string.
+    items = {item.appid: item for item in recommend_games(FakeGraphReader(), "p8", 10, "en", weights={"tag": 1.0})}
+    # Delta(40) has only Indie and Puzzle: Mike and India own equal parts, and the tie goes to "130".
+    assert items["40"].explanation == "Shares Indie, Puzzle with Mike"
+    # Bravo(20) also has Action, which only India has, so India is the anchor and Indie and Puzzle name it.
+    bravo = items["20"]
+    assert [(item.bridge_id, item.seed_name) for item in bravo.evidence if item.path == "tag"] == [
+        ("indie", "India"),
+        ("puzzle", "India"),
+        ("action", "India"),
     ]
-    assert india.explanation == "Shares Action, Indie with Bravo"
-    assert [(reason.kind, reason.label) for reason in india.reasons] == [
-        ("game", "Bravo"),
-        ("tag", "Action"),
+    assert bravo.explanation == "Shares Indie, Puzzle, Action with India"
+    assert [(reason.kind, reason.label) for reason in bravo.reasons] == [
+        ("game", "India"),
         ("tag", "Indie"),
+        ("tag", "Puzzle"),
+        ("tag", "Action"),
     ]
+
+
+def idf_concept(name, document_frequency, *holders):
+    """A row of the concept table as TAG_CONCEPTS makes it on a graph of 9,192 games: weight(c) = Σ w_s ·
+    ln(N / df(c)). holders are (appid, w_s)."""
+    held = sorted(holders, key=lambda holder: (-holder[1], holder[0]))
+    weight = ordered_sum(seed_weight for _, seed_weight in held) * math.log(UCSD_GAMES / document_frequency)
+    row = concept(name, weight, *held)
+    return dict(row, name=name.replace("_", " ").title(), document_frequency=document_frequency)
+
+
+def test_a_seed_with_only_a_widely_held_tag_is_not_the_anchor():
+    # w_s = 1. Multiplayer (on 1,328 games) is on seeds 10-50, Roguelike (150) and Pixel Graphics (300) only
+    # on seed 70. Multiplayer has the largest term, but each of its five seeds owns a fifth of it.
+    concepts = [
+        idf_concept("multiplayer", 1328, *[(appid, 1.0) for appid in ("10", "20", "30", "40", "50")]),
+        idf_concept("roguelike", 150, ("70", 1.0)),
+        idf_concept("pixel_graphics", 300, ("70", 1.0)),
+    ]
+    path_scores, ranked = tag_only(*concepts)
+    assert tag_anchor(path_scores, ranked) == "70"
+    evidence = build_evidence(path_scores, ranked, "en", "70")
+    assert [(item.bridge_id, item.seed_appid) for item in evidence] == [
+        ("multiplayer", "10"),
+        ("roguelike", "70"),
+        ("pixel_graphics", "70"),
+    ]
+    generic = generic_tags(path_scores)
+    assert generic == {"multiplayer"}
+    assert describe_evidence(evidence, "en", "70", generic)[1] == "Shares Roguelike, Pixel Graphics with Seed 70"
+
+
+def test_a_seed_played_for_a_minute_is_not_the_anchor_over_one_played_for_500_hours():
+    # w_s = ln(1 + hours): seed 100 was played for 500 hours, seed 200 for a minute. Both have Roguelike and
+    # Pixel Graphics, and only 200 has Cute; 200's own part of the tag score is under 1%.
+    scheme = SeedScheme()
+    heavy, light = ("100", scheme.weight(500.0)), ("200", scheme.weight(1 / 60))
+    concepts = [
+        idf_concept("roguelike", 150, heavy, light),
+        idf_concept("pixel_graphics", 300, heavy, light),
+        idf_concept("cute", 500, light),
+    ]
+    path_scores, ranked = tag_only(*concepts)
+    assert tag_anchor(path_scores, ranked) == "100"
+    evidence = build_evidence(path_scores, ranked, "en", "100")
+    assert [(item.bridge_id, item.seed_appid) for item in evidence] == [
+        ("roguelike", "100"),
+        ("pixel_graphics", "100"),
+        ("cute", "200"),
+    ]
+    assert describe_evidence(evidence, "en", "100")[1] == "Shares Roguelike, Pixel Graphics with Seed 100"
 
 
 def test_generic_tags_stay_in_the_evidence(monkeypatch):
     monkeypatch.setattr(static_recommend, "GENERIC_TAG_GAMES", 6)  # only Action is on 6 games
     assert generic_tags(U1_PATH_SCORES) == {"action"}
+    # India(90) for u1: Alpha (100 h) owns 60% of Action and all of Shooter, more than Bravo's 40% of Action,
+    # Indie and Puzzle, so Alpha is the anchor; its instances are Action and Shooter.
+    assert tag_anchor(U1_PATH_SCORES, U1_RANKED["90"]) == "10"
     recommended = recommend_games(FakeGraphReader(), "u1", 10, "en", frozenset({"30"}), ALL_PATHS, SeedScheme())
     items = {item.appid: item for item in recommended}
-    assert items["90"].explanation == "Shares Indie with Bravo"
-    assert [item.bridge_id for item in items["90"].evidence if item.path == "tag"] == ["action", "shooter", "indie"]
+    assert items["90"].explanation == "Shares Shooter with Alpha"
+    assert [(item.bridge_id, item.seed_name) for item in items["90"].evidence if item.path == "tag"] == [
+        ("action", "Alpha"),
+        ("shooter", "Alpha"),
+        ("indie", "Bravo"),
+    ]
     assert items["110"].explanation == "Shares Action with Alpha"  # Kilo(110) has no other tag
 
 
