@@ -160,6 +160,9 @@ REFERENCE_TAG_HOLDERS = (
     "collect(CASE WHEN seed IS NOT NULL THEN {appid: seed.appid, name: seed.name, weight: weight} END) AS holders"
 )
 
+# The number of games, which TAG_CONCEPTS returns with every row as `games`.
+REFERENCE_GAME_COUNT = "MATCH (g:Game) RETURN count(g) AS games"
+
 # GraphReader.game_popularity up to commit ffa5fa3: the player's edge looked up for every game.
 REFERENCE_GAME_POPULARITY = (
     "MATCH (g:Game) WHERE NOT g.appid IN $played_appids "
@@ -184,9 +187,9 @@ class ReferenceReader(GraphReader):
     through the shared GAME_COLUMNS, which walks every PLAYED edge of the game.
 
     Those statements do not return what only the tag reason uses: the holders and document frequency of
-    each concept and the `matched` concepts of each candidate. The holders and document frequency are read
-    with REFERENCE_TAG_HOLDERS, `matched` is every match of the single tag statement, so that these fields
-    are compared with == as well."""
+    each concept, the number of games and the `matched` concepts of each candidate. The holders and document
+    frequency are read with REFERENCE_TAG_HOLDERS, the number of games with REFERENCE_GAME_COUNT, `matched`
+    is every match of the single tag statement, so that these fields are compared with == as well."""
 
     def co_play_scores(self, player_id, seeds, played_appids, evidence_limit):
         return self.query(
@@ -202,12 +205,14 @@ class ReferenceReader(GraphReader):
         facts = self.query(
             REFERENCE_TAG_HOLDERS, concepts=[row["concept"] for row in rows], seeds=seeds, max_rank=TAG_MAX_RANK
         )
+        games = self.query(REFERENCE_GAME_COUNT)[0]["games"]
         by_concept = {fact["concept"]: fact for fact in facts}
         return [
             dict(
                 row,
                 holders=by_concept[row["concept"]]["holders"],
                 document_frequency=by_concept[row["concept"]]["document_frequency"],
+                games=games,
             )
             for row in rows
         ]

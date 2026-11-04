@@ -567,6 +567,7 @@ class FakeGraphReader:
                         "tag_ids": sorted(tag_ids),
                         "holders": held,
                         "document_frequency": document_frequency,
+                        "games": len(self.games),
                     }
                 )
         rows.sort(key=lambda row: (-row["weight"], row["concept"]))

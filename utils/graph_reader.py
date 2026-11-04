@@ -141,6 +141,7 @@ class TagConcept(TypedDict):
     tag_ids: list[str]
     holders: list[TagHolder]  # the seeds with the concept, by (-w_s, appid)
     document_frequency: int
+    games: int  # N, the number of games of the graph (the same in every row)
 
 
 class TagConceptMatch(TypedDict):
@@ -291,13 +292,14 @@ TAG_CONCEPTS = (
     "MATCH (tag)<-[owner_tag:HAS_TAG]-(owner:Game) "
     "WHERE owner_tag.rank IS NULL OR owner_tag.rank <= $max_rank "
     "WITH total, concept, preference, via, holders, tags, count(DISTINCT owner) AS document_frequency "
-    "WITH concept, via, holders, tags, document_frequency, "
+    "WITH total, concept, via, holders, tags, document_frequency, "
     "preference * log(toFloat(total) / document_frequency) AS weight "
     "WHERE weight > 0 "
-    "WITH concept, via, holders, tags, document_frequency, weight "
+    "WITH total, concept, via, holders, tags, document_frequency, weight "
     "ORDER BY weight DESC, concept ASC LIMIT $concept_limit "
     "RETURN concept, weight, via.appid AS seed_appid, via.name AS seed_name, head(tags).name AS name, "
-    "head(tags).name_ja AS name_ja, [tag IN tags | tag.tag_id] AS tag_ids, holders, document_frequency"
+    "head(tags).name_ja AS name_ja, [tag IN tags | tag.tag_id] AS tag_ids, holders, document_frequency, "
+    "total AS games"
 )
 # $tag_ids holds the tag_ids of each concept of the table; `matched` are indices into it.
 TAG_CANDIDATES = (
@@ -597,7 +599,7 @@ class GraphReader:
     def tag_concepts(self, seeds: list[SeedGame], concept_limit: int) -> list[TagConcept]:
         """The concept_limit concepts of the seeds with the largest weight(c), each with the seed of the
         largest w_s that has it (ties by appid), the name of its tag with the smallest tag_id, the
-        tag_ids of all its tags, all seeds that have it and df(c)."""
+        tag_ids of all its tags, all seeds that have it, df(c) and the number of games N."""
         return self.query(TAG_CONCEPTS, seeds=seeds, max_rank=TAG_MAX_RANK, concept_limit=concept_limit)
 
     def studio_scores(

@@ -140,6 +140,7 @@ def concept(name, weight, *holders):
         "tag_ids": [f"usertag:{name}"],
         "holders": held,
         "document_frequency": 10,
+        "games": UCSD_GAMES,
     }
 
 
@@ -278,8 +279,30 @@ def test_a_seed_played_for_a_minute_is_not_the_anchor_over_one_played_for_500_ho
     assert describe_evidence(evidence, "en", "100")[1] == "Shares Roguelike, Pixel Graphics with Seed 100"
 
 
+@pytest.mark.parametrize("games,fewest", [(UCSD_GAMES, 1000), (100, 11), (len(GAMES), 3)])
+def test_generic_tags_are_on_the_same_share_of_the_games_of_any_graph(games, fewest):
+    # 1,000 of UCSD's 9,192 games, 11 of 100 (10.9), 3 of the fixture's 22 (2.4).
+    rows = [dict(concept(f"on_{df}", 1.0, ("1", 1.0)), document_frequency=df, games=games) for df in (fewest - 1, fewest)]
+    assert generic_tags({"tag_concepts": {row["concept"]: row for row in rows}}) == {f"on_{fewest}"}
+
+
+def test_the_fixture_has_generic_tags_too():
+    # u1's tags on 3 or more of the 22 games; Simulation and Relaxing are on 2.
+    assert {entry["concept"]: entry["document_frequency"] for entry in U1_PATH_SCORES["tag_concepts"].values()} == {
+        "action": 6,
+        "shooter": 3,
+        "indie": 4,
+        "puzzle": 4,
+        "simulation": 2,
+        "relaxing": 2,
+    }
+    assert generic_tags(U1_PATH_SCORES) == {"action", "shooter", "indie", "puzzle"}
+
+
 def test_generic_tags_stay_in_the_evidence(monkeypatch):
-    monkeypatch.setattr(static_recommend, "GENERIC_TAG_GAMES", 6)  # only Action is on 6 games
+    # Generic means on 6 of the 22 games: only Action (the next tags are on 4).
+    monkeypatch.setattr(static_recommend, "GENERIC_TAG_GAMES", 6)
+    monkeypatch.setattr(static_recommend, "GENERIC_TAG_GRAPH_GAMES", len(GAMES))
     assert generic_tags(U1_PATH_SCORES) == {"action"}
     # India(90) for u1: Alpha (100 h) owns 60% of Action and all of Shooter, more than Bravo's 40% of Action,
     # Indie and Puzzle, so Alpha is the anchor; its instances are Action and Shooter.

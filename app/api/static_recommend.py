@@ -30,8 +30,11 @@ TAG_PREFERENCE_LIMIT = 30
 REASON_TAG_LIMIT = 3
 PEER_SEED_GAMES = 10
 EVIDENCE_PER_PATH = REASON_TAG_LIMIT
-# Tags on at least this many games (Multiplayer, Singleplayer, Action, ...) say little in a reason.
+# Tags that at least GENERIC_TAG_GAMES of every GENERIC_TAG_GRAPH_GAMES games have (Multiplayer, Singleplayer,
+# Action, ...) say little in a reason. The cut was set on the UCSD graph, which has 9,192 games, so there it
+# stays at 1,000 games; other graphs cut at the same share of their games (a 100-game graph at 11).
 GENERIC_TAG_GAMES = 1000
+GENERIC_TAG_GRAPH_GAMES = 9192
 # The order paths are added up in, and the tie order when choosing the headline evidence.
 PATHS: tuple[EvidencePath, ...] = ("peer", "tag", "studio", "popular")
 # λ per path, chosen on the validation users (eval/results/static_tuning_v1.json, README §8.5): tags add a
@@ -274,11 +277,13 @@ def tag_anchor(path_scores: PathScores, ranked: RankedGame) -> str | None:
 
 
 def generic_tags(path_scores: PathScores) -> set[str]:
-    """The concepts of the tag table that at least GENERIC_TAG_GAMES games have."""
+    """The concepts of the tag table that at least GENERIC_TAG_GAMES of every GENERIC_TAG_GRAPH_GAMES games
+    have: df(c) · GENERIC_TAG_GRAPH_GAMES >= GENERIC_TAG_GAMES · N, compared as integers. Every row of the
+    table carries N, the number of games of the graph, as `games`."""
     return {
         concept
         for concept, entry in path_scores["tag_concepts"].items()
-        if entry["document_frequency"] >= GENERIC_TAG_GAMES
+        if entry["document_frequency"] * GENERIC_TAG_GRAPH_GAMES >= GENERIC_TAG_GAMES * entry["games"]
     }
 
 
