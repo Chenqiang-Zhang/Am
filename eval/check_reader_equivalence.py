@@ -11,8 +11,14 @@ Python == between GraphReader and ReferenceReader: the rows of each path query a
 (every field, in order), the whole collect_path_scores(), the combine() top 50, games_by_appids() of
 those 50 and the model_dump() of recommend_games() in en and ja. Then the edge cases of the same player
 (all games hidden, seeds outside played_appids, no played_appids, no seeds, an unknown seed), and once
-those of an unknown player. The median seconds of each path query, games_by_appids(),
-collect_path_scores() and recommend_games() (en) are printed for both readers.
+those of an unknown player.
+
+The median seconds over the compared players are printed for both readers: co_play_scores, the tag path
+(tag_concepts + tag_concept_scores, which the two readers split differently), studio_scores,
+game_popularity, games_by_appids(), collect_path_scores() and recommend_games() (en). They are not
+old-vs-new speed-ups: the reference's tag_concepts runs REFERENCE_TAG_CONCEPTS and REFERENCE_TAG_HOLDERS,
+which the replaced code did not run and which exist only for this comparison, and the reference's tag
+path, collect_path_scores() and recommend_games() times include them.
 
 With --all-seeds the reference only runs for players with at most REFERENCE_SEED_LIMIT visible games:
 above that its co-play statement runs out of transaction memory, so such a player is only timed with
@@ -273,6 +279,31 @@ class Timed:
         return timed
 
 
+# The printed medians and the timed calls each adds up; the tag path's two calls do different parts of the
+# work in the two readers.
+MEDIANS = {
+    "co_play_scores": ("co_play_scores",),
+    "tag path": ("tag_concepts", "tag_concept_scores"),
+    "studio_scores": ("studio_scores",),
+    "game_popularity": ("game_popularity",),
+    "games_by_appids": ("games_by_appids",),
+    "collect_path_scores": ("collect_path_scores",),
+    "recommend_games": ("recommend_games",),
+}
+
+
+def median_terms(seconds: dict[str, float]) -> dict[str, float]:
+    """One player's seconds for each median, added from left to right; a median whose calls did not all
+    run (a player without seeds) is left out."""
+    terms = {}
+    for median, names in MEDIANS.items():
+        if all(name in seconds for name in names):
+            terms[median] = 0.0
+            for name in names:
+                terms[median] += seconds[name]
+    return terms
+
+
 def order_key(*parts: str) -> str:
     return hashlib.sha256(("reader-equivalence:" + ":".join(parts)).encode()).hexdigest()
 
@@ -460,9 +491,9 @@ def main() -> None:
             rows_compared += path_rows
             cases_compared += len(cases)
             mismatches += bool(different)
-            for name, value in reference_seconds.items():
+            for name, value in median_terms(reference_seconds).items():
                 seconds["reference"][name].append(value)
-            for name, value in new_seconds.items():
+            for name, value in median_terms(new_seconds).items():
                 seconds["new"][name].append(value)
             verdict = "DIFFERENT: " + ", ".join(different) if different else "same"
             print(
@@ -495,11 +526,12 @@ def main() -> None:
         + ("; nothing compared for any player" if not compared else "")
     )
     if compared:
-        print(f"median seconds over {compared} players: reference -> new")
-        for name in TIMED + ("collect_path_scores", "recommend_games"):
-            reference_median = statistics.median(seconds["reference"][name])
-            new_median = statistics.median(seconds["new"][name])
-            print(f"  {name:20} {reference_median:6.3f} -> {new_median:6.3f}")
+        print(f"median seconds over {compared} players: reference -> new (not old-vs-new speed-ups)")
+        for name in MEDIANS:
+            if seconds["reference"][name] and seconds["new"][name]:
+                reference_median = statistics.median(seconds["reference"][name])
+                new_median = statistics.median(seconds["new"][name])
+                print(f"  {name:20} {reference_median:6.3f} -> {new_median:6.3f}")
     if broken or mismatches:
         sys.exit(1)
     sys.exit(2 if (failed["new"] or failed["reference"]) and not compared else 0)
