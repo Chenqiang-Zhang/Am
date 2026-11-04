@@ -634,11 +634,12 @@ python -m eval.static_eval collect --stage validation --schemes all --workers 8 
 python -m eval.static_eval tune --workers 8                                       # 480 通りを並べて設定を選び、C1 を確かめる → static_tuning_v1.json
 # static_tuning_v1.json と、選んだ設定にした app/api/static_recommend.py の DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME をコミットする
 python -m eval.static_eval collect --stage test --schemes log1p_10,<選んだシードの決め方> --workers 8
+python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json   # C5 の根拠を確かめる（test の前に作る）→ static_explanations_v1.json
 python -m eval.static_eval test --workers 8                                       # v0 も実行し、すべての行、差、判定を出す → static_test_v1.json、static_test_v1_ranks.jsonl.gz
 python -m eval.static_eval report --lang ja                                       # 8.5 と 8.6 の表（中国語は --lang zh）
 ```
 
 - `verify --stage <validation|test|smoke> --schemes <…>` は、保存した経路スコアを `combine()` で並べた上位 50 件が `recommend_games()` と同じか、速い順位の計算が `combine()` と同じかを確かめる。`--stage smoke` は、検証用のユーザのうちキーの小さい 30 人で、実行の確認だけに使う。
 - 結果の JSON には、git のコミット、計画と分割の sha256、グラフの数とつながりの sha256、Python の版、段階ごとの時間を記録する。`combine()` と速い順位の計算は float を前から順に足す（Python 3.12 からの `sum()` は誤差を補正して最後の桁が変わることがあるため）ので、Python 3.11 と 3.13 で同じ結果になる。`tune` と `test` は、Item-KNN の float32 の和の順序を固定するため、`PYTHONHASHSEED=0` で自分を起動し直す。
-- C5 の `eval/results/static_explanations_v1.json` は、選んだ設定をコミットした後、`python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` で作る（説明用のユーザの rep 0 で、現行の推薦と v0 を確かめる）。説明用のユーザは各層 75 人なので、全体の割合は層を同じ重さで足したものになる。W_s で重みを付けた割合（事後層別）とその CI も、同じブートストラップで出す。ファイルには、コードの既定値、タグと会社のつながりの sha256、コミットを書く。`test` は、これらがテストの実行と同じで、説明用のユーザ全員を使い、コミット済みのコードで作ったファイルでなければ、C5 を「使えない」とする。
+- C5 の `eval/results/static_explanations_v1.json` は、選んだ設定をコミットした後、`test` の前に、`python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` で作る（説明用のユーザの rep 0 で、現行の推薦と v0 を確かめる）。説明用のユーザは各層 75 人なので、全体の割合は層を同じ重さで足したものになる。W_s で重みを付けた割合（事後層別）とその CI も、同じブートストラップで出す。ファイルには、分割の sha256、k、コードの既定値、タグと会社のつながりの sha256、git の状態（コミットと、未コミットの変更があるか）を書く。`test` と `report` は、分割、k、コードの既定値、つながりの sha256 がテストの実行と同じで、説明用のユーザ全員の rep 0 を使い、未コミットの変更がないコードで作ったファイルでなければ、C5 を「使えない」とする。コミットは書くだけで、同じかどうかは確かめない。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` は、手早い評価として残す。毎回ユーザと隠すゲームを選び直して `--runs` 回（既定 5）繰り返し、各指標を 平均 ± 標準偏差 で表示する（差の信頼区間は出さない）。静的なおすすめについて報告する数字は、`eval/static_eval.py` のものとする。

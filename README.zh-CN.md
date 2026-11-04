@@ -633,11 +633,12 @@ python -m eval.static_eval collect --stage validation --schemes all --workers 8 
 python -m eval.static_eval tune --workers 8                                       # 对 480 个配置排序、选定配置并检查 C1 → static_tuning_v1.json
 # 提交 static_tuning_v1.json，以及改为选定配置的 app/api/static_recommend.py 的 DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME
 python -m eval.static_eval collect --stage test --schemes log1p_10,<选定的种子方案> --workers 8
+python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json   # 核对 C5 的依据（在 test 之前生成）→ static_explanations_v1.json
 python -m eval.static_eval test --workers 8                                       # 也运行 v0，给出所有的行、差和判定 → static_test_v1.json、static_test_v1_ranks.jsonl.gz
 python -m eval.static_eval report --lang zh                                       # 8.5 和 8.6 的表（日语为 --lang ja）
 ```
 
 - `verify --stage <validation|test|smoke> --schemes <…>` 检查：用 `combine()` 对保存的路径分数排出的前 50 名与 `recommend_games()` 相同，快速的名次计算与 `combine()` 相同。`--stage smoke` 为验证用户中键最小的 30 人，只用于确认能否运行。
 - 结果的 JSON 记录 git 的提交、计划和划分的 sha256、图的数量和连接的 sha256、Python 的版本以及各阶段的耗时。`combine()` 和快速名次计算按从前到后的顺序累加 float（Python 3.12 起的 `sum()` 会补偿误差，最后一位可能不同），因此在 Python 3.11 和 3.13 上结果相同。为了固定 Item-KNN 中 float32 求和的顺序，`tune` 和 `test` 会以 `PYTHONHASHSEED=0` 重新启动自身。
-- C5 用的 `eval/results/static_explanations_v1.json`，在提交选定的配置之后，用 `python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` 生成（在解释用户的 rep 0 上核对现行推荐和 v0）。解释用户每层 75 人，因此整体比例相当于各层等权相加。按 W_s 加权的比例（事后分层）及其 CI 也用同一 bootstrap 给出。文件中记录代码的默认值、标签和公司连接的 sha256 以及提交。若这些与测试运行不一致、没有用全部解释用户，或不是用已提交的代码生成的，`test` 把 C5 记为“无法使用”。
+- C5 用的 `eval/results/static_explanations_v1.json`，在提交选定的配置之后、运行 `test` 之前，用 `python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 --output eval/results/static_explanations_v1.json` 生成（在解释用户的 rep 0 上核对现行推荐和 v0）。解释用户每层 75 人，因此整体比例相当于各层等权相加。按 W_s 加权的比例（事后分层）及其 CI 也用同一 bootstrap 给出。文件中记录划分的 sha256、k、代码的默认值、标签和公司连接的 sha256 以及 git 状态（提交与有无未提交的修改）。若划分、k、代码的默认值或连接的 sha256 与测试运行不一致，没有用全部解释用户的 rep 0，或生成时代码有未提交的修改，`test` 和 `report` 把 C5 记为“无法使用”。提交只记录，不比较是否相同。
 - `docker compose run --rm app python -m eval.evaluate --users N --k 10 20 50 --runs R` 保留为快速评估：每次重新选择用户和被隐藏的游戏，重复 `--runs` 次（默认 5），各指标以 平均 ± 标准差 显示（不给出差的置信区间）。静态推荐报告的数字取 `eval/static_eval.py` 的结果。

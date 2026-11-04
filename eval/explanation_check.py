@@ -32,9 +32,13 @@ nothing, so it is valid; their number is reported as without_evidence). Per vers
 - per assertion, secondary: verified assertions / assertions. The versions make different numbers
   and kinds of assertions per recommendation, so these shares do not compare across versions.
 
-With --split the graph must be the split's (its PLAYED edges), and the result records the code defaults,
-the digest of the tag and studio links and the commit, which the test run checks before it reports C5.
-A user whose queries fail with a transient error (the database may be shared) is retried as a whole.
+With --split the graph must be the split's (its PLAYED edges). The result records the split's sha256, k,
+the code defaults, the digest of the tag and studio links and the git state (the commit and whether the
+code had uncommitted changes). `test` and `report` of eval/static_eval.py give C5 a verdict only for a
+result whose split, k, code defaults and links are the test run's, that covers the whole explanations
+subset at rep 0 and that was made from code without uncommitted changes; the commit is recorded but not
+compared. A user whose queries fail with a transient error (the database may be shared) is retried as a
+whole.
 
     python -m eval.explanation_check --split eval/results/static_split_v1.json --k 10 \\
         --output eval/results/static_explanations_v1.json

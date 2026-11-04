@@ -118,7 +118,8 @@ def c5_claim(path: Path, source: str, expected: Mapping[str, Any] | None = None)
 
 def c5_problems(data: Mapping[str, Any], expected: Mapping[str, Any]) -> list[str]:
     """Why the explanation result is not the one C5 asks for: the whole explanations subset of this split
-    at rep 0, k, the code defaults and the tag and studio links of the test run, committed code."""
+    at rep 0, k, the code defaults and the tag and studio links of the test run, and code without
+    uncommitted changes. The commit itself is not compared."""
     users_from, problems = data.get("users_from") or {}, []
     if users_from.get("split_sha256") != expected["split_sha256"]:
         problems.append("made from another split")
