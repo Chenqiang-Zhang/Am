@@ -23,7 +23,7 @@ TEXT: dict[str, dict[str, str]] = {
         "top": "上位 {n} 本",
         "all_seeds": "全部",
         "tuning_note": (
-            "推定値は事後層別、CI は配対ブートストラップ（B = {B:,}）。最大の設定との差が 1 SE 以内の設定は {qualifying} 個。"
+            "推定値は事後層別、CI は対応のあるブートストラップ（B = {B:,}）。最大の設定との差が 1 SE 以内の設定は {qualifying} 個。"
         ),
         "c1": "C1（実装の確認、検証用のユーザ {evaluations} 回）",
         "check": "確認",
