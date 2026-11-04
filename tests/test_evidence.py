@@ -22,7 +22,8 @@ from app.api.static_recommend_v0 import recommend_games_v0
 from tests.fake_graph import GAMES, FakeGraphReader
 from utils.graph_reader import tag_candidate
 
-# Every path on and ln(1 + hours) seed weights, as the fixture was written for, whatever the defaults.
+# Every path on and ln(1 + hours) seed weights, as the fixture was written for (the tuned defaults switch
+# studio and popular off).
 ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
 U1 = recommend_games(FakeGraphReader(), "u1", len(GAMES), "en", frozenset({"30"}), weights=ALL_PATHS, scheme=SeedScheme())
 U1_PATH_SCORES = collect_path_scores(FakeGraphReader(), "u1", frozenset({"30"}), SeedScheme())

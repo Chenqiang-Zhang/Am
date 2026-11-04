@@ -34,9 +34,11 @@ EVIDENCE_PER_PATH = REASON_TAG_LIMIT
 GENERIC_TAG_GAMES = 1000
 # The order paths are added up in, and the tie order when choosing the headline evidence.
 PATHS: tuple[EvidencePath, ...] = ("peer", "tag", "studio", "popular")
-# λ per path, all tuned on the validation users later (M5). λ_studio scales a share of the player's
-# seed weight, S_studio / Σ_s w_s; the other λ scale a path score divided by its highest score.
-DEFAULT_PATH_WEIGHTS: dict[str, float] = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
+# λ per path, chosen on the validation users (eval/results/static_tuning_v1.json, README §8.5): tags add a
+# little to co-play; studio and popular are off (popular still fills up short lists). λ_studio scales a
+# share of the player's seed weight, S_studio / Σ_s w_s; the other λ scale a path score divided by its
+# highest score.
+DEFAULT_PATH_WEIGHTS: dict[str, float] = {"peer": 1.0, "tag": 0.1, "studio": 0.0, "popular": 0.0}
 STUDIO_ROLE_WEIGHTS = {"developer": 1.0, "publisher": 0.5}
 # The studio divisor: the player's total seed weight, or the highest studio score (the previous rule,
 # kept for comparison).
@@ -75,7 +77,9 @@ class SeedScheme:
         return math.log1p(hours) if self.weighting == "log_hours" else 1.0
 
 
-DEFAULT_SEED_SCHEME = SeedScheme()
+# Chosen on the validation users with the λ above: every played game counts the same and seeds co-play,
+# which makes the peer path Item-KNN without the player.
+DEFAULT_SEED_SCHEME = SeedScheme(weighting="uniform", peer_limit=None)
 
 
 class Seed(TypedDict):

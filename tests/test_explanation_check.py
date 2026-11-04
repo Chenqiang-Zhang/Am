@@ -1,5 +1,6 @@
 """M4: eval/explanation_check.py, against an in-memory copy of the graph facts."""
 
+import functools
 import json
 import sys
 
@@ -8,7 +9,7 @@ import pytest
 import eval.evaluate
 import eval.explanation_check as explanation_check
 from app.api.models import Evidence
-from app.api.static_recommend import recommend_games
+from app.api.static_recommend import SeedScheme, recommend_games
 from eval.explanation_check import check_evidence, check_recommendations, sample_players
 from eval.rankers import build_graph_ranker, build_graph_v0_ranker
 from tests.fake_graph import FakeGraphReader, tag_ja
@@ -67,6 +68,9 @@ READER = FakeGraphReader()
 FACTS = FakeFacts(READER)
 PLAYERS = ["u1", "p1", "p2", "p3", "p4", "p5", "p6", "solo"]
 HIDDEN = {"u1": "30", "p2": "60", "p6": "90", "p4": "80"}
+# Every path on, so that every kind of assertion occurs (the tuned defaults switch studio and popular off).
+ALL_PATHS = {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1}
+EVERY_PATH = functools.partial(recommend_games, weights=ALL_PATHS, scheme=SeedScheme())
 
 
 def assertions_for(item, appid="50", player_id="u1", hidden=frozenset({"30"})):
@@ -74,7 +78,8 @@ def assertions_for(item, appid="50", player_id="u1", hidden=frozenset({"30"})):
     return {name: holds for name, holds, _ in check_evidence(FACTS, player_id, visible, appid, item)}
 
 
-def test_current_recommender_evidence_is_fully_valid():
+def test_current_recommender_evidence_is_fully_valid(monkeypatch):
+    monkeypatch.setitem(explanation_check.RECOMMENDERS, "current", EVERY_PATH)
     reports = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current"])
     report = reports["current"]
     assert report.failures == []
@@ -92,6 +97,13 @@ def test_current_recommender_evidence_is_fully_valid():
     assert 0 < report.explained < report.recommendations  # small catalogue: some lists end with popular games
 
 
+def test_the_tuned_defaults_state_only_valid_evidence():
+    report = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["current"])["current"]
+    assert report.failures == []
+    assert report.validity == 1.0
+    assert {"seed_played", "co_players", "seed_has_tag", "game_has_tag"} <= set(report.assertions)
+
+
 def test_v0_text_fails_where_the_proposal_says():
     report = check_recommendations(READER, FACTS, PLAYERS, HIDDEN, 10, ["v0"])["v0"]
     assert report.validity is not None and report.validity < 1.0
@@ -106,7 +118,7 @@ def test_v0_text_fails_where_the_proposal_says():
 
 
 def recommended_evidence(path):
-    for item in recommend_games(READER, "u1", 13, "en", frozenset({"30"})):
+    for item in EVERY_PATH(READER, "u1", 13, "en", frozenset({"30"})):
         for evidence in item.evidence:
             if evidence.path == path:
                 return item.appid, evidence
