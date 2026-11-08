@@ -3,7 +3,7 @@ import re
 
 from utils.graph_reader import GameRow, TagLabel
 
-from .models import Lang, Reason, Recommendation
+from .models import Evidence, EvidencePath, Lang, Reason, Recommendation
 
 DISPLAY_TAG_LIMIT = 6
 
@@ -27,13 +27,19 @@ def strip_html(text: str | None) -> str | None:
 
 
 def display_tag_labels(tags: list[TagLabel], lang: Lang) -> list[str]:
-    ordered = sorted(tags, key=lambda tag: (tag["rank"] is not None, tag["rank"] or 0))
+    ordered = sorted(tags, key=lambda tag: (tag["rank"] is not None, tag["rank"] or 0, tag["name"]))
     labels = [pick_language(tag["name"], tag["name_ja"], lang) or tag["name"] for tag in ordered]
     return list(dict.fromkeys(labels))[:DISPLAY_TAG_LIMIT]
 
 
 def build_recommendation(
-    game: GameRow, lang: Lang, score: float, reasons: list[Reason], explanation: str
+    game: GameRow,
+    lang: Lang,
+    score: float,
+    reasons: list[Reason],
+    explanation: str,
+    evidence: list[Evidence] | None = None,
+    contributions: dict[EvidencePath, float] | None = None,
 ) -> Recommendation:
     return Recommendation(
         appid=game["appid"],
@@ -49,4 +55,6 @@ def build_recommendation(
         score=score,
         reasons=reasons,
         explanation=explanation,
+        evidence=evidence,
+        contributions=contributions,
     )

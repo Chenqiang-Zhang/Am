@@ -13,6 +13,36 @@ class Reason(BaseModel):
     label: str
 
 
+EvidencePath = Literal["peer", "tag", "studio", "popular"]
+StudioRole = Literal["developer", "publisher"]
+
+
+class Evidence(BaseModel):
+    """One graph path instance behind a static recommendation. "This game" is the recommended game,
+    the seed is a game the player has played, and every count leaves the player out.
+
+    - peer: seed <-PLAYED- `count` other players -PLAYED-> this game
+    - tag: seed -HAS_TAG-> tag `bridge_id` <-HAS_TAG- this game
+    - studio: seed -[`seed_role`]-> studio `bridge_id` <-[`candidate_role`]- this game;
+      `count` is the number of games of the studio
+    - popular: `count` other players -PLAYED-> this game
+
+    `share` is this instance's part of the recommendation's score (0 when the score is 0). For a tag instance
+    it is the tag's whole term, which every seed with the tag adds to (Σ of w_s · ln(N / df) / √n(g) over those
+    seeds), not only the named seed's part.
+    """
+
+    path: EvidencePath
+    seed_appid: str | None = None
+    seed_name: str | None = None
+    bridge_id: str | None = None
+    bridge_name: str | None = None
+    count: int | None = None
+    seed_role: StudioRole | None = None
+    candidate_role: StudioRole | None = None
+    share: float = 0.0
+
+
 class Recommendation(BaseModel):
     appid: str
     name: str
@@ -27,6 +57,10 @@ class Recommendation(BaseModel):
     score: float
     reasons: list[Reason]
     explanation: str
+    # Static recommendations only: the path instances behind the score, headline first, and the
+    # score split by path (the values add up to `score`).
+    evidence: list[Evidence] | None = None
+    contributions: dict[EvidencePath, float] | None = None
 
 
 class RecommendRequest(BaseModel):

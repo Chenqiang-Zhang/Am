@@ -1,0 +1,141 @@
+{
+  "covered": 12,
+  "evaluations": 188708,
+  "name": "static_pool_check_v1",
+  "pool": {
+    "1": 2302,
+    "11+": 47693,
+    "2-3": 3847,
+    "4-10": 9828
+  },
+  "rows": [
+    {
+      "covered": true,
+      "estimate": 0.22757758860792626,
+      "hi": 0.23499829794251478,
+      "k": 10,
+      "lo": 0.22033113973090276,
+      "method": "popularity",
+      "metric": "HR",
+      "pool_value": 0.22984398722579968
+    },
+    {
+      "covered": true,
+      "estimate": 0.30361411444426994,
+      "hi": 0.31189163357939464,
+      "k": 20,
+      "lo": 0.2953585861996753,
+      "method": "popularity",
+      "metric": "HR",
+      "pool_value": 0.3030286372441233
+    },
+    {
+      "covered": true,
+      "estimate": 0.42371056803308726,
+      "hi": 0.43280363127585164,
+      "k": 50,
+      "lo": 0.41476500958065177,
+      "method": "popularity",
+      "metric": "HR",
+      "pool_value": 0.42478142505627975
+    },
+    {
+      "covered": true,
+      "estimate": 0.13963016582314425,
+      "hi": 0.1446531165826068,
+      "k": 10,
+      "lo": 0.13455310081823135,
+      "method": "popularity",
+      "metric": "NDCG",
+      "pool_value": 0.14248185263010074
+    },
+    {
+      "covered": true,
+      "estimate": 0.1587286216645412,
+      "hi": 0.16374820278533625,
+      "k": 20,
+      "lo": 0.15368996559420162,
+      "method": "popularity",
+      "metric": "NDCG",
+      "pool_value": 0.16085900695898636
+    },
+    {
+      "covered": true,
+      "estimate": 0.18253881544163733,
+      "hi": 0.18747880960987448,
+      "k": 50,
+      "lo": 0.1775458417093892,
+      "method": "popularity",
+      "metric": "NDCG",
+      "pool_value": 0.18499817879891642
+    },
+    {
+      "covered": true,
+      "estimate": 0.2719867001727658,
+      "hi": 0.2795538162923407,
+      "k": 10,
+      "lo": 0.26432040647086424,
+      "method": "item_knn",
+      "metric": "HR",
+      "pool_value": 0.2732003560023035
+    },
+    {
+      "covered": true,
+      "estimate": 0.35447278990628767,
+      "hi": 0.36285068163970596,
+      "k": 20,
+      "lo": 0.346040761164338,
+      "method": "item_knn",
+      "metric": "HR",
+      "pool_value": 0.3566986021674258
+    },
+    {
+      "covered": true,
+      "estimate": 0.491973563687765,
+      "hi": 0.501147305952568,
+      "k": 50,
+      "lo": 0.4829727678655569,
+      "method": "item_knn",
+      "metric": "HR",
+      "pool_value": 0.49162085754672535
+    },
+    {
+      "covered": true,
+      "estimate": 0.16791660800842467,
+      "hi": 0.17333209072813488,
+      "k": 10,
+      "lo": 0.16261745117021006,
+      "method": "item_knn",
+      "metric": "NDCG",
+      "pool_value": 0.17089813511637547
+    },
+    {
+      "covered": true,
+      "estimate": 0.1886708191476219,
+      "hi": 0.19401377647906148,
+      "k": 20,
+      "lo": 0.18335485426329115,
+      "method": "item_knn",
+      "metric": "NDCG",
+      "pool_value": 0.19194288890150144
+    },
+    {
+      "covered": true,
+      "estimate": 0.21590684012214373,
+      "hi": 0.22116454306389136,
+      "k": 50,
+      "lo": 0.21064104031318323,
+      "method": "item_knn",
+      "metric": "NDCG",
+      "pool_value": 0.2186747047677509
+    }
+  ],
+  "split": {
+    "path": "static_split_v1.json",
+    "sha256": "5a2e79ab28310e296918d273788720113a2240d1616172ae2a5b951889ad7f0e"
+  },
+  "test": {
+    "path": "static_test_v1.json",
+    "sha256": "43a8d253812feeeb3badf9f2ab772098457b5e5e36975c324c0f532cc49ae567"
+  }
+}

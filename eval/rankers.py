@@ -1,9 +1,10 @@
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, Mapping
 
 import numpy as np
 
-from app.api.static_recommend import recommend_games
+from app.api.static_recommend import DEFAULT_SEED_SCHEME, SeedScheme, recommend_games
+from app.api.static_recommend_v0 import recommend_games_v0
 from utils.graph_reader import GraphReader
 
 PlayRecord = tuple[str, str, float]
@@ -66,9 +67,23 @@ def build_item_knn_ranker(play_records: list[PlayRecord]) -> Ranker:
     return rank
 
 
-def build_graph_ranker(reader: GraphReader) -> Ranker:
+def build_graph_ranker(
+    reader: GraphReader, weights: Mapping[str, float] | None = None, scheme: SeedScheme = DEFAULT_SEED_SCHEME
+) -> Ranker:
     def rank(player_id: str, top_k: int, hidden_appids: set[str]) -> list[str]:
-        recommendations = recommend_games(reader, player_id, top_k, "en", frozenset(hidden_appids))
+        recommendations = recommend_games(
+            reader, player_id, top_k, "en", frozenset(hidden_appids), weights=weights, scheme=scheme
+        )
+        return [recommendation.appid for recommendation in recommendations]
+
+    return rank
+
+
+def build_graph_v0_ranker(reader: GraphReader) -> Ranker:
+    """The static recommender before the path rewrite (v0), for the comparison."""
+
+    def rank(player_id: str, top_k: int, hidden_appids: set[str]) -> list[str]:
+        recommendations = recommend_games_v0(reader, player_id, top_k, "en", frozenset(hidden_appids))
         return [recommendation.appid for recommendation in recommendations]
 
     return rank

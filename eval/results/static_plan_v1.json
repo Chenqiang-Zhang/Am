@@ -1,0 +1,262 @@
+{
+  "name": "static_plan_v1",
+  "purpose": "The pre-registered evaluation of the static recommender (README §7; the protocol in README §8): committed before any validation or test result exists and not changed afterwards. python -m eval.static_eval reads it; tune and test record its commit and sha256 and refuse to run on the real stages while it has uncommitted changes.",
+  "rules": [
+    "λ and the seed scheme are chosen on the validation users only, by the selection rule below; the validation users serve tuning and C1, nothing else.",
+    "The chosen config is committed as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME (studio_normalization 'seed_weight' is combine()'s default), together with static_tuning_v1.json, before the test run; the test run refuses to start otherwise, when the tuning result is not a run over the whole grid on the validation users of this plan, split and graph, or when its best and chosen configs are not those the selection rule gives on its rows.",
+    "The graph is not rebuilt between the validation collection and the test run: the split pins the PLAYED edges, and the runner keeps a sha256 of every HAS_TAG, DEVELOPED_BY and PUBLISHED_BY link in its caches and results and refuses a cache or tuning result of other links.",
+    "No re-tuning after any test result. Every row, contrast and claim below is reported whatever the outcome, including contrasts in the unfavourable direction and failed claims.",
+    "Only C1-C5 are claims; everything else is descriptive."
+  ],
+  "split": {
+    "file": "eval/results/static_split_v1.json",
+    "sha256": "5a2e79ab28310e296918d273788720113a2240d1616172ae2a5b951889ad7f0e",
+    "salt": "static-rec-eval-v1",
+    "graph": {"games": 9192, "played_games": 8523, "players": 67894, "played": 2833973},
+    "rules": {
+      "population": "players with at least 2 played games",
+      "strata": "visible games (games - 1): 1, 2-3, 4-10 or 11+",
+      "user_key": "sha256(salt + ':user:' + player_id), smallest first; every player list is in this order",
+      "validation": "the 1,000 players of the population with the smallest user keys",
+      "test_pool": "every other player of the population",
+      "test_sample": "every test-pool player of strata 1 and 2-3, the first 1,500 of stratum 4-10 and the first 2,500 of stratum 11+",
+      "hidden": "rep r (0, 1, 2) hides the game with the (r + 1)-th smallest sha256(salt + ':hide:' + player_id + ':' + appid); a player has min(3, games) reps; one game is hidden per evaluation",
+      "weights": "W_s = counts.test_pool[s] / counts.test_pool.all",
+      "subsets": "test-sample players in user-key order, rep 0 only"
+    },
+    "stages": {
+      "validation": "the 1,000 validation users, every rep (2,956 user x reps); only for tuning and C1",
+      "test": "the test sample, every rep (10,149 users, 28,145 user x reps)",
+      "smoke": "the 30 validation users with the smallest user keys, every rep; only to check the runner"
+    },
+    "counts": {
+      "population": {"1": 2346, "2-3": 3914, "4-10": 9991, "11+": 48419, "all": 64670},
+      "validation": {"users": {"1": 44, "2-3": 67, "4-10": 163, "11+": 726, "all": 1000}, "user_x_reps": 2956},
+      "test_sample": {
+        "users": {"1": 2302, "2-3": 3847, "4-10": 1500, "11+": 2500, "all": 10149},
+        "user_x_reps": 28145
+      },
+      "test_pool": {"1": 2302, "2-3": 3847, "4-10": 9828, "11+": 47693, "all": 63670},
+      "subsets": {
+        "v0": "the first 500 test-sample users per stratum (2,000)",
+        "explanations": "the first 75 per stratum (300)",
+        "beyond_accuracy": "1,000 users split over the strata by the largest remainder of 1000 · W_s: 36 / 61 / 154 / 749"
+      }
+    }
+  },
+  "schemes": {
+    "log1p_10": {"weighting": "log_hours", "peer_limit": 10},
+    "log1p_30": {"weighting": "log_hours", "peer_limit": 30},
+    "log1p_all": {"weighting": "log_hours", "peer_limit": null},
+    "uniform_10": {"weighting": "uniform", "peer_limit": 10},
+    "uniform_30": {"weighting": "uniform", "peer_limit": 30},
+    "uniform_all": {"weighting": "uniform", "peer_limit": null}
+  },
+  "scheme_definition": "app/api/static_recommend.SeedScheme. weighting log_hours: w_s = ln(1 + hours); uniform: w_s = 1. peer_limit N: the co-play seeds are the N seeds with the most hours (ties by appid); null: every seed. The tag and studio paths always use every seed.",
+  "grid": {
+    "weights": {
+      "peer": [1.0],
+      "tag": [0.0, 0.1, 0.25, 0.5, 1.0],
+      "studio": [0.0, 0.5, 1.0, 2.0],
+      "popular": [0.0, 0.1, 0.25, 0.5]
+    },
+    "studio_normalization": "seed_weight",
+    "schemes": ["log1p_10", "log1p_30", "log1p_all", "uniform_10", "uniform_30", "uniform_all"],
+    "configs": 480
+  },
+  "reference": {
+    "name": "graph_v1_default",
+    "scheme": "log1p_10",
+    "weights": {"peer": 1.0, "tag": 1.0, "studio": 0.5, "popular": 0.1},
+    "studio_normalization": "max",
+    "definition": "the committed recommender before this round (aa90eb9): λ 1 / 1 / 0.5 / 0.1, the studio path divided by its highest score, w_s = ln(1 + hours), the 10 seeds with the most hours as co-play seeds"
+  },
+  "objective": {
+    "stage": "validation",
+    "metric": "NDCG",
+    "k": 10,
+    "group": "all",
+    "definition": "post-stratified NDCG@10 over the validation users (W_s from the split's counts.test_pool), each user's value the mean over the user's reps",
+    "ranks": "the hidden game's rank in combine()'s full ranking of the cached scores, computed by eval/static_cache.HiddenRank (numpy totals; candidates within 1e-9 of the hidden game's total are compared with combine()'s own float operations); python -m eval.static_eval verify checks it against combine() for every planned config"
+  },
+  "selection": {
+    "candidates": "the 480 grid configs; graph_v1_default is a reference, not a candidate",
+    "bootstrap": {"B": 2000, "seed": 0},
+    "best": "the candidate with the highest objective (ties: the preference order below)",
+    "within_one_se": "a candidate c qualifies when objective(c) - objective(best) >= -SE(c - best), the standard deviation of the B bootstrap replicates of the paired difference (validation users resampled within strata, as in statistics)",
+    "preference": [
+      "peer_limit 10, then 30, then all",
+      "weighting log_hours (ln(1 + hours)), then uniform",
+      "more of λ_tag, λ_studio, λ_pop equal to 0",
+      "smaller Σλ",
+      "the smallest (λ_tag, λ_studio, λ_pop)"
+    ],
+    "chosen": "the first qualifying candidate in the preference order",
+    "report": "every config's objective, its SE and its difference to graph_v1_default with a 95% CI (the selection bootstrap); the chosen and the arg-max config side by side, since the arg-max overstates its own gain (winner's curse)"
+  },
+  "test_rows": [
+    {
+      "name": "popularity",
+      "definition": "eval/rankers.py build_popularity_ranker: players without the evaluated user, ties by appid (the play records are passed sorted by appid); the full ranking of the played games (8,523) the player has not visibly played"
+    },
+    {
+      "name": "item_knn",
+      "definition": "eval/rankers.py build_item_knn_ranker: the sum of cosine similarities to the visible games, without the evaluated user's records, in float32; the full ranking of the played games (8,523) the player has not visibly played (run with PYTHONHASHSEED=0)"
+    },
+    {
+      "name": "graph_v0",
+      "definition": "app/api/static_recommend_v0.py recommend_games_v0, top 50 only (a hidden game outside it is a miss); the v0 subset, rep 0, and the beyond_accuracy users for the beyond-accuracy metrics"
+    },
+    {"name": "graph_v1_default", "definition": "the reference config above"},
+    {"name": "graph_tuned", "definition": "the chosen config"},
+    {"name": "graph_tuned_minus_peer", "definition": "graph_tuned with λ_peer = 0, nothing re-tuned"},
+    {"name": "graph_tuned_minus_tag", "definition": "graph_tuned with λ_tag = 0, nothing re-tuned"},
+    {"name": "graph_tuned_minus_studio", "definition": "graph_tuned with λ_studio = 0, nothing re-tuned"},
+    {"name": "graph_tuned_minus_pop", "definition": "graph_tuned with λ_pop = 0, nothing re-tuned"},
+    {"name": "peer_only", "definition": "the tuned scheme, λ_peer = 1 and every other λ = 0"},
+    {
+      "name": "content_only",
+      "definition": "the tuned scheme, the tuned λ_tag and λ_studio, λ_peer = λ_pop = 0; λ_tag = λ_studio = 1 when both were tuned to 0"
+    },
+    {
+      "name": "pop_only",
+      "definition": "the tuned scheme, λ_pop = 1 and every other λ = 0; an identity check against popularity"
+    }
+  ],
+  "test_cases": {
+    "rows": "every row but graph_v0 on every test-sample user and rep",
+    "graph_v0": "the v0 subset (first 500 test-sample users per stratum), rep 0; the other rows are compared with it on the same user x reps",
+    "graph_rows": "combine() on the cached scores of collect_path_scores(reader, player, {hidden}, scheme); the full ranking, not only the top 50, of every game the player has not visibly played (9,192 games minus the visible ones, games nobody played included)"
+  },
+  "metrics": {
+    "names": ["HR", "NDCG"],
+    "k": [10, 20, 50],
+    "primary": {"metric": "NDCG", "k": 10},
+    "definition": "the hidden game's 1-based rank in the row's ranking: HR@K = [rank <= K], NDCG@K = [rank <= K] / log2(rank + 1); for graph_v0 a hidden game outside its top 50 is a miss at every K"
+  },
+  "statistics": {
+    "user_value": "the mean over the user's reps",
+    "estimate": "the post-stratified mean Σ_s W_s · mean_s, W_s = counts.test_pool[s] / counts.test_pool.all; the group 1-3 renormalises W over strata 1 and 2-3",
+    "bootstrap": {
+      "B": 10000,
+      "seed": 0,
+      "rng": "numpy.random.default_rng",
+      "level": 0.95,
+      "interval": "percentile",
+      "resampling": "users within each stratum; one index matrix per stratum shared by every row, so every contrast is paired (eval/static_stats.py)"
+    },
+    "se": "the standard deviation (ddof 1) of the B replicates",
+    "p_value": "two-sided, of a contrast: 2 · (min(#{δ* <= 0}, #{δ* >= 0}) + 1) / (B + 1), at most 1, over the B replicates δ* of the difference; |δ*| <= 1e-12 counts as 0 (float noise of a difference that is 0 on paper)",
+    "groups": ["all", "1-3", "1", "2-3", "4-10", "11+"]
+  },
+  "contrasts": {
+    "test_sample": [
+      ["peer_only", "item_knn"],
+      ["graph_tuned", "peer_only"],
+      ["graph_tuned", "popularity"],
+      ["graph_tuned", "item_knn"],
+      ["graph_tuned", "graph_v1_default"],
+      ["graph_tuned", "graph_tuned_minus_peer"],
+      ["graph_tuned", "graph_tuned_minus_tag"],
+      ["graph_tuned", "graph_tuned_minus_studio"],
+      ["graph_tuned", "graph_tuned_minus_pop"],
+      ["graph_tuned", "content_only"],
+      ["item_knn", "popularity"],
+      ["pop_only", "popularity"]
+    ],
+    "v0_subset": [["graph_tuned", "graph_v0"], ["graph_v1_default", "graph_v0"], ["item_knn", "graph_v0"]]
+  },
+  "claims": {
+    "C1": {
+      "kind": "implementation check, on the validation users (every user x rep; computed by tune)",
+      "checks": {
+        "peer_only_uniform_all": {"scheme": "uniform_all", "weights": {"peer": 1.0}, "baseline": "item_knn"},
+        "pop_only": {"scheme": "log1p_10", "weights": {"popular": 1.0}, "baseline": "popularity"}
+      },
+      "agreement": "the same hidden rank, or both ranks > 50",
+      "threshold": 0.999,
+      "pass": "the agreement of both checks is at least the threshold"
+    },
+    "C2": {
+      "contrast": ["peer_only", "item_knn"],
+      "metric": "NDCG",
+      "k": 10,
+      "group": "all",
+      "level": 0.95,
+      "margin": 0.01,
+      "pass": "the 95% CI lies inside [-margin, +margin]; only then are the two called equivalent"
+    },
+    "C3": {
+      "contrast": ["graph_tuned", "peer_only"],
+      "metric": "NDCG",
+      "k": 10,
+      "tests": {"primary": "all", "secondary": "1-3"},
+      "alpha": 0.05,
+      "ci_level": 0.975,
+      "pass": "Holm's step-down over the two tests on their two-sided bootstrap p-values at family-wise α = 0.05: the smaller p is judged at 0.025 and the other at 0.05 once the first is rejected; a test passes when it is rejected and Δ > 0. C3 takes the verdict of the primary test; the secondary test is reported with its own. Both tests are reported with 97.5% CIs."
+    },
+    "C4": {
+      "metric": "NDCG",
+      "k": 10,
+      "group": "all",
+      "level": 0.95,
+      "checks": [
+        {"contrast": ["graph_tuned", "popularity"], "lower_bound_above": 0.0},
+        {"contrast": ["graph_tuned", "item_knn"], "lower_bound_above": -0.01}
+      ],
+      "pass": "the 95% CI lower bound of each contrast is above its threshold"
+    },
+    "C5": {
+      "source": "eval/results/static_explanations_v1.json, written by eval/explanation_check.py; the runner only reads it",
+      "current": "versions.current.recommendation_validity: the share of the current recommender's recommendations whose every assertion holds",
+      "v0": "versions.v0.recommendation_validity and its bootstrap CI over users versions.v0.recommendation_validity_ci, reported only",
+      "users": "the explanations subset (75 test users per stratum), rep 0 with the hidden games of the accuracy run, k = 10",
+      "pass": "versions.current.recommendation_validity == 1.0; pending until the file exists"
+    }
+  },
+  "descriptive": {
+    "hours_threshold": 1.0,
+    "studio_id": "valve",
+    "groups": {
+      "hidden_under_1h": "the hidden game was played for less than 1 hour",
+      "hidden_1h_or_more": "the hidden game was played for 1 hour or more",
+      "hidden_valve": "the hidden game has DEVELOPED_BY or PUBLISHED_BY to the Studio 'valve'",
+      "hidden_not_valve": "every other hidden game"
+    },
+    "rows": "every row but graph_v0",
+    "metrics": [["NDCG", 10], ["HR", 10]],
+    "contrasts": [["graph_tuned", "item_knn"], ["graph_tuned", "peer_only"], ["graph_tuned", "popularity"]],
+    "estimator": "per user, the metric summed over the user's reps in the group divided by the user's reps, and the share of the user's reps in the group; the estimate is the post-stratified mean of the first divided by that of the second (a ratio estimator over every test-sample user x rep, overall only), with percentile CIs from the same paired bootstrap (statistics.bootstrap); the contrasts use the first metric, NDCG@10"
+  },
+  "beyond_accuracy": {
+    "subset": "beyond_accuracy",
+    "rep": 0,
+    "k": 10,
+    "rows": "every row, graph_v0 included (v0 also runs on the beyond_accuracy users)",
+    "coverage": {
+      "denominator": 8523,
+      "definition": "eval/metrics.coverage_at_k: distinct games in the top 10 of the n = 1,000 users divided by the 8,523 games somebody played; games nobody played are counted in the numerator and reported separately"
+    },
+    "diversity": "eval/metrics.diversity_at_k: the mean over all pairs of the top 10 of 1 - Jaccard of their tag_id sets (HAS_TAG with rank <= 10 or no rank, Feature tags included, a genre and a user tag of the same name counted apart; a pair whose games have no such tag at all counts as distance 0, but every UCSD game has one), averaged over users",
+    "novelty": "eval/metrics.novelty_at_k: the mean of -log2(players(g) / all players) over the top 10, players counted over every player (the evaluated user included; 67,894 players), a game nobody played counted as 1 player, averaged over users",
+    "popular_head": {
+      "size": 100,
+      "definition": "the share of top-10 slots taken by the 100 games with the most players (counted over every player, ties by appid)"
+    }
+  },
+  "outputs": {
+    "tuning": "eval/results/static_tuning_v1.json",
+    "test": "eval/results/static_test_v1.json",
+    "ranks": "eval/results/static_test_v1_ranks.jsonl.gz",
+    "explanations": "eval/results/static_explanations_v1.json"
+  },
+  "commands": [
+    "python -m eval.static_eval collect --stage validation --schemes all --workers 8",
+    "python -m eval.static_eval tune --workers 8",
+    "commit static_tuning_v1.json and the chosen config as DEFAULT_PATH_WEIGHTS / DEFAULT_SEED_SCHEME in app/api/static_recommend.py",
+    "python -m eval.static_eval collect --stage test --schemes log1p_10,<chosen scheme> --workers 8",
+    "eval/explanation_check.py on the explanations subset writes eval/results/static_explanations_v1.json (C5)",
+    "python -m eval.static_eval test --workers 8",
+    "python -m eval.static_eval report --lang ja, and --lang zh"
+  ]
+}

@@ -8,12 +8,14 @@ from utils.graph_reader import GraphReader
 from .metrics import coverage_at_k, diversity_at_k, hit_rate_at_k, ndcg_at_k, novelty_at_k
 from .rankers import (
     build_graph_ranker,
+    build_graph_v0_ranker,
     build_item_knn_ranker,
     build_popularity_ranker,
     group_appids_by_player,
 )
 
 METRIC_NAMES = ["HR", "NDCG", "coverage", "diversity", "novelty"]
+RANKER_NAMES = ["popularity", "item_knn", "graph_v0", "graph"]
 
 
 def main() -> None:
@@ -22,6 +24,13 @@ def main() -> None:
     parser.add_argument("--k", type=int, nargs="+", default=[10, 20, 50])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--runs", type=int, default=5)
+    parser.add_argument(
+        "--rankers",
+        nargs="+",
+        choices=RANKER_NAMES,
+        default=["popularity", "item_knn", "graph"],
+        help="graph_v0 is the static recommender before the path rewrite (app/api/static_recommend_v0.py)",
+    )
     args = parser.parse_args()
 
     reader = GraphReader("ucsd")
@@ -31,11 +40,13 @@ def main() -> None:
     player_counts = Counter(appid for _, appid, _ in play_records)
     eligible_players = sorted(player_id for player_id, appids in appids_by_player.items() if len(appids) >= 2)
 
-    rankers = {
-        "popularity": build_popularity_ranker(play_records),
-        "item_knn": build_item_knn_ranker(play_records),
-        "graph": build_graph_ranker(reader),
+    builders = {
+        "popularity": lambda: build_popularity_ranker(play_records),
+        "item_knn": lambda: build_item_knn_ranker(play_records),
+        "graph_v0": lambda: build_graph_v0_ranker(reader),
+        "graph": lambda: build_graph_ranker(reader),
     }
+    rankers = {name: builders[name]() for name in RANKER_NAMES if name in args.rankers}
     largest_k = max(args.k)
     values_by_setting = defaultdict(list)
 
