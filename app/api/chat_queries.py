@@ -112,6 +112,36 @@ def score_t1_rows(rows: list[dict], max_players: int) -> list[Candidate]:
     return rank_candidates(candidates)
 
 
+@dataclass(frozen=True)
+class GameAttributes:
+    """One game's attributes as the questioner sees them: tag groups through counting edges, developers, price."""
+
+    tag_keys: frozenset[str]
+    studio_keys: frozenset[str]
+    price: float | None
+    players: int
+
+
+GAME_ATTRIBUTES_QUERY = """
+MATCH (g:Game)
+RETURN g.appid AS appid, g.price AS price, COUNT { (g)<-[:PLAYED]-(:Player) } AS players,
+       [(g)-[ht:HAS_TAG]->(t:Tag) WHERE ht.rank IS NULL OR ht.rank <= $max_rank | t.tag_id] AS tag_ids,
+       [(g)-[:DEVELOPED_BY]->(s:Studio) WHERE s.studio_id <> '' | s.studio_id] AS studio_ids
+"""
+
+
+def load_game_attributes(reader: GraphReader) -> dict[str, GameAttributes]:
+    return {
+        row["appid"]: GameAttributes(
+            tag_keys=frozenset(tag_key(tag_id) for tag_id in row["tag_ids"]),
+            studio_keys=frozenset("studio:" + studio_id for studio_id in row["studio_ids"]),
+            price=row["price"],
+            players=row["players"],
+        )
+        for row in reader.query(GAME_ATTRIBUTES_QUERY, max_rank=TAG_MAX_RANK)
+    }
+
+
 class GraphRetriever:
     """Retriever G. Validates the state against the graph, then runs T1."""
 
