@@ -1,7 +1,7 @@
 """Retrievers that do not use the graph's structure, for the dialogue evaluation (E1_PLAN.md).
 
 P: the most played games, ignoring every condition the user states. It only leaves out games already shown,
-rejected or named as anchors, like every retriever. V (vector search) will be added here.
+rejected or named as anchors, like every retriever. V (vector search) is in vector.py.
 """
 
 from collections.abc import Iterable

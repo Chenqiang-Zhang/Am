@@ -1,4 +1,7 @@
-"""E1-pre: the A-layer simulation on the development users with G (T1 only), G-static and P (E1_PLAN.md).
+"""E1-pre: the A-layer simulation on the development users (E1_PLAN.md).
+
+Groups: G (T1 only) and G-static, V-entropy and V-static (vector search, vector.py), and P. V needs the
+embedding model on the Ollama server at EMBED_BASE_URL; its document vectors are cached under data/eval/vectors/.
 
     python -m eval.crs.run_e1 --users 300            # inside the app container, GRAPH=ucsd
     python -m eval.crs.run_e1 --users 20 --seeds 1   # a quick smoke run
@@ -47,12 +50,23 @@ from eval.crs.simulator import (
     sample_order,
     simulate,
 )
+from eval.crs.vector import (
+    EMBED_MODEL,
+    EXCLUDE_WEIGHT,
+    VectorRetriever,
+    document_vectors,
+    load_corpus,
+    model_identity,
+    ollama_embed,
+)
 from eval.metrics import hdcg, success_by_turn, turns_taken
 from eval.stats import holm, mcnemar_exact, paired_bootstrap_ci, wilcoxon_signed_rank
 from utils.graph_reader import GraphReader
 
-GROUPS = ("G", "G-static", "P")
-COMPARISONS = (("G", "G-static"), ("G", "P"), ("G-static", "P"))
+GROUPS = ("G", "G-static", "V-entropy", "V-static", "P")
+# the first is the primary comparison; Holm adjusts over all of them
+COMPARISONS = (("G", "V-entropy"), ("G", "G-static"), ("V-entropy", "V-static"), ("G", "P"))
+JACCARD_PAIR = ("G", "V-entropy")
 MIN_PLAYED = 5
 POPULAR_TOP = 50
 ENTROPY_LOG_TOP = 10
@@ -141,10 +155,12 @@ def entropy_top(catalog: QuestionCatalog):
     return explain
 
 
-def run_user(user: User, seeds: int, retriever, popularity, catalog, facts, popular: set[str]):
+def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, facts, popular: set[str]):
     systems = {
         "G": (retriever.excluding_player(user.player_id), EntropyQuestioner(catalog), entropy_top(catalog)),
         "G-static": (retriever.excluding_player(user.player_id), FixedOrderQuestioner(catalog), None),
+        "V-entropy": (vector, EntropyQuestioner(catalog), entropy_top(catalog)),
+        "V-static": (vector, FixedOrderQuestioner(catalog), None),
         "P": (popularity.excluding_player(user.played), None, None),
     }
     dialogues, logs = [], []
@@ -164,6 +180,7 @@ def run_user(user: User, seeds: int, retriever, popularity, catalog, facts, popu
                 "questions": sum(record.question is not None for record in records),
                 "answers": [[record.question, record.answer] for record in records if record.question],
                 "shown": len(checks),
+                "first_list": [c.appid for c in records[0].shown],
                 "constraints": {
                     "all": sum(c.all for c in checks), "include": sum(c.include for c in checks),
                     "exclude": sum(c.exclude for c in checks), "budget": sum(c.budget for c in checks),
@@ -226,6 +243,8 @@ def summarize(dialogues: list[dict]) -> dict:
             row["latency_p95_ms"] = percentile(seconds, 0.95) * 1000
             summary["groups"].setdefault(stratum, {})[group] = row
 
+    summary["jaccard@10_turn1"] = {stratum: jaccard_first_lists(items, *JACCARD_PAIR)
+                                   for stratum, items in strata.items()}
     for name in ("SR@5", "AT", "hDCG@(5,10)"):
         tests, p_values = {}, {}
         for a, b in COMPARISONS:
@@ -243,6 +262,18 @@ def summarize(dialogues: list[dict]) -> dict:
             tests[key]["holm_p"] = adjusted
         summary["comparisons"][name] = tests
     return summary
+
+
+def jaccard_first_lists(dialogues: list[dict], a: str, b: str) -> float | None:
+    """Overlap of the first lists of a and b in the same dialogue (user and seed), averaged per user."""
+    lists = {(d["group"], d["player_id"], d["seed"]): set(d["first_list"]) for d in dialogues}
+    by_user: dict[str, list[float]] = {}
+    for (group, player_id, seed), first in lists.items():
+        other = lists.get((b, player_id, seed))
+        if group == a and other is not None and (first or other):
+            by_user.setdefault(player_id, []).append(len(first & other) / len(first | other))
+    values = [sum(items) / len(items) for items in by_user.values()]
+    return sum(values) / len(values) if values else None
 
 
 def mcnemar_by_seed(dialogues: list[dict], a: str, b: str) -> list[float]:
@@ -284,11 +315,14 @@ def print_summary(summary: dict) -> None:
         for group, row in groups.items():
             cells = " ".join(f"{row[c]:12.3f}" if row[c] is not None else f"{'-':>12s}" for c in columns)
             print(f"{group:10s} {row['users']:5d} {cells}")
+    jaccard = ", ".join(f"{stratum} {value:.3f}" for stratum, value in summary["jaccard@10_turn1"].items()
+                        if value is not None)
+    print(f"\nJaccard@10 of the first lists, {' vs '.join(JACCARD_PAIR)}: {jaccard}")
     print("\npaired comparisons (per-user means over seeds)")
     for name, tests in summary["comparisons"].items():
         for key, test in tests.items():
             low, high = test["ci95"]
-            print(f"  {name:12s} {key:18s} diff {test['mean_difference']:+.3f} [{low:+.3f}, {high:+.3f}] "
+            print(f"  {name:12s} {key:21s} diff {test['mean_difference']:+.3f} [{low:+.3f}, {high:+.3f}] "
                   f"Wilcoxon p {test['wilcoxon_p']:.4f} Holm {test['holm_p']:.4f}")
 
 
@@ -306,6 +340,15 @@ def main() -> None:
     facts = dump_games(reader)
     popularity = PopularityRetriever({appid: game.players for appid, game in catalog.games.items()})
     popular = set(sorted(catalog.games, key=lambda appid: (-catalog.games[appid].players, appid))[:POPULAR_TOP])
+    embedding = model_identity()
+    corpus = load_corpus(reader)
+    if set(corpus.appids) != set(facts):
+        raise SystemExit("V's documents and the graph dump cover different games")
+    vectors, documents = document_vectors(corpus, ollama_embed, embedding["digest"])
+    vector = VectorRetriever(corpus, vectors, ollama_embed)
+    embedding.update(documents, dimension=int(vectors.shape[1]), exclude_weight=EXCLUDE_WEIGHT)
+    print(f"V: {EMBED_MODEL} {embedding['digest'][:12]}, {documents['documents']} documents"
+          f"{' (cached)' if documents['cached'] else ''}, {time.time() - started:.0f} s")
 
     users, selection = select_users(reader, facts, catalog.keys, args.users)
     print(f"users: {len(users)} (dev), selection {selection}")
@@ -320,7 +363,7 @@ def main() -> None:
     dialogues = []
     with ThreadPoolExecutor(args.workers) as pool, \
             (out / "turns.jsonl").open("w", encoding="utf-8") as turns_file:
-        jobs = pool.map(lambda user: run_user(user, args.seeds, retriever, popularity, catalog, facts, popular), users)
+        jobs = pool.map(lambda user: run_user(user, args.seeds, retriever, vector, popularity, catalog, facts, popular), users)
         for done, (user_dialogues, logs) in enumerate(jobs, 1):
             dialogues += user_dialogues
             for log in logs:
@@ -335,7 +378,7 @@ def main() -> None:
     manifest = {
         "experiment": "E1-pre", "split": "dev", "users": len(users), "seeds": args.seeds, "groups": GROUPS,
         "selection": selection, "leakage_check": leakage, "graph": graph_identity(reader, facts),
-        "git_commit": git_commit(),
+        "embedding": embedding, "git_commit": git_commit(),
         "constants": {"MAX_TURNS": MAX_TURNS, "LIST_SIZE": LIST_SIZE, "POOL_SIZE": POOL_SIZE,
                       "STOP_POOL_SIZE": STOP_POOL_SIZE, "MIN_ENTROPY": MIN_ENTROPY, "OPENING_TAGS": OPENING_TAGS,
                       "MIN_PLAYED": MIN_PLAYED, "POPULAR_TOP": POPULAR_TOP, "whitelist": len(catalog.keys)},
