@@ -117,3 +117,9 @@ def test_a_yes_to_a_price_band_becomes_the_budget():
     state = apply_update(ChatState(), TurnUpdate(include=[price_key(10)]))
     assert state.max_price == 10
     assert state.include == []
+
+
+def test_price_bands_at_or_below_the_floor_are_not_asked():
+    table = entropy_table(ChatState(min_price=5), POOL, CATALOG)
+    assert price_key(5) not in table and price_key(0) not in table
+    assert price_key(10) in table

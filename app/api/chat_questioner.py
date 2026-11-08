@@ -9,7 +9,8 @@ Both questioners ask from the same whitelist and stop by the same rule; only the
 
 Whitelist: the QUESTION_TAG_COUNT most frequent tag groups that include a user tag (counting the same HAS_TAG
 edges as T1, so a yes or no maps straight to a T1 condition), developers with at least MIN_STUDIO_GAMES games,
-and PRICE_BANDS. Stop: the pool has at most STOP_POOL_SIZE games, the state is at MAX_TURNS, or (G only) no
+and PRICE_BANDS. The pool a questioner sees is the retriever's top POOL_SIZE games after the shown list, weighted
+by their scores. Stop: the pool has at most STOP_POOL_SIZE games, the state is at MAX_TURNS, or (G only) no
 attribute reaches MIN_ENTROPY.
 """
 
@@ -24,6 +25,7 @@ from .chat_state import Candidate, ChatState, attribute_kind, attribute_value
 QUESTION_TAG_COUNT = 100
 MIN_STUDIO_GAMES = 5
 PRICE_BANDS = (20.0, 10.0, 5.0, 0.0)
+POOL_SIZE = 1000
 STOP_POOL_SIZE = 10
 MAX_TURNS = 5
 MIN_ENTROPY = 0.3
@@ -91,10 +93,16 @@ def binary_entropy(p: float) -> float:
 def _askable(state: ChatState, catalog: QuestionCatalog) -> list[str]:
     done = set(state.include) | set(state.exclude) | set(state.asked)
     keys = [key for key in catalog.keys if key not in done]
-    if state.max_price is not None:
-        # a band at or above the budget cannot narrow the pool any further
-        keys = [key for key in keys if attribute_kind(key) != "price" or float(attribute_value(key)) < state.max_price]
-    return keys
+    def narrows(key: str) -> bool:
+        # a band at or above the budget, or at or below the floor, cannot narrow the pool any further
+        if attribute_kind(key) != "price":
+            return True
+        band = float(attribute_value(key))
+        below_budget = state.max_price is None or band < state.max_price
+        above_floor = state.min_price is None or band > state.min_price
+        return below_budget and above_floor
+
+    return [key for key in keys if narrows(key)]
 
 
 def _should_stop(state: ChatState, candidates: list[Candidate]) -> bool:

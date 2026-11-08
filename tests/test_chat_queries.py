@@ -97,3 +97,20 @@ def test_retriever_drops_unknown_ids_before_querying_and_caps_k():
     assert params["unavailable"] == []
     assert len(result) == 3
     assert [candidate.appid for candidate in result] == ["4", "3", "2"]
+
+
+def test_parameters_carry_the_price_floor_and_the_excluded_player():
+    params = t1_parameters(ChatState(min_price=5), VOCABULARY, exclude_player="76561")
+    assert params["min_price"] == 5
+    assert params["exclude_player"] == "76561"
+    assert t1_parameters(ChatState(), VOCABULARY)["exclude_player"] is None
+
+
+def test_excluding_a_player_is_a_copy_that_passes_the_player_to_t1():
+    reader = RecordingReader(rows=[])
+    retriever = GraphRetriever(reader, vocabulary=VOCABULARY)
+    mine = retriever.excluding_player("76561")
+    mine.retrieve(ChatState(), k=10)
+    retriever.retrieve(ChatState(), k=10)
+    assert [params["exclude_player"] for _, params in reader.calls[-2:]] == ["76561", None]
+    assert "p.player_id <> $exclude_player" in reader.calls[-1][0]

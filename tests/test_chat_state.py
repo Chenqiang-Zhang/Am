@@ -156,3 +156,13 @@ def test_turn_log_is_one_json_line(tmp_path):
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     assert TurnLog.model_validate(json.loads(lines[0])) == log
+
+
+def test_a_no_to_a_price_band_becomes_a_floor_that_only_rises():
+    state = apply_update(ChatState(), TurnUpdate(exclude=["price:5"]))
+    assert state.min_price == 5 and state.exclude == []
+    state = apply_update(state, TurnUpdate(exclude=["price:0"]))
+    assert state.min_price == 5
+    state = apply_update(state, TurnUpdate(exclude=["price:10"], include=["price:20"]))
+    assert (state.min_price, state.max_price) == (10, 20)
+    assert state.restricted_to(set(), set()).min_price == 10

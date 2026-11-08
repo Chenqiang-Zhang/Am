@@ -11,7 +11,7 @@ Attributes share one key space, "<kind>:<value>":
                  both "tag:action"), so a Genre and a UserTag of the same name count once
 - studio:<id>    Studio.studio_id
 - price:<amount> a price band "at most <amount>" in the graph's currency (settings.CURRENCY: USD on UCSD,
-                 JPY on live); including it sets max_price instead of filtering
+                 JPY on live); including it sets max_price, excluding it sets min_price ("more than <amount>")
 """
 
 import json
@@ -59,7 +59,8 @@ class ChatState(BaseModel):
     """What the user has said so far, as graph IDs.
 
     include / exclude are hard conditions. A key never sits in both: exclude wins, so a game the user said
-    no to cannot come back. Price keys never stay in include or exclude; they become max_price.
+    no to cannot come back. Price keys never stay in include or exclude: an included band becomes max_price (at
+    most) and an excluded one min_price (more than). A game of unknown price passes neither.
     `shown` are games already presented and `rejected` games the user turned down; neither is offered again.
     `asked` are attribute keys the system has asked about or the user said they do not care about.
     """
@@ -69,6 +70,7 @@ class ChatState(BaseModel):
     anchors: list[str] = Field(default_factory=list)
     relation: Relation | None = None
     max_price: float | None = Field(default=None, ge=0)
+    min_price: float | None = Field(default=None, ge=0)
     shown: list[str] = Field(default_factory=list)
     rejected: list[str] = Field(default_factory=list)
     asked: list[str] = Field(default_factory=list)
@@ -99,6 +101,9 @@ class ChatState(BaseModel):
         prices = [float(attribute_value(key)) for key in self.include if attribute_kind(key) == "price"]
         if prices:
             self.max_price = min(prices + ([self.max_price] if self.max_price is not None else []))
+        floors = [float(attribute_value(key)) for key in self.exclude if attribute_kind(key) == "price"]
+        if floors:
+            self.min_price = max(floors + ([self.min_price] if self.min_price is not None else []))
         self.exclude = [key for key in self.exclude if attribute_kind(key) != "price"]
         self.include = [key for key in self.include if attribute_kind(key) != "price" and key not in self.exclude]
         if not self.anchors:
@@ -119,6 +124,7 @@ class ChatState(BaseModel):
             anchors=[appid for appid in self.anchors if appid in known_appids],
             relation=self.relation,
             max_price=self.max_price,
+            min_price=self.min_price,
             shown=[appid for appid in self.shown if appid in known_appids],
             rejected=[appid for appid in self.rejected if appid in known_appids],
             asked=[key for key in self.asked if known(key)],
@@ -175,6 +181,7 @@ def apply_update(state: ChatState, update: TurnUpdate) -> ChatState:
         anchors=anchors,
         relation=relation,
         max_price=max_price,
+        min_price=state.min_price,
         shown=state.shown,
         rejected=rejected,
         asked=state.asked + update.no_preference,

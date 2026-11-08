@@ -1,14 +1,18 @@
 """Read-only graph templates of the conversational recommender (retriever G).
 
 T1 (this file so far): hard conditions. A game passes only if it has every included attribute, none of the
-excluded ones, a known price within the budget, and is not an anchor, a shown game or a rejected game.
+excluded ones, a known price within max_price and above min_price, and is not an anchor, a shown game or a
+rejected game.
 T2 (anchor similarity) and T3 (same developer, co-play) will rank inside the same T1 filter.
 
 Tags count only through HAS_TAG edges with no rank (genres and features) or a rank within TAG_MAX_RANK (user
 tags), the same edges GAME_COLUMNS shows, the simulator's target attributes use and the questioner asks about.
+Popularity leaves out one player's PLAYED edges when the retriever is built for an evaluated player
+(`excluding_player`), so a hidden play never counts toward its own target.
 Dialogue queries live here, not in utils/graph_reader.py, which only gains appended functions.
 """
 
+import copy
 import math
 from dataclasses import dataclass
 
@@ -59,13 +63,14 @@ T1_QUERY = """
 MATCH (g:Game)
 WHERE NOT g.appid IN $unavailable
   AND ($max_price IS NULL OR (g.price IS NOT NULL AND g.price <= $max_price))
+  AND ($min_price IS NULL OR (g.price IS NOT NULL AND g.price > $min_price))
   AND all(ids IN $include_tags WHERE EXISTS {
         MATCH (g)-[ht:HAS_TAG]->(t:Tag) WHERE t.tag_id IN ids AND (ht.rank IS NULL OR ht.rank <= $max_rank) })
   AND none(ids IN $exclude_tags WHERE EXISTS {
         MATCH (g)-[ht:HAS_TAG]->(t:Tag) WHERE t.tag_id IN ids AND (ht.rank IS NULL OR ht.rank <= $max_rank) })
   AND all(s IN $include_studios WHERE EXISTS { MATCH (g)-[:DEVELOPED_BY]->(:Studio {studio_id: s}) })
   AND none(s IN $exclude_studios WHERE EXISTS { MATCH (g)-[:DEVELOPED_BY]->(:Studio {studio_id: s}) })
-WITH g, COUNT { (g)<-[:PLAYED]-(:Player) } AS players
+WITH g, COUNT { (g)<-[:PLAYED]-(p:Player) WHERE $exclude_player IS NULL OR p.player_id <> $exclude_player } AS players
 RETURN g.appid AS appid, players,
        [(g)-[ht:HAS_TAG]->(t:Tag)
         WHERE t.tag_id IN $wanted_tag_ids AND (ht.rank IS NULL OR ht.rank <= $max_rank)
@@ -73,7 +78,7 @@ RETURN g.appid AS appid, players,
 """
 
 
-def t1_parameters(state: ChatState, vocabulary: Vocabulary) -> dict:
+def t1_parameters(state: ChatState, vocabulary: Vocabulary, exclude_player: str | None = None) -> dict:
     def tag_groups(keys: list[str]) -> list[list[str]]:
         return [vocabulary.tag_ids_by_key[key] for key in keys if attribute_kind(key) == "tag"]
 
@@ -84,6 +89,8 @@ def t1_parameters(state: ChatState, vocabulary: Vocabulary) -> dict:
     return {
         "unavailable": state.unavailable_appids(),
         "max_price": state.max_price,
+        "min_price": state.min_price,
+        "exclude_player": exclude_player,
         "include_tags": include_tags,
         "exclude_tags": tag_groups(state.exclude),
         "include_studios": studios(state.include),
@@ -147,12 +154,19 @@ class GraphRetriever:
 
     def __init__(self, reader: GraphReader, vocabulary: Vocabulary | None = None) -> None:
         self.reader = reader
+        self.exclude_player: str | None = None
         self.vocabulary = vocabulary or load_vocabulary(reader)
         self.max_players = reader.query(
             "MATCH (g:Game) RETURN coalesce(max(COUNT { (g)<-[:PLAYED]-(:Player) }), 0) AS n"
         )[0]["n"]
 
+    def excluding_player(self, player_id: str) -> "GraphRetriever":
+        """The same retriever with `player_id`'s plays left out of popularity (evaluation only)."""
+        retriever = copy.copy(self)
+        retriever.exclude_player = player_id
+        return retriever
+
     def retrieve(self, state: ChatState, k: int) -> list[Candidate]:
         state = state.restricted_to(self.vocabulary.attribute_keys, self.vocabulary.appids)
-        rows = self.reader.query(T1_QUERY, **t1_parameters(state, self.vocabulary))
+        rows = self.reader.query(T1_QUERY, **t1_parameters(state, self.vocabulary, self.exclude_player))
         return score_t1_rows(rows, self.max_players)[:k]
