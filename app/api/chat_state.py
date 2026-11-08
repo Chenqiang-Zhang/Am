@@ -10,7 +10,8 @@ Attributes share one key space, "<kind>:<value>":
 - tag:<group>    a tag group, the part of Tag.tag_id after the kind ("genre:action" and "usertag:action" are
                  both "tag:action"), so a Genre and a UserTag of the same name count once
 - studio:<id>    Studio.studio_id
-- price:<usd>    a price band "at most <usd> US dollars"; including it sets max_price instead of filtering
+- price:<amount> a price band "at most <amount>" in the graph's currency (settings.CURRENCY: USD on UCSD,
+                 JPY on live); including it sets max_price instead of filtering
 """
 
 import json
