@@ -36,3 +36,26 @@ def novelty_at_k(ranked_appids: list[str], player_counts: dict[str, int], player
         return 0.0
     surprisals = [-math.log2(max(player_counts.get(appid, 0), 1) / player_total) for appid in top_appids]
     return sum(surprisals) / len(top_appids)
+
+
+# Conversational recommendation (eval/crs/E1_PLAN.md). A dialogue succeeds at `success_turn` (1-based) with the
+# target at `success_rank` (1-based) in that turn's list, or fails with both None.
+
+
+def success_by_turn(success_turn: int | None, turn: int) -> float:
+    """SR@turn for one dialogue."""
+    return 1.0 if success_turn is not None and success_turn <= turn else 0.0
+
+
+def turns_taken(success_turn: int | None, max_turns: int) -> int:
+    """The dialogue's term in AT: the success turn, or max_turns for a failure (as in SCPR)."""
+    return success_turn if success_turn is not None else max_turns
+
+
+def hdcg(success_turn: int | None, success_rank: int | None) -> float:
+    """hDCG@(T,K) of UNICORN (eq. 20) for one target: 1 at turn 1, rank 1. T and K bound the turns and ranks seen."""
+    if success_turn is None or success_rank is None:
+        return 0.0
+    turn_gain = 1 / math.log2(success_turn + 2)
+    turn_step = 1 / math.log2(success_turn + 1) - turn_gain
+    return turn_gain + turn_step / math.log2(success_rank + 1)

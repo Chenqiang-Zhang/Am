@@ -10,8 +10,9 @@ import statistics
 import time
 
 from app.api.chat_queries import GraphRetriever
-from app.api.chat_state import ChatState, attribute_kind, attribute_value, tag_key
-from utils.graph_reader import TAG_MAX_RANK, GraphReader
+from app.api.chat_state import ChatState
+from eval.crs.constraints import dump_games, satisfies
+from utils.graph_reader import GraphReader
 
 EXAMPLES: dict[str, ChatState] = {
     "ローグライク、ホラーは無理、10ドル以下": ChatState(include=["tag:rogue_like"], exclude=["tag:horror"], max_price=10),
@@ -22,30 +23,11 @@ EXAMPLES: dict[str, ChatState] = {
     "まったりできる街づくり、無料": ChatState(include=["tag:relaxing", "tag:city_builder"], max_price=0),
     "家で協力プレイ、ゾンビ以外": ChatState(include=["tag:local_co_op"], exclude=["tag:zombies"]),
     "Valve の開発、提示済みを除く": ChatState(include=["studio:valve"], shown=["730", "440"]),
+    "ローグライク、5ドルより高い（価格帯への「いいえ」）": ChatState(include=["tag:rogue_like"], exclude=["price:5"]),
+    "協力プレイ、5ドルより高く20ドル以下": ChatState(include=["tag:co_op"], min_price=5, max_price=20),
     "条件なし": ChatState(),
 }
 TIMING_RUNS = 5
-
-
-def dump_games(reader: GraphReader) -> dict[str, dict]:
-    rows = reader.query(
-        "MATCH (g:Game) RETURN g.appid AS appid, g.price AS price, "
-        "[(g)-[ht:HAS_TAG]->(t:Tag) | {tag_id: t.tag_id, rank: ht.rank}] AS tags, "
-        "[(g)-[:DEVELOPED_BY]->(s:Studio) | s.studio_id] AS developers"
-    )
-    return {row["appid"]: row for row in rows}
-
-
-def satisfies(game: dict, state: ChatState) -> bool:
-    if game["appid"] in state.unavailable_appids():
-        return False
-    if state.max_price is not None and (game["price"] is None or game["price"] > state.max_price):
-        return False
-    keys = {tag_key(tag["tag_id"]) for tag in game["tags"] if tag["rank"] is None or tag["rank"] <= TAG_MAX_RANK}
-    keys |= {"studio:" + studio for studio in game["developers"]}
-    wanted = [key for key in state.include if attribute_kind(key) in ("tag", "studio")]
-    unwanted = [key for key in state.exclude if attribute_kind(key) in ("tag", "studio")]
-    return all(key in keys for key in wanted) and not any(key in keys for key in unwanted)
 
 
 def main() -> None:
@@ -63,7 +45,7 @@ def main() -> None:
     print(f"{'example':40s} {'expected':>8s} {'T1':>6s} {'extra':>5s} {'missed':>6s}  top 3")
     all_ok, timings = True, []
     for name, state in EXAMPLES.items():
-        expected = {appid for appid, game in games.items() if satisfies(game, state)}
+        expected = {appid for appid, game in games.items() if satisfies(appid, game, state)}
         result = retriever.retrieve(state, k=len(games))
         got = {candidate.appid for candidate in result}
         extra, missed = got - expected, expected - got
