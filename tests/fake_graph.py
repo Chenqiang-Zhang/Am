@@ -467,7 +467,7 @@ class FakeGraphReader:
         rows.sort(key=lambda row: (-row["score"], row["appid"]))
         return self.answer(rows[:limit])
 
-    # ---- static recommendation paths (M3), written from the formulas ------------------------------
+    # ---- static recommendation paths, written from the formulas -----------------------------------
 
     def others(self, player_id: str, appid: str) -> set[str]:
         return self.players_by_game[appid] - {player_id}

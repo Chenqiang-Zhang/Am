@@ -1,9 +1,10 @@
-"""The static recommender before M3 (v0), changed only by the M2 tie-breaks.
+"""The static recommender as it was on the steam branch before the path rewrite (v0), changed only by
+the tie-breaks that make its order deterministic.
 
-Kept so that the evaluation can report v0 next to the current scoring under the same protocol, and so
-that eval/explanation_check.py can measure how often its reason text holds. Delete this module, the
-graph_v0 ranker and GraphReader.games_sharing_tags / games_played_by_peers /
-games_from_played_studios once the v0 numbers are saved.
+Kept for comparison (README 7.5): the evaluation reports v0 next to the current scoring under the same
+protocol (`python -m eval.evaluate --rankers ... graph_v0`), and eval/explanation_check.py measures how
+often its reason text holds. It reads GraphReader.games_sharing_tags / games_played_by_peers /
+games_from_played_studios.
 """
 
 from typing import Any

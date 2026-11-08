@@ -493,7 +493,7 @@ class GraphReader:
         )
         return [with_recommend_rate(row) for row in rows]
 
-    # Static recommendation paths (M3). Each method scores every game the player has not visibly played
+    # Static recommendation paths. Each method scores every game the player has not visibly played
     # and returns the path instances behind the score, strongest first. PLAYED edges only start at
     # Player nodes, so COUNT { (g)<-[:PLAYED]-() } reads the degree store; the player's own edge is
     # subtracted so that a hidden game looks exactly as if its edge had been deleted.

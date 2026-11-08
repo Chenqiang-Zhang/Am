@@ -29,7 +29,7 @@ def main() -> None:
         nargs="+",
         choices=RANKER_NAMES,
         default=["popularity", "item_knn", "graph"],
-        help="graph_v0 is the scoring before M3",
+        help="graph_v0 is the static recommender before the path rewrite (app/api/static_recommend_v0.py)",
     )
     args = parser.parse_args()
 

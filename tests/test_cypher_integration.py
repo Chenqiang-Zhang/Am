@@ -135,7 +135,7 @@ def test_popular_and_chat_queries_run(reader):
     assert_same(reader.top_reviews("10", 5), fake.top_reviews("10", 5))
     assert_same(reader.sample_players(10), fake.sample_players(10))
     assert_same(reader.player_reviews("u1", ["30"], 3), fake.player_reviews("u1", ["30"], 3))
-    # Chat-only queries without a tiebreak (outside M2): compare equally ranked rows as sets.
+    # Chat-only queries have no tie-break: compare equally ranked rows as sets.
     assert_same(
         sorted(reader.player_aspects("u1", [], 8), key=repr), sorted(fake.player_aspects("u1", [], 8), key=repr)
     )
@@ -303,7 +303,7 @@ def test_explanation_check_end_to_end(reader):
 
 @pytest.mark.parametrize("player_id,appid,hours", [("u1", "30", 5.0), ("p7", "40", 4.0)])
 def test_deleting_the_hidden_edge_changes_nothing(reader, player_id, appid, hours):
-    """Hiding a game in the query equals deleting the player's PLAYED edge (proposal M1/M3)."""
+    """Hiding a game in the query equals deleting the player's PLAYED edge."""
     hidden = frozenset({appid})
     before = collect_path_scores(reader, player_id, hidden)
     before_items = [item.model_dump() for item in recommend_games(reader, player_id, 20, "en", hidden)]

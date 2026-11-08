@@ -1,4 +1,4 @@
-"""F5: eval/static_stats.py on synthetic ranks and values."""
+"""eval/static_stats.py on synthetic ranks and values."""
 
 import math
 import random

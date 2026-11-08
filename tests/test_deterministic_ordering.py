@@ -1,4 +1,4 @@
-"""M2: the same user always gets the same Top-K and the same reasons."""
+"""The same user always gets the same Top-K and the same reasons."""
 
 import pytest
 

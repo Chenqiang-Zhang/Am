@@ -1,4 +1,4 @@
-"""F6: eval/static_eval.py, its cache, analysis and report on the fake graph."""
+"""eval/static_eval.py, its cache, analysis and report on the fake graph."""
 
 import functools
 import gzip

@@ -1,4 +1,4 @@
-"""M4: eval/explanation_check.py, against an in-memory copy of the graph facts."""
+"""eval/explanation_check.py, against an in-memory copy of the graph facts."""
 
 import functools
 import hashlib

@@ -80,7 +80,7 @@ def build_graph_ranker(
 
 
 def build_graph_v0_ranker(reader: GraphReader) -> Ranker:
-    """The scoring before M3, for the v0 row of the comparison."""
+    """The static recommender before the path rewrite (v0), for the comparison."""
 
     def rank(player_id: str, top_k: int, hidden_appids: set[str]) -> list[str]:
         recommendations = recommend_games_v0(reader, player_id, top_k, "en", frozenset(hidden_appids))

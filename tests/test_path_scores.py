@@ -1,4 +1,4 @@
-"""M3: the three paths, the popularity prior and combine()."""
+"""The three paths, the popularity prior and combine()."""
 
 import itertools
 import json

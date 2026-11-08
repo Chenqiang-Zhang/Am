@@ -1,4 +1,4 @@
-"""F4: eval/static_split.py on synthetic play records."""
+"""eval/static_split.py on synthetic play records."""
 
 import hashlib
 import json

@@ -1,4 +1,4 @@
-"""M4: evidence as paths. The reason text states nothing but evidence fields."""
+"""Evidence as paths. The reason text states nothing but evidence fields."""
 
 import math
 
