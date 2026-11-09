@@ -44,6 +44,7 @@ from eval.crs.simulator import (
     Target,
     askable_tags,
     choose_target,
+    error_answers,
     is_dev,
     make_target,
     opening_tags,
@@ -155,7 +156,8 @@ def entropy_top(catalog: QuestionCatalog):
     return explain
 
 
-def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, facts, popular: set[str]):
+def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, facts, popular: set[str],
+             error_rate: float = 0.0):
     systems = {
         "G": (retriever.excluding_player(user.player_id), EntropyQuestioner(catalog), entropy_top(catalog)),
         "G-static": (retriever.excluding_player(user.player_id), FixedOrderQuestioner(catalog), None),
@@ -167,7 +169,8 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
     for seed in range(seeds):
         opening = opening_tags(user.target, catalog.keys, seed)
         for group, (system, questioner, explain) in systems.items():
-            records = simulate(user.target, opening, system, questioner, POOL_SIZE, explain)
+            answer = error_answers(user.target, seed, error_rate) if error_rate else None
+            records = simulate(user.target, opening, system, questioner, POOL_SIZE, explain, answer)
             last = records[-1]
             success_turn = last.turn if last.hit_rank is not None else None
             checks = [check(facts[c.appid], record.state) for record in records for c in record.shown]
@@ -179,6 +182,9 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
                 "hdcg": hdcg(success_turn, last.hit_rank),
                 "questions": sum(record.question is not None for record in records),
                 "answers": [[record.question, record.answer] for record in records if record.question],
+                "wrong_answers": sum(record.answer != record.true_answer for record in records if record.question),
+                # the conditions rule the target out at some turn: G can no longer show it, V still can
+                "target_ruled_out": any(not check(facts[user.target.appid], record.state).all for record in records),
                 "shown": len(checks),
                 "first_list": [c.appid for c in records[0].shown],
                 "constraints": {
@@ -211,6 +217,8 @@ METRICS = {
     "hDCG@(5,10)": lambda d: d["hdcg"],
     "Recall@10 (final list)": lambda d: float(d["success_turn"] is not None),
     "questions": lambda d: d["questions"],
+    "wrong_answers": lambda d: d["wrong_answers"],
+    "target_ruled_out": lambda d: float(d["target_ruled_out"]),
 }
 
 
@@ -296,6 +304,12 @@ def graph_identity(reader: GraphReader, facts: dict[str, GameFacts]) -> dict:
     return {"games": len(facts), "played_edges": played, "games_tags_studios_sha256": digest.hexdigest()}
 
 
+def code_sha256() -> dict[str, str]:
+    """Hashes of the code a run depends on, to match a run against a commit made after it."""
+    files = sorted([*Path("eval").rglob("*.py"), *Path("app/api").glob("chat_*.py"), Path("utils/graph_reader.py")])
+    return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files if path.exists()}
+
+
 def git_commit() -> str | None:
     head = Path(".git/HEAD")
     if not head.exists():
@@ -308,7 +322,8 @@ def git_commit() -> str | None:
 
 
 def print_summary(summary: dict) -> None:
-    columns = ["SR@1", "SR@3", "SR@5", "AT", "hDCG@(5,10)", "questions", "constraints.all", "latency_p50_ms"]
+    columns = ["SR@1", "SR@3", "SR@5", "AT", "hDCG@(5,10)", "questions", "wrong_answers", "target_ruled_out",
+               "constraints.all", "latency_p50_ms"]
     for stratum, groups in summary["groups"].items():
         print(f"\n[{stratum}]")
         print(f"{'group':10s} {'users':>5s} " + " ".join(f"{c[:12]:>12s}" for c in columns))
@@ -331,6 +346,8 @@ def main() -> None:
     parser.add_argument("--users", type=int, default=300)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--error-rate", type=float, default=0.0,
+                        help="probability that the simulated user answers a question wrongly")
     args = parser.parse_args()
 
     started = time.time()
@@ -358,12 +375,14 @@ def main() -> None:
         print(json.dumps(leakage["mismatches"], indent=2))
         raise SystemExit("popularity still counts the evaluated player; not running")
 
-    out = OUT_ROOT / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = OUT_ROOT / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                      + (f"_err{round(args.error_rate * 100):02d}" if args.error_rate else ""))
     out.mkdir(parents=True)
     dialogues = []
     with ThreadPoolExecutor(args.workers) as pool, \
             (out / "turns.jsonl").open("w", encoding="utf-8") as turns_file:
-        jobs = pool.map(lambda user: run_user(user, args.seeds, retriever, vector, popularity, catalog, facts, popular), users)
+        jobs = pool.map(lambda user: run_user(user, args.seeds, retriever, vector, popularity, catalog, facts, popular,
+                                      args.error_rate), users)
         for done, (user_dialogues, logs) in enumerate(jobs, 1):
             dialogues += user_dialogues
             for log in logs:
@@ -378,7 +397,8 @@ def main() -> None:
     manifest = {
         "experiment": "E1-pre", "split": "dev", "users": len(users), "seeds": args.seeds, "groups": GROUPS,
         "selection": selection, "leakage_check": leakage, "graph": graph_identity(reader, facts),
-        "embedding": embedding, "git_commit": git_commit(),
+        "embedding": embedding, "git_commit": git_commit(), "code_sha256": code_sha256(),
+        "error_rate": args.error_rate,
         "constants": {"MAX_TURNS": MAX_TURNS, "LIST_SIZE": LIST_SIZE, "POOL_SIZE": POOL_SIZE,
                       "STOP_POOL_SIZE": STOP_POOL_SIZE, "MIN_ENTROPY": MIN_ENTROPY, "OPENING_TAGS": OPENING_TAGS,
                       "MIN_PLAYED": MIN_PLAYED, "POPULAR_TOP": POPULAR_TOP, "whitelist": len(catalog.keys)},

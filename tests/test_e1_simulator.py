@@ -211,3 +211,34 @@ def test_mcnemar_and_holm():
 def test_bootstrap_interval_contains_the_mean():
     low, high = paired_bootstrap_ci([0.0, 1.0] * 50, resamples=2000)
     assert low < 0.5 < high
+
+
+# ---- wrong answers ----
+
+def test_wrong_answers_swap_yes_and_no_at_the_given_rate_and_are_repeatable():
+    from eval.crs.simulator import error_answers, flipped
+    assert flipped("yes") == "no" and flipped("no") == "yes" and flipped("no_preference") == "no_preference"
+    never = error_answers(TARGET, seed=0, error_rate=0.0)
+    always = error_answers(TARGET, seed=0, error_rate=1.0)
+    assert never(1, "tag:rogue_like") == "yes" and always(1, "tag:rogue_like") == "no"
+    assert always(1, "tag:horror") == "no_preference"
+    tenth = error_answers(TARGET, seed=0, error_rate=0.1)
+    share = sum(tenth(turn, f"tag:t{i}") == "yes" for turn in range(1, 5) for i in range(5000)) / 20_000
+    assert 0.09 < share < 0.11  # every key is a true "no", so a "yes" is an error
+    assert [tenth(2, f"tag:t{i}") for i in range(50)] == [tenth(2, f"tag:t{i}") for i in range(50)]
+
+
+def test_a_wrong_no_rules_the_target_out_for_a_filtering_retriever():
+    from eval.crs.simulator import error_answers
+    games = {str(i): facts(tags=[("genre:action", None)], price=1.0) for i in range(1, 30)}
+    games["100"] = TARGET_FACTS
+
+    class AsksRogueLike:
+        def choose(self, state, candidates):
+            return "tag:rogue_like" if "tag:rogue_like" not in state.asked else None
+
+    records = simulate(TARGET, ["tag:action"], FilterRetriever(games), AsksRogueLike(), pool_size=1000,
+                       answer=error_answers(TARGET, seed=0, error_rate=1.0))
+    assert records[0].true_answer == "yes" and records[0].answer == "no"
+    assert "tag:rogue_like" in records[1].state.exclude
+    assert all(record.hit_rank is None for record in records)  # the target never comes back

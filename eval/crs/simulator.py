@@ -105,6 +105,24 @@ def opening_tags(target: Target, whitelist: tuple[str, ...], seed: int) -> list[
     return tags[:OPENING_TAGS]
 
 
+def flipped(answer: Answer) -> Answer:
+    """A wrong answer: yes and no swap, no preference stays."""
+    return {"yes": "no", "no": "yes"}.get(answer, answer)  # type: ignore[return-value]
+
+
+def error_answers(target: Target, seed: int, error_rate: float) -> Callable[[int, str], Answer]:
+    """Target.answer, but each answer is wrong with probability `error_rate`, decided by hash.
+
+    The hash depends on the seed, the player, the turn and the question, not on the group, so two groups that
+    ask the same question at the same turn get the same error.
+    """
+    def answer(turn: int, key: str) -> Answer:
+        true = target.answer(key)
+        wrong = hash_value(f"e1-error:{seed}:{target.player_id}:{turn}:{key}") < error_rate * 2**256
+        return flipped(true) if wrong else true
+    return answer
+
+
 def answer_update(key: str, answer: Answer) -> TurnUpdate:
     if answer == "yes":
         return TurnUpdate(include=[key])
@@ -124,6 +142,7 @@ class TurnRecord:
     pool_size: int | None = None
     question: str | None = None
     answer: Answer | None = None
+    true_answer: Answer | None = None  # differs from `answer` when the simulated user answered wrongly
     seconds: float = 0.0  # retrieval and question choice of this turn
     explanation: dict = field(default_factory=dict)
 
@@ -135,11 +154,13 @@ def simulate(
     questioner: Questioner | None,
     pool_size: int,
     explain: Callable[[ChatState, list[Candidate]], dict] | None = None,
+    answer: Callable[[int, str], Answer] | None = None,
 ) -> list[TurnRecord]:
     """One dialogue: each turn updates the state, shows LIST_SIZE games, and before the last turn asks one question.
 
     Shown games are recorded at once and never come back. The dialogue ends at the first list with the target.
-    `explain` (the entropy table, for logs) runs outside the timed part.
+    `explain` (the entropy table, for logs) runs outside the timed part. `answer(turn, key)` replaces the
+    target's own answers, e.g. with error_answers.
     """
     state = ChatState()
     update = TurnUpdate(include=opening)
@@ -166,7 +187,8 @@ def simulate(
                 record.explanation = explain(state, pool)
             if question is not None:
                 state = record_question(state, question)
-                record.question, record.answer = question, target.answer(question)
+                record.question, record.true_answer = question, target.answer(question)
+                record.answer = answer(turn, question) if answer is not None else record.true_answer
                 update = answer_update(question, record.answer)
         record.seconds = seconds
         if hit_rank is not None:
