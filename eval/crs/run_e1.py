@@ -1,4 +1,5 @@
-"""E1-pre: the A-layer simulation on the development users (E1_PLAN.md).
+"""E1 and E1-pre: the A-layer simulation (E1_PLAN.md). E1-pre runs on the dev users; the main E1 runs once on
+the test users, only with the frozen plan and code.
 
 Groups: G (T1, T2 and T3) and G-static, V-entropy and V-static (vector search, vector.py), and P. V needs the
 embedding model on the Ollama server at EMBED_BASE_URL; its document vectors are cached under data/eval/vectors/.
@@ -12,11 +13,21 @@ compares the two on the same users. The plain metrics are those of the dialogues
     python -m eval.crs.run_e1 --users 300 --layer same_developer
     python -m eval.crs.run_e1 --users 20 --seeds 1         # a quick smoke run
 
-Only the dev split can be selected: there is no option for test, which the main E1 uses once after the plan
-is fixed. A turn log's pool_size is 0 when no pool was retrieved (the list hit, or it was the last turn).
+The test split (--split test) is for the main E1 and is guarded:
+  - `--freeze` records the SHA-256 of the evaluation code, of E1_PLAN.md, of the graph and the embedding
+    model's digest in eval/crs/E1_FREEZE.json, which is then committed and tagged. A test run stops unless all
+    of them still match.
+  - A layer's test run happens once: it stops if data/eval/e1/ already holds a finished test run of that layer
+    (a run that died before writing its manifest does not count). Wrong answers are not allowed on test.
+
+    python -m eval.crs.run_e1 --freeze                       # after the plan is final
+    python -m eval.crs.run_e1 --split test --layer similar   # the main E1, once per layer
+
+A turn log's pool_size is 0 when no pool was retrieved (the list hit, or it was the last turn).
 Before any dialogue it checks that popularity, and in the co_play layer co-play, leave the evaluated player out
-(the plan's acceptance conditions) and stops on a mismatch. Writes manifest.json, dialogues.jsonl, turns.jsonl and summary.json under
-data/eval/e1_pre/<time>/ and prints the summary.
+(the plan's acceptance conditions) and stops on a mismatch. Writes manifest.json, dialogues.jsonl,
+turns.jsonl and summary.json under data/eval/e1_pre/<time>/ (dev) or data/eval/e1/<time>/ (test) and prints the
+summary.
 """
 
 import argparse
@@ -82,7 +93,9 @@ MIN_PLAYED = 5
 POPULAR_TOP = 50
 ENTROPY_LOG_TOP = 10
 BATCH = 200
-OUT_ROOT = Path("data/eval/e1_pre")
+OUT_ROOTS = {"dev": Path("data/eval/e1_pre"), "test": Path("data/eval/e1")}
+FREEZE_PATH = Path("eval/crs/E1_FREEZE.json")
+PLAN_PATH = Path("eval/crs/E1_PLAN.md")
 LAYERS = ("none", "same_developer", "similar", "co_play")
 # anchor_gain: the graph effect is how much more G gains from the anchor than V-entropy does
 GAIN_METRICS = ("SR@1", "SR@3", "SR@5", "hDCG@(5,10)")
@@ -128,10 +141,11 @@ class User:
 
 
 def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tuple[str, ...], count: int,
-                 titles: dict[str, str], layer: str = "none"):
-    """The first `count` dev users in the sample order; in an anchor layer, the first who have its anchor."""
+                 titles: dict[str, str], layer: str = "none", split: str = "dev"):
+    """The first `count` users of the split in the sample order; in an anchor layer, the first who have its
+    anchor."""
     players = [row["player_id"] for row in reader.query(PLAYERS_QUERY, min_played=MIN_PLAYED)]
-    dev = sample_order([player_id for player_id in players if is_dev(player_id)])
+    dev = sample_order([player_id for player_id in players if is_dev(player_id) == (split == "dev")])
     medians = {row["appid"]: row["median"] for row in reader.query(MEDIAN_QUERY)}
     users: list[User] = []
     skipped = {"no_target": 0, "few_whitelisted_tags": 0, "no_layer_anchor": 0}
@@ -421,6 +435,39 @@ def code_sha256() -> dict[str, str]:
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files if path.exists()}
 
 
+def plan_sha256() -> str:
+    return hashlib.sha256(PLAN_PATH.read_bytes()).hexdigest()
+
+
+def freeze_record(graph: dict, embedding_digest: str) -> dict:
+    """What a test run must find unchanged: the evaluation code, the plan, the graph and the embedding model."""
+    return {"code_sha256": code_sha256(), "plan_sha256": plan_sha256(),
+            "graph_sha256": graph["games_tags_studios_sha256"], "played_edges": graph["played_edges"],
+            "embedding_digest": embedding_digest}
+
+
+def freeze_mismatches(frozen: dict, current: dict) -> list[str]:
+    """Everything in `current` that differs from the frozen record, as readable lines."""
+    problems = []
+    for path in sorted(set(frozen["code_sha256"]) | set(current["code_sha256"])):
+        if frozen["code_sha256"].get(path) != current["code_sha256"].get(path):
+            problems.append(f"code changed: {path}")
+    for key in ("plan_sha256", "graph_sha256", "played_edges", "embedding_digest"):
+        if frozen.get(key) != current.get(key):
+            problems.append(f"{key} changed")
+    return problems
+
+
+def finished_test_runs(root: Path, layer: str) -> list[Path]:
+    """Test runs of this layer that wrote their manifest."""
+    runs = []
+    for manifest in sorted(root.glob("*/manifest.json")):
+        record = json.loads(manifest.read_text())
+        if record.get("split") == "test" and record.get("layer", "none") == layer:
+            runs.append(manifest.parent)
+    return runs
+
+
 def git_commit() -> str | None:
     head = Path(".git/HEAD")
     if not head.exists():
@@ -476,8 +523,20 @@ def main() -> None:
     parser.add_argument("--error-rate", type=float, default=0.0,
                         help="probability that the simulated user answers a question wrongly")
     parser.add_argument("--layer", choices=LAYERS, default="none",
-                        help="none: no anchor; anchor: the plan's anchor; co_play: the longest-played other game")
+                        help="none: no anchor; same_developer, similar: the plan's anchor of that kind; "
+                             "co_play: the longest-played other game")
+    parser.add_argument("--split", choices=("dev", "test"), default="dev",
+                        help="test is the main E1: once per layer, with the frozen plan and code")
+    parser.add_argument("--freeze", action="store_true",
+                        help=f"write {FREEZE_PATH} from the current code, plan, graph and embedding model, and stop")
     args = parser.parse_args()
+    if args.split == "test" and args.error_rate:
+        raise SystemExit("the main E1 has no wrong answers; --error-rate is for dev only")
+    out_root = OUT_ROOTS[args.split]
+    if args.split == "test":
+        done = finished_test_runs(out_root, args.layer)
+        if done:
+            raise SystemExit(f"the test split of layer {args.layer} has been run already: {done[0]}")
 
     started = time.time()
     reader = GraphReader()
@@ -497,11 +556,32 @@ def main() -> None:
     print(f"V: {EMBED_MODEL} {embedding['digest'][:12]}, {documents['documents']} documents"
           f"{' (cached)' if documents['cached'] else ''}, {time.time() - started:.0f} s")
 
+    graph = graph_identity(reader, facts)
+    current = freeze_record(graph, embedding["digest"])
+    if args.freeze:
+        record = {**current, "frozen_at": datetime.now(timezone.utc).isoformat(), "git_commit": git_commit()}
+        FREEZE_PATH.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+        print(f"wrote {FREEZE_PATH}: {len(current['code_sha256'])} code files, plan {current['plan_sha256'][:12]}, "
+              f"graph {current['graph_sha256'][:12]}, embedding {current['embedding_digest'][:12]}. "
+              "Commit it and tag the commit before running the test split.")
+        reader.close()
+        return
+    freeze = None
+    if args.split == "test":
+        if not FREEZE_PATH.exists():
+            raise SystemExit(f"no {FREEZE_PATH}: freeze the plan (--freeze) and commit it before the test split")
+        freeze = json.loads(FREEZE_PATH.read_text())
+        problems = freeze_mismatches(freeze, current)
+        if problems:
+            raise SystemExit("the code, plan, graph or embedding differ from the frozen ones:\n  "
+                             + "\n  ".join(problems))
+        print(f"frozen plan matches ({freeze['frozen_at']}, commit {str(freeze.get('git_commit'))[:12]})")
+
     titles = {row["appid"]: row["name"] or "" for row in reader.query(TITLES_QUERY)}
-    users, selection = select_users(reader, facts, catalog.keys, args.users, titles, args.layer)
+    users, selection = select_users(reader, facts, catalog.keys, args.users, titles, args.layer, args.split)
     if args.layer != "none":
         selection["same_series"] = sum(layer_anchor(user, args.layer).same_series for user in users)
-    print(f"users: {len(users)} (dev, layer {args.layer}), selection {selection}")
+    print(f"users: {len(users)} ({args.split}, layer {args.layer}), selection {selection}")
     leakage = check_leakage(reader, retriever, popularity, users, catalog.keys, args.workers)
     print(f"leakage check: {leakage['matched']}/{leakage['users']} match")
     if leakage["mismatches"]:
@@ -515,7 +595,7 @@ def main() -> None:
             print(json.dumps(co_play_leakage["mismatches"], indent=2))
             raise SystemExit("co-play still counts the evaluated player; not running")
 
-    out = OUT_ROOT / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = out_root / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                       + (f"_{args.layer}" if args.layer != "none" else "")
                       + (f"_err{round(args.error_rate * 100):02d}" if args.error_rate else ""))
     out.mkdir(parents=True)
@@ -538,8 +618,9 @@ def main() -> None:
     if args.layer != "none":
         summary["anchor_gain"] = anchor_gain(dialogues)
     manifest = {
-        "experiment": "E1-pre", "split": "dev", "users": len(users), "seeds": args.seeds, "groups": GROUPS,
-        "selection": selection, "leakage_check": leakage, "graph": graph_identity(reader, facts),
+        "experiment": "E1" if args.split == "test" else "E1-pre", "split": args.split, "users": len(users),
+        "seeds": args.seeds, "groups": GROUPS, "freeze": freeze,
+        "selection": selection, "leakage_check": leakage, "graph": graph,
         "embedding": embedding, "git_commit": git_commit(), "code_sha256": code_sha256(),
         "error_rate": args.error_rate, "layer": args.layer,
         "constants": {"MAX_TURNS": MAX_TURNS, "LIST_SIZE": LIST_SIZE, "POOL_SIZE": POOL_SIZE,
