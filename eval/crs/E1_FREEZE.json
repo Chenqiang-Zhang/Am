@@ -1,0 +1,30 @@
+{
+  "code_sha256": {
+    "app/api/chat_prompts.py": "c97454a3493564fbab471a80176d7bebb683f11ed89359bb3419da5a21122f78",
+    "app/api/chat_queries.py": "a4eaa982b9abe7c42315fca4d94c347e5c14212de0322dbc9a49b7c560c2a9c4",
+    "app/api/chat_questioner.py": "0ed3e16c82383cbb5a6b8c63a3dbaf69fb3b4de9aac7aa3d2e665fb58f080436",
+    "app/api/chat_state.py": "009594e5f2230b3cefa583b02d08ae85ce2697bcf0d8238413bbfb0b2642aba2",
+    "eval/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "eval/crs/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "eval/crs/baselines.py": "c6652dcffa3f7d9f1ac39afedc036166e4e4379700c965e558e3143f74cc2c23",
+    "eval/crs/check_questioner.py": "962a1ea74dfdf5af4c5689e3d979d6aa77b0b98f5b93af766ab52fe8728876cb",
+    "eval/crs/check_t1.py": "7462282d6e5bf8ba54884b16e92e780202f06a092e69ec942bd1dae7001ee565",
+    "eval/crs/check_t2_t3.py": "e00128a8e95e73e791bda3c1229762b24ab986a54bbb6242eab266c0da7ac681",
+    "eval/crs/constraints.py": "df2dd89820eaf191185cda19ce8529435008119f17fe3b81bc914468e4e9093b",
+    "eval/crs/report_e1.py": "b41b9b1d2aeafc63f8e457da91ac27c3b60e6040a0c3b6e97c880db825d4187a",
+    "eval/crs/run_e1.py": "7dd1dec9f95a4020cb9259a0d1a31b6a2b06f06ec31e2b6eb1cf7b82038494bf",
+    "eval/crs/simulator.py": "390462f3ff5ee99f667482c9bbb398b7b4755a92b703e1d1b8a1f634ae888361",
+    "eval/crs/vector.py": "f9641b6749a16cb6b944aaf2d9d4ef7e986b79c8b0b41fd6b854c7b04e4f271e",
+    "eval/evaluate.py": "65af470df8b544254251b769342668f2507effd74b15a21ffa5a4b6277de9cd3",
+    "eval/metrics.py": "9d52dd7325080d0cc62e509084c563c972786d2a63dbb8c7f152ce342227fa4c",
+    "eval/rankers.py": "6cab2e60b56ba40e6abe4148b19d966694bdc3d9cbef9e2e91eaa6aa56dd2d9b",
+    "eval/stats.py": "3d971405b9946fa979ee65694da6852ed6998be5fc004cee8d168efc04c1dbbc",
+    "utils/graph_reader.py": "98e76583bf060e3bc7e065588c4f17ca6477e22ace82290e729c0f21f36616a7"
+  },
+  "plan_sha256": "55ba89d04e90723fc6d9a56af9370bc5a87d5f5c9a5997ee21a673914133044b",
+  "graph_sha256": "5654c8d7270c3e8fd3225cb56ddbef5d0a5052cbfa8f29c3619943e98bbee9c2",
+  "played_edges": 2833973,
+  "embedding_digest": "7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab",
+  "frozen_at": "2026-11-09T11:26:39.691935+00:00",
+  "git_commit": "3d96968d2ca08cba17930e89c1265a65f43ba39c"
+}
