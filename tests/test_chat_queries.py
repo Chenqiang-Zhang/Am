@@ -11,10 +11,14 @@ from app.api.chat_queries import (
     T1_QUERY,
     T3_STUDIO_QUERY,
     UNRANKED_TAG_STRENGTH,
+    AnchorProfile,
+    GameAttributes,
     GraphRetriever,
     Vocabulary,
+    anchor_profile,
     co_play_lift,
     score_co_play_rows,
+    score_similar_rows,
     score_studio_rows,
     score_t1_rows,
     t1_parameters,
@@ -199,6 +203,7 @@ def test_relation_picks_the_template():
     assert co_call == {"anchors": ["105600"], "min_hours": CO_PLAY_MIN_HOURS, "exclude_player": "76561"}
     assert reader.calls[-1] == (PLAYERS_QUERY, {"exclude_player": "76561"})
 
+    retriever._profile_box["profile"] = AnchorProfile({"20": frozenset({"tag:action"})}, {"tag:action": 1.0})
     similar = retriever.retrieve(ChatState(anchors=["105600"]), k=10)
     assert [candidate.appid for candidate in similar] == ["20"]
     assert reader.calls[-1][0] == T1_QUERY
@@ -226,3 +231,48 @@ def test_co_play_counts_are_cached_per_anchor_set_and_not_shared_across_players(
     base.excluding_player("99999").retrieve(state, k=10)
     co_calls = [params["exclude_player"] for cypher, params in reader.calls if cypher == CO_PLAY_QUERY]
     assert co_calls == ["76561", "99999"]
+
+
+def attributes(tags, studios=()):
+    return GameAttributes(tag_keys=frozenset(tags), studio_keys=frozenset(studios), price=None, players=0)
+
+
+def test_anchor_profile_weights_rare_keys_more():
+    profile = anchor_profile({
+        "1": attributes({"tag:action", "tag:rogue_like"}, {"studio:valve"}),
+        "2": attributes({"tag:action"}),
+        "3": attributes({"tag:action"}),
+        "4": attributes({"tag:horror"}),
+    })
+    assert profile.idf["tag:rogue_like"] == pytest.approx(math.log(4))
+    assert profile.idf["tag:action"] == pytest.approx(math.log(4 / 3))
+    assert profile.keys_by_appid["1"] == {"tag:action", "tag:rogue_like", "studio:valve"}
+
+
+def test_similar_rows_add_the_idf_of_what_each_game_shares_with_the_anchor():
+    profile = anchor_profile({
+        "620": attributes({"tag:action", "tag:rogue_like"}, {"studio:valve"}),
+        "10": attributes({"tag:action", "tag:rogue_like"}),
+        "20": attributes({"tag:action"}, {"studio:valve"}),
+        "30": attributes({"tag:horror"}),
+        "40": attributes({"tag:horror"}),
+    })
+    rows = [{"appid": appid, "players": 0, "matched": []} for appid in ("10", "20", "30")]
+    ranked = score_similar_rows(rows, profile, ["620"], max_players=0)
+    # 10 shares action and rogue_like, 20 shares action and Valve: both rare keys sit in 2 of 5 games
+    assert [candidate.appid for candidate in ranked] == ["10", "20", "30"]
+    assert ranked[0].score == pytest.approx(math.log(5 / 3) + math.log(5 / 2))
+    assert ranked[1].score == pytest.approx(ranked[0].score)
+    assert ranked[2].score == 0
+    studio = [item for item in ranked[1].evidence if item.path == "studio"]
+    assert [(item.bridge_id, item.anchor_appid) for item in studio] == [("valve", "620")]
+    assert {item.bridge_id for item in ranked[0].evidence if item.path == "anchor_tag"} == {
+        "tag:action", "tag:rogue_like"}
+
+
+def test_the_profile_is_loaded_once_for_all_player_copies():
+    reader = RoutingReader({})
+    base = GraphRetriever(reader, VOCABULARY)
+    first = base.excluding_player("1").profile()
+    second = base.excluding_player("2").profile()
+    assert first is second

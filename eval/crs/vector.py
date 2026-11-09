@@ -5,7 +5,9 @@ that are genres or include a user tag, the developers and the price. Left out ar
 search, and feature-only groups (Steam services such as achievements or cloud saves), which no question asks
 about and which, on dev, pulled the vectors towards whatever games listed the fewest of them. A state's included
 tags become "A game tagged X, Y." and its developers "Developer: Z.", embedded once; each excluded tag or
-developer is embedded by its name alone and subtracted (Rocchio, weight EXCLUDE_WEIGHT). Price conditions are a
+developer is embedded by its name alone and subtracted (Rocchio, weight EXCLUDE_WEIGHT). Anchors add the mean of
+their document vectors (weight ANCHOR_WEIGHT) whatever the relation: V has no developer path and no co-play, so
+"same developer as X" and "what X's players play" both become "like X". Price conditions are a
 hard filter as in G, and a game of unknown price passes no price bound. The score is the cosine similarity,
 which V-entropy uses as the questioner's weights. The wording was chosen on dev turn-1 lists (E1_PLAN.md).
 
@@ -30,6 +32,7 @@ from utils.graph_reader import TAG_MAX_RANK, GraphReader
 EMBED_BASE_URL = os.environ.get("EMBED_BASE_URL", "http://host.docker.internal:11434")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "bge-m3")
 EXCLUDE_WEIGHT = 0.5
+ANCHOR_WEIGHT = 0.375
 EMBED_BATCH = 64
 CACHE_ROOT = Path("data/eval/vectors")
 
@@ -123,11 +126,12 @@ class VectorRetriever:
     """Retriever V."""
 
     def __init__(self, corpus: VectorCorpus, document_vectors: np.ndarray, embed: Embed,
-                 exclude_weight: float = EXCLUDE_WEIGHT) -> None:
+                 exclude_weight: float = EXCLUDE_WEIGHT, anchor_weight: float = ANCHOR_WEIGHT) -> None:
         self.corpus = corpus
         self.vectors = _normalize(np.asarray(document_vectors, dtype=np.float32))
         self.embed = embed
         self.exclude_weight = exclude_weight
+        self.anchor_weight = anchor_weight
         self.index = {appid: i for i, appid in enumerate(corpus.appids)}
         self.prices = np.array([np.nan if p is None else p for p in corpus.prices], dtype=np.float64)
         self._cache: dict[str, np.ndarray] = {}
@@ -144,6 +148,9 @@ class VectorRetriever:
 
     def query_vector(self, state: ChatState) -> np.ndarray:
         query = self._text_vector(query_text(state.include, self.corpus.names))
+        anchors = [self.index[appid] for appid in state.anchors if appid in self.index]
+        if anchors:
+            query = query + self.anchor_weight * _normalize(self.vectors[anchors].mean(axis=0))
         excluded = [key for key in state.exclude if attribute_kind(key) in ("tag", "studio")
                     and key in self.corpus.names]
         if excluded:

@@ -26,8 +26,8 @@ CORPUS = VectorCorpus(
 )
 
 
-def retriever(exclude_weight=0.5):
-    return VectorRetriever(CORPUS, fake_embed(list(CORPUS.documents)), fake_embed, exclude_weight)
+def retriever(exclude_weight=0.5, anchor_weight=1.0):
+    return VectorRetriever(CORPUS, fake_embed(list(CORPUS.documents)), fake_embed, exclude_weight, anchor_weight)
 
 
 def test_document_lists_genres_then_user_tags_by_rank_and_drops_feature_only_groups():
@@ -78,3 +78,11 @@ def test_shown_games_do_not_come_back_and_scores_are_cosines():
     ranked = retriever().retrieve(ChatState(include=["tag:horror"], shown=["1"]), 5)
     assert "1" not in {c.appid for c in ranked}
     assert ranked[0].score == pytest.approx(1 / np.sqrt(2))  # "Tags: Horror, Puzzle." against horror
+
+
+def test_an_anchor_pulls_the_query_towards_its_document_and_is_not_returned():
+    plain = [c.appid for c in retriever().retrieve(ChatState(include=["tag:puzzle"]), 5)]
+    anchored = retriever().retrieve(ChatState(include=["tag:puzzle"], anchors=["1"]), 5)
+    assert plain[0] in ("3", "4")
+    assert anchored[0].appid == "2"  # horror and puzzle: closest to the horror anchor plus the puzzle tag
+    assert "1" not in [c.appid for c in anchored]

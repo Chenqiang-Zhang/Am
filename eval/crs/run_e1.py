@@ -1,15 +1,20 @@
 """E1-pre: the A-layer simulation on the development users (E1_PLAN.md).
 
-Groups: G (T1 only) and G-static, V-entropy and V-static (vector search, vector.py), and P. V needs the
+Groups: G (T1, T2 and T3) and G-static, V-entropy and V-static (vector search, vector.py), and P. V needs the
 embedding model on the Ollama server at EMBED_BASE_URL; its document vectors are cached under data/eval/vectors/.
 
-    python -m eval.crs.run_e1 --users 300            # inside the app container, GRAPH=ucsd
-    python -m eval.crs.run_e1 --users 20 --seeds 1   # a quick smoke run
+Layers (--layer): none states no anchor (every user). anchor names the plan's anchor (same developer or two
+shared ranked user tags) and runs only the users who have one. co_play names the user's longest-played other
+game as a co_played anchor (every user who has another game).
+
+    python -m eval.crs.run_e1 --users 300                  # inside the app container, GRAPH=ucsd
+    python -m eval.crs.run_e1 --users 300 --layer anchor
+    python -m eval.crs.run_e1 --users 20 --seeds 1         # a quick smoke run
 
 Only the dev split can be selected: there is no option for test, which the main E1 uses once after the plan
 is fixed. A turn log's pool_size is 0 when no pool was retrieved (the list hit, or it was the last turn).
-Before any dialogue it checks that popularity leaves the evaluated player out (the plan's acceptance
-conditions) and stops on a mismatch. Writes manifest.json, dialogues.jsonl, turns.jsonl and summary.json under
+Before any dialogue it checks that popularity, and in the co_play layer co-play, leave the evaluated player out
+(the plan's acceptance conditions) and stops on a mismatch. Writes manifest.json, dialogues.jsonl, turns.jsonl and summary.json under
 data/eval/e1_pre/<time>/ and prints the summary.
 """
 
@@ -23,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.api.chat_queries import T1_QUERY, GraphRetriever, t1_parameters
+from app.api.chat_queries import CO_PLAY_MIN_HOURS, T1_QUERY, GraphRetriever, t1_parameters
 from app.api.chat_questioner import (
     MIN_ENTROPY,
     POOL_SIZE,
@@ -41,8 +46,11 @@ from eval.crs.simulator import (
     LIST_SIZE,
     MAX_TURNS,
     OPENING_TAGS,
+    Anchor,
     Target,
     askable_tags,
+    choose_anchor,
+    choose_co_play_anchor,
     choose_target,
     error_answers,
     is_dev,
@@ -53,6 +61,7 @@ from eval.crs.simulator import (
 )
 from eval.crs.vector import (
     EMBED_MODEL,
+    ANCHOR_WEIGHT,
     EXCLUDE_WEIGHT,
     VectorRetriever,
     document_vectors,
@@ -73,6 +82,7 @@ POPULAR_TOP = 50
 ENTROPY_LOG_TOP = 10
 BATCH = 200
 OUT_ROOT = Path("data/eval/e1_pre")
+LAYERS = ("none", "anchor", "co_play")
 
 PLAYERS_QUERY = """
 MATCH (p:Player) WHERE COUNT { (p)-[:PLAYED]->(:Game) } >= $min_played
@@ -93,6 +103,13 @@ UNWIND $appids AS a
 MATCH (g:Game {appid: a})<-[r:PLAYED]-(:Player)
 RETURN a AS appid, count(r) AS n
 """
+# Fans of the anchor who also played the target, the evaluated player included; counted with MATCH and count().
+FAN_COUNT_QUERY = """
+MATCH (:Game {appid: $anchor})<-[r:PLAYED]-(p:Player)-[:PLAYED]->(:Game {appid: $target})
+WHERE r.hours >= $min_hours
+RETURN count(DISTINCT p) AS n
+"""
+TITLES_QUERY = "MATCH (g:Game) RETURN g.appid AS appid, g.name AS name"
 
 
 @dataclass(frozen=True)
@@ -100,9 +117,13 @@ class User:
     player_id: str
     played: frozenset[str]
     target: Target
+    anchor: Anchor | None = None  # the anchor layer's anchor; None puts the user in the no-anchor layer
+    co_play_anchor: Anchor | None = None
+    co_play_anchor_hours: float = 0.0
 
 
-def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tuple[str, ...], count: int):
+def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tuple[str, ...], count: int,
+                 titles: dict[str, str]):
     players = [row["player_id"] for row in reader.query(PLAYERS_QUERY, min_played=MIN_PLAYED)]
     dev = sample_order([player_id for player_id in players if is_dev(player_id)])
     medians = {row["appid"]: row["median"] for row in reader.query(MEDIAN_QUERY)}
@@ -122,7 +143,13 @@ def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tu
             if len(askable_tags(target, whitelist)) < OPENING_TAGS:
                 skipped["few_whitelisted_tags"] += 1
                 continue
-            users.append(User(player_id, frozenset(hours[player_id]), target))
+            co_play_anchor = choose_co_play_anchor(appid, hours[player_id], facts, titles)
+            users.append(User(
+                player_id, frozenset(hours[player_id]), target,
+                anchor=choose_anchor(player_id, appid, hours[player_id], facts, titles),
+                co_play_anchor=co_play_anchor,
+                co_play_anchor_hours=hours[player_id][co_play_anchor.appid] if co_play_anchor else 0.0,
+            ))
             if len(users) == count:
                 return users, {"players_min_played": len(players), "dev_players": len(dev), "skipped": skipped}
     return users, {"players_min_played": len(players), "dev_players": len(dev), "skipped": skipped}
@@ -150,6 +177,31 @@ def check_leakage(reader, retriever: GraphRetriever, popularity: PopularityRetri
     return {"users": len(users), "matched": len(users) - len(mismatches), "mismatches": mismatches[:20]}
 
 
+def check_co_play_leakage(reader, retriever: GraphRetriever, users: list[User], workers: int):
+    """The target's co-play count, as G uses it, must be the anchor's fans who played the target minus the
+    evaluated player (a fan when they played the anchor for CO_PLAY_MIN_HOURS)."""
+
+    def counts(user: User) -> tuple[int, int]:
+        anchor = user.co_play_anchor.appid
+        total = reader.query(FAN_COUNT_QUERY, anchor=anchor, target=user.target.appid,
+                             min_hours=CO_PLAY_MIN_HOURS)[0]["n"]
+        expected = total - (user.co_play_anchor_hours >= CO_PLAY_MIN_HOURS)
+        co_rows, _ = retriever.excluding_player(user.player_id).co_play([anchor])
+        got = next((row["co"] for row in co_rows if row["appid"] == user.target.appid), 0)
+        return expected, got
+
+    with ThreadPoolExecutor(workers) as pool:
+        results = list(pool.map(counts, users))
+    mismatches = [{"player_id": user.player_id, "anchor": user.co_play_anchor.appid, "target": user.target.appid,
+                   "expected": expected, "G": got}
+                  for user, (expected, got) in zip(users, results) if expected != got]
+    return {"users": len(users), "matched": len(users) - len(mismatches), "mismatches": mismatches[:20]}
+
+
+def layer_anchor(user: User, layer: str) -> Anchor | None:
+    return {"none": None, "anchor": user.anchor, "co_play": user.co_play_anchor}[layer]
+
+
 def entropy_top(catalog: QuestionCatalog):
     def explain(state, pool):
         return dict(list(entropy_table(state, pool, catalog).items())[:ENTROPY_LOG_TOP])
@@ -157,7 +209,7 @@ def entropy_top(catalog: QuestionCatalog):
 
 
 def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, facts, popular: set[str],
-             error_rate: float = 0.0):
+             error_rate: float = 0.0, layer: str = "none"):
     systems = {
         "G": (retriever.excluding_player(user.player_id), EntropyQuestioner(catalog), entropy_top(catalog)),
         "G-static": (retriever.excluding_player(user.player_id), FixedOrderQuestioner(catalog), None),
@@ -166,11 +218,12 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
         "P": (popularity.excluding_player(user.played), None, None),
     }
     dialogues, logs = [], []
+    anchor = layer_anchor(user, layer)
     for seed in range(seeds):
         opening = opening_tags(user.target, catalog.keys, seed)
         for group, (system, questioner, explain) in systems.items():
             answer = error_answers(user.target, seed, error_rate) if error_rate else None
-            records = simulate(user.target, opening, system, questioner, POOL_SIZE, explain, answer)
+            records = simulate(user.target, opening, system, questioner, POOL_SIZE, explain, answer, anchor)
             last = records[-1]
             success_turn = last.turn if last.hit_rank is not None else None
             checks = [check(facts[c.appid], record.state) for record in records for c in record.shown]
@@ -178,6 +231,8 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
             dialogues.append({
                 "dialogue_id": dialogue_id, "group": group, "player_id": user.player_id, "seed": seed,
                 "target": user.target.appid, "popular": user.target.appid in popular, "opening": opening,
+                "anchor": anchor.appid if anchor else None, "relation": anchor.relation if anchor else None,
+                "same_series": anchor.same_series if anchor else None,
                 "success_turn": success_turn, "success_rank": last.hit_rank,
                 "hdcg": hdcg(success_turn, last.hit_rank),
                 "questions": sum(record.question is not None for record in records),
@@ -233,6 +288,12 @@ def summarize(dialogues: list[dict]) -> dict:
         "popular": [d for d in dialogues if d["popular"]],
         "long_tail": [d for d in dialogues if not d["popular"]],
     }
+    if any(d.get("relation") for d in dialogues):
+        for relation in ("same_developer", "similar", "co_played"):
+            strata[relation] = [d for d in dialogues if d.get("relation") == relation]
+        strata["same_series"] = [d for d in dialogues if d.get("same_series")]
+        strata["other_series"] = [d for d in dialogues if d.get("same_series") is False]
+    strata = {name: items for name, items in strata.items() if items}
     summary: dict = {"groups": {}, "comparisons": {}}
     for stratum, items in strata.items():
         for group in GROUPS:
@@ -348,6 +409,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--error-rate", type=float, default=0.0,
                         help="probability that the simulated user answers a question wrongly")
+    parser.add_argument("--layer", choices=LAYERS, default="none",
+                        help="none: no anchor; anchor: the plan's anchor; co_play: the longest-played other game")
     args = parser.parse_args()
 
     started = time.time()
@@ -363,26 +426,49 @@ def main() -> None:
         raise SystemExit("V's documents and the graph dump cover different games")
     vectors, documents = document_vectors(corpus, ollama_embed, embedding["digest"])
     vector = VectorRetriever(corpus, vectors, ollama_embed)
-    embedding.update(documents, dimension=int(vectors.shape[1]), exclude_weight=EXCLUDE_WEIGHT)
+    embedding.update(documents, dimension=int(vectors.shape[1]), exclude_weight=EXCLUDE_WEIGHT,
+                     anchor_weight=ANCHOR_WEIGHT)
     print(f"V: {EMBED_MODEL} {embedding['digest'][:12]}, {documents['documents']} documents"
           f"{' (cached)' if documents['cached'] else ''}, {time.time() - started:.0f} s")
 
-    users, selection = select_users(reader, facts, catalog.keys, args.users)
+    titles = {row["appid"]: row["name"] or "" for row in reader.query(TITLES_QUERY)}
+    users, selection = select_users(reader, facts, catalog.keys, args.users, titles)
+    selection["with_anchor"] = sum(user.anchor is not None for user in users)
+    selection["with_co_play_anchor"] = sum(user.co_play_anchor is not None for user in users)
     print(f"users: {len(users)} (dev), selection {selection}")
+    if args.layer != "none":
+        users = [user for user in users if layer_anchor(user, args.layer) is not None]
+        relations = {}
+        for user in users:
+            anchor = layer_anchor(user, args.layer)
+            relations[anchor.relation] = relations.get(anchor.relation, 0) + 1
+        selection["layer_users"] = len(users)
+        selection["relations"] = relations
+        selection["same_series"] = sum(layer_anchor(user, args.layer).same_series for user in users)
+        print(f"layer {args.layer}: {len(users)} users, relations {relations}, "
+              f"same series {selection['same_series']}")
     leakage = check_leakage(reader, retriever, popularity, users, catalog.keys, args.workers)
     print(f"leakage check: {leakage['matched']}/{leakage['users']} match")
     if leakage["mismatches"]:
         print(json.dumps(leakage["mismatches"], indent=2))
         raise SystemExit("popularity still counts the evaluated player; not running")
+    if args.layer == "co_play":
+        co_play_leakage = check_co_play_leakage(reader, retriever, users, args.workers)
+        leakage["co_play"] = co_play_leakage
+        print(f"co-play leakage check: {co_play_leakage['matched']}/{co_play_leakage['users']} match")
+        if co_play_leakage["mismatches"]:
+            print(json.dumps(co_play_leakage["mismatches"], indent=2))
+            raise SystemExit("co-play still counts the evaluated player; not running")
 
     out = OUT_ROOT / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                      + (f"_{args.layer}" if args.layer != "none" else "")
                       + (f"_err{round(args.error_rate * 100):02d}" if args.error_rate else ""))
     out.mkdir(parents=True)
     dialogues = []
     with ThreadPoolExecutor(args.workers) as pool, \
             (out / "turns.jsonl").open("w", encoding="utf-8") as turns_file:
         jobs = pool.map(lambda user: run_user(user, args.seeds, retriever, vector, popularity, catalog, facts, popular,
-                                      args.error_rate), users)
+                                              args.error_rate, args.layer), users)
         for done, (user_dialogues, logs) in enumerate(jobs, 1):
             dialogues += user_dialogues
             for log in logs:
@@ -398,7 +484,7 @@ def main() -> None:
         "experiment": "E1-pre", "split": "dev", "users": len(users), "seeds": args.seeds, "groups": GROUPS,
         "selection": selection, "leakage_check": leakage, "graph": graph_identity(reader, facts),
         "embedding": embedding, "git_commit": git_commit(), "code_sha256": code_sha256(),
-        "error_rate": args.error_rate,
+        "error_rate": args.error_rate, "layer": args.layer,
         "constants": {"MAX_TURNS": MAX_TURNS, "LIST_SIZE": LIST_SIZE, "POOL_SIZE": POOL_SIZE,
                       "STOP_POOL_SIZE": STOP_POOL_SIZE, "MIN_ENTROPY": MIN_ENTROPY, "OPENING_TAGS": OPENING_TAGS,
                       "MIN_PLAYED": MIN_PLAYED, "POPULAR_TOP": POPULAR_TOP, "whitelist": len(catalog.keys)},

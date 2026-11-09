@@ -6,8 +6,9 @@ targets and opening tags is by SHA-256 of fixed strings, so every run picks the 
 """
 
 import hashlib
+import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -25,12 +26,16 @@ from app.api.chat_state import (
     record_shown,
     tag_key,
 )
+from app.api.chat_state import Relation
 from eval.crs.constraints import GameFacts
+from utils.graph_reader import TAG_MAX_RANK
 
 MAX_TURNS = 5
 LIST_SIZE = 10
 OPENING_TAGS = 2
 DEV_SHARE = 0.3
+# a "similar" anchor shares at least this many user tags of rank within TAG_MAX_RANK with the target
+ANCHOR_SHARED_TAGS = 2
 
 Answer = Literal["yes", "no", "no_preference"]
 
@@ -105,6 +110,79 @@ def opening_tags(target: Target, whitelist: tuple[str, ...], seed: int) -> list[
     return tags[:OPENING_TAGS]
 
 
+@dataclass(frozen=True)
+class Anchor:
+    """A game the simulated user names in the opening, and how the wanted game relates to it."""
+
+    appid: str
+    relation: Relation
+    same_series: bool  # the anchor's title and the target's look like one series (reported apart)
+
+
+def ranked_tags(game: GameFacts) -> frozenset[str]:
+    """User tag groups with a rank within TAG_MAX_RANK; genres and features have no rank and do not count."""
+    return frozenset(tag_key(tag_id) for tag_id, rank in game.tag_edges if rank is not None and rank <= TAG_MAX_RANK)
+
+
+def developers(game: GameFacts) -> set[str]:
+    return {studio for studio in game.developers if studio}
+
+
+_SERIES_CUT = re.compile(r"[:(]|\s[-–—]\s")
+_SERIES_NUMBER = re.compile(r"(\s+(\d+|[ivx]+))+$")
+
+
+def series_base(title: str) -> str:
+    """The title up to a colon, a spaced dash or a bracket, lower-cased, without a trailing number or Roman
+    numeral. A hyphen inside a word ("Half-Life") is kept."""
+    base = _SERIES_CUT.split(title.lower(), maxsplit=1)[0]
+    base = re.sub(r"[^\w\s]", " ", base)
+    base = " ".join(base.split())
+    return _SERIES_NUMBER.sub("", base).strip()
+
+
+def same_series(a: str, b: str) -> bool:
+    """The titles match up to the series base, e.g. "Portal" and "Portal 2", or "Borderlands 2" and "Borderlands:
+    The Pre-Sequel", but not "Portal 2" and "Portal Knights". Bases shorter than 4 characters never match."""
+    base_a, base_b = series_base(a), series_base(b)
+    return len(base_a) >= 4 and base_a == base_b
+
+
+def choose_anchor(player_id: str, target_appid: str, played: Iterable[str], facts: dict[str, GameFacts],
+                  titles: dict[str, str]) -> Anchor | None:
+    """Another game the player played that shares a developer with the target (same_developer) or at least
+    ANCHOR_SHARED_TAGS ranked user tags (similar), picked by hash. None puts the player in the no-anchor layer."""
+    target = facts[target_appid]
+    target_developers, target_tags = developers(target), ranked_tags(target)
+    eligible: dict[str, Relation] = {}
+    for appid in played:
+        if appid == target_appid or appid not in facts:
+            continue
+        game = facts[appid]
+        if developers(game) & target_developers:
+            eligible[appid] = "same_developer"
+        elif len(ranked_tags(game) & target_tags) >= ANCHOR_SHARED_TAGS:
+            eligible[appid] = "similar"
+    if not eligible:
+        return None
+    appid = min(eligible, key=lambda appid: hash_value("e1-anchor:" + player_id + appid))
+    return Anchor(appid, eligible[appid], same_series(titles.get(appid, ""), titles.get(target_appid, "")))
+
+
+def appid_order(appid: str) -> tuple[int, str]:
+    return (int(appid), appid) if appid.isdigit() else (2**63, appid)
+
+
+def choose_co_play_anchor(target_appid: str, hours: dict[str, float], facts: dict[str, GameFacts],
+                          titles: dict[str, str]) -> Anchor | None:
+    """The co-play layer's anchor: the player's longest-played other game (ties by the smaller appid)."""
+    others = [appid for appid in hours if appid != target_appid and appid in facts]
+    if not others:
+        return None
+    appid = min(others, key=lambda appid: (-hours[appid], appid_order(appid)))
+    return Anchor(appid, "co_played", same_series(titles.get(appid, ""), titles.get(target_appid, "")))
+
+
 def flipped(answer: Answer) -> Answer:
     """A wrong answer: yes and no swap, no preference stays."""
     return {"yes": "no", "no": "yes"}.get(answer, answer)  # type: ignore[return-value]
@@ -155,15 +233,18 @@ def simulate(
     pool_size: int,
     explain: Callable[[ChatState, list[Candidate]], dict] | None = None,
     answer: Callable[[int, str], Answer] | None = None,
+    anchor: Anchor | None = None,
 ) -> list[TurnRecord]:
     """One dialogue: each turn updates the state, shows LIST_SIZE games, and before the last turn asks one question.
 
     Shown games are recorded at once and never come back. The dialogue ends at the first list with the target.
     `explain` (the entropy table, for logs) runs outside the timed part. `answer(turn, key)` replaces the
-    target's own answers, e.g. with error_answers.
+    target's own answers, e.g. with error_answers. An `anchor` is named in the opening with its relation.
     """
     state = ChatState()
     update = TurnUpdate(include=opening)
+    if anchor is not None:
+        update = TurnUpdate(include=opening, anchors=[anchor.appid], relation=anchor.relation)
     records = []
     for turn in range(1, MAX_TURNS + 1):
         before = state

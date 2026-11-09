@@ -1,10 +1,12 @@
-"""Check retriever G's T3 (same developer, co-play) against the raw UCSD files, independently of its Cypher.
+"""Check retriever G's T2 (anchor similarity) and T3 (same developer, co-play) against the raw UCSD files,
+independently of their Cypher.
 
-Developers and plays come from data/ucsd/games.jsonl and played.jsonl, counted in Python. The T1 part of each
-case (tags, price, shown games) is decided with the graph dump that check_t1 already checks. For each case the
-script compares the whole result set, and for co-play also each game's fan count and the top of the ranking.
+Tags, developers and plays come from data/ucsd/games.jsonl and played.jsonl, counted in Python. The T1 part of
+each case (tags, price, shown games) is decided with the graph dump that check_t1 already checks. For each case
+the script compares the whole result set; for T2 also each game's IDF sum and the top of the ranking, and for
+co-play each game's fan count and the top of the ranking.
 
-    python -m eval.crs.check_t3            # inside the app container, GRAPH=ucsd
+    python -m eval.crs.check_t2_t3         # inside the app container, GRAPH=ucsd
 """
 
 import json
@@ -21,11 +23,18 @@ from app.api.chat_queries import (
     co_play_lift,
     popularity_scale,
 )
-from app.api.chat_state import ChatState
+from app.api.chat_state import ChatState, tag_key
 from eval.crs.constraints import dump_games, satisfies
-from utils.graph_reader import GraphReader
+from utils.graph_reader import TAG_MAX_RANK, GraphReader
 
 UCSD = Path("data/ucsd")
+SIMILAR_CASES: dict[str, ChatState] = {
+    "Portal 2みたいなもの": ChatState(anchors=["620"]),
+    "Terrariaみたいで、ストーリー重視": ChatState(anchors=["105600"], include=["tag:story_rich"]),
+    "Stardew Valleyみたいで10ドル以下、ホラー以外": ChatState(
+        anchors=["413150"], max_price=10, exclude=["tag:horror"]),
+    "Portal 2とTerrariaみたいなもの": ChatState(anchors=["620", "105600"]),
+}
 STUDIO_CASES: dict[str, ChatState] = {
     "Portal 2と同じ開発元で10ドル以下": ChatState(anchors=["620"], relation="same_developer", max_price=10),
     "Portal 2と同じ開発元": ChatState(anchors=["620"], relation="same_developer"),
@@ -46,6 +55,22 @@ TOP = 20
 TIMING_RUNS = 3
 # T3 must return the whole of a case: no case here has more games than this.
 ALL = 100_000
+
+
+def raw_keys() -> dict[str, set[str]]:
+    """Each game's counted tag groups (no rank, or rank within TAG_MAX_RANK) and developers, as T2 compares."""
+    keys = {}
+    with (UCSD / "games.jsonl").open(encoding="utf-8") as file:
+        for line in file:
+            game = json.loads(line)
+            keys[game["appid"]] = {
+                tag_key(tag["tag_id"]) for tag in game.get("tags") or []
+                if tag.get("rank") is None or tag["rank"] <= TAG_MAX_RANK
+            } | {
+                "studio:" + studio["studio_id"] for studio in game.get("studios") or []
+                if studio.get("role") == "developer" and studio.get("studio_id")
+            }
+    return keys
 
 
 def raw_developers() -> dict[str, set[str]]:
@@ -79,12 +104,47 @@ def main() -> None:
     reader = GraphReader()
     retriever = GraphRetriever(reader)
     games = dump_games(reader)
-    missing = [key for state in [*STUDIO_CASES.values(), *CO_PLAY_CASES.values()]
+    missing = [key for state in [*SIMILAR_CASES.values(), *STUDIO_CASES.values(), *CO_PLAY_CASES.values()]
                for key in state.include + state.exclude if key not in retriever.vocabulary.attribute_keys]
     if missing:
         raise SystemExit(f"keys the graph does not have: {missing}")
     developers = raw_developers()
     all_ok, timings = True, []
+
+    keys = raw_keys()
+    document_frequency = Counter(key for game_keys in keys.values() for key in game_keys)
+    idf = {key: math.log(len(keys) / df) for key, df in document_frequency.items()}
+    print("T2 similar")
+    print(f"{'case':44s} {'expected':>8s} {'T2':>5s} {'extra':>5s} {'missed':>6s} {'idf':>4s} {'top':>4s}  top 3")
+    for name, state in SIMILAR_CASES.items():
+        expected = {appid for appid, game in games.items() if satisfies(appid, game, state)}
+        result = retriever.retrieve(state, k=ALL)
+        got = {candidate.appid for candidate in result}
+
+        def shared_idf(appid: str) -> float:
+            return sum(idf[key] for anchor in state.anchors for key in keys.get(appid, set()) & keys[anchor])
+
+        def anchor_part(candidate) -> float:
+            return sum(item.share for item in candidate.evidence if item.path in ("anchor_tag", "studio"))
+
+        idf_ok = all(math.isclose(anchor_part(candidate), shared_idf(candidate.appid), abs_tol=1e-9)
+                     for candidate in result)
+        # the T1 part (included tags, popularity) is the returned score minus the anchor part
+        ranked = sorted(result, key=lambda candidate: (
+            -(candidate.score - anchor_part(candidate) + shared_idf(candidate.appid)), candidate.appid))
+        top_ok = [candidate.appid for candidate in ranked[:TOP]] == [candidate.appid for candidate in result[:TOP]]
+        all_ok &= got == expected and idf_ok and top_ok
+        for _ in range(TIMING_RUNS):
+            start = time.perf_counter()
+            retriever.retrieve(state, k=100)
+            timings.append(("similar", time.perf_counter() - start))
+        print(f"{name:44s} {len(expected):8d} {len(got):5d} {len(got - expected):5d} {len(expected - got):6d} "
+              f"{'ok' if idf_ok else 'NG':>4s} {'ok' if top_ok else 'NG':>4s}")
+        rows = reader.query("MATCH (g:Game) WHERE g.appid IN $ids RETURN g.appid AS appid, g.name AS name",
+                            ids=[candidate.appid for candidate in result[:5]])
+        names = {row["appid"]: row["name"] for row in rows}
+        print("   top 5: " + "; ".join(names.get(candidate.appid, candidate.appid) for candidate in result[:5]))
+    print()
 
     print("T3 same_developer")
     print(f"{'case':44s} {'expected':>8s} {'T3':>5s} {'extra':>5s} {'missed':>6s}  top 3")
@@ -164,7 +224,7 @@ def main() -> None:
         names = {row["appid"]: row["name"] for row in rows}
         print("   top 5: " + "; ".join(names.get(candidate.appid, candidate.appid) for candidate in result[:5]))
 
-    for template in ("same_developer", "co_played"):
+    for template in ("similar", "same_developer", "co_played"):
         values = sorted(seconds for kind, seconds in timings if kind == template)
         print(f"\n{template} latency over {len(values)} calls: p50 {statistics.median(values) * 1000:.0f} ms, "
               f"max {values[-1] * 1000:.0f} ms", end="")

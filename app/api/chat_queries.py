@@ -6,8 +6,9 @@ T3: multi-hop relations to the anchors, inside the same T1 filter.
   - same_developer: anchor -DEVELOPED_BY-> studio <-DEVELOPED_BY- game. Only games sharing a developer pass.
   - co_played: players who played an anchor for at least CO_PLAY_MIN_HOURS, and the other games they played,
     ranked by lift with a pseudo-count so that neither popular games nor tiny ones dominate.
-T2 (anchor similarity, relation "similar") is not written yet; until then a "similar" anchor only stays out of
-the results and T1 ranks the rest.
+T2: anchor similarity (relation "similar"), inside the same T1 filter. Each tag group and developer a game
+shares with an anchor adds its IDF over all games, so a rare shared tag or a shared developer counts more
+than a common one.
 
 Tags count only through HAS_TAG edges with no rank (genres and features) or a rank within TAG_MAX_RANK (user
 tags), the same edges GAME_COLUMNS shows, the simulator's target attributes use and the questioner asks about.
@@ -252,9 +253,48 @@ def load_game_attributes(reader: GraphReader) -> dict[str, GameAttributes]:
     }
 
 
+@dataclass(frozen=True)
+class AnchorProfile:
+    """What T2 compares: each game's counted tag groups and developers, and their IDF over all games."""
+
+    keys_by_appid: dict[str, frozenset[str]]
+    idf: dict[str, float]
+
+
+def anchor_profile(attributes: dict[str, GameAttributes]) -> AnchorProfile:
+    keys_by_appid = {appid: game.tag_keys | game.studio_keys for appid, game in attributes.items()}
+    document_frequency: dict[str, int] = {}
+    for keys in keys_by_appid.values():
+        for key in keys:
+            document_frequency[key] = document_frequency.get(key, 0) + 1
+    games = max(len(keys_by_appid), 1)
+    return AnchorProfile(keys_by_appid, {key: math.log(games / df) for key, df in document_frequency.items()})
+
+
+def score_similar_rows(rows: list[dict], profile: AnchorProfile, anchors: list[str],
+                       max_players: int) -> list[Candidate]:
+    """T1's score plus, for each anchor, the IDF of every tag group and developer the game shares with it."""
+    scale = popularity_scale(max_players)
+    anchor_keys = [(anchor, profile.keys_by_appid.get(anchor, frozenset())) for anchor in anchors]
+    candidates = []
+    for row in rows:
+        score, evidence = t1_score(row, scale)
+        keys = profile.keys_by_appid.get(row["appid"], frozenset())
+        shared = []
+        for anchor, wanted in anchor_keys:
+            for key in sorted(keys & wanted):
+                path = "studio" if attribute_kind(key) == "studio" else "anchor_tag"
+                shared.append(ChatEvidence(path=path, bridge_id=attribute_value(key) if path == "studio" else key,
+                                           anchor_appid=anchor, share=profile.idf[key]))
+        shared.sort(key=lambda item: (-item.share, item.bridge_id or "", item.anchor_appid or ""))
+        candidates.append(Candidate(appid=row["appid"], score=score + sum(item.share for item in shared),
+                                    evidence=shared + evidence))
+    return rank_candidates(candidates)
+
+
 class GraphRetriever:
     """Retriever G. Validates the state against the graph, then runs T3 for a same_developer or co_played
-    anchor and T1 otherwise."""
+    anchor, T2 for a similar one and T1 without an anchor."""
 
     def __init__(self, reader: GraphReader, vocabulary: Vocabulary | None = None) -> None:
         self.reader = reader
@@ -264,6 +304,16 @@ class GraphRetriever:
             "MATCH (g:Game) RETURN coalesce(max(COUNT { (g)<-[:PLAYED]-(:Player) }), 0) AS n"
         )[0]["n"]
         self._new_co_play_cache()
+        # one box shared by every copy from excluding_player, so the profile is loaded once
+        self._profile_box: dict[str, AnchorProfile] = {}
+        self._profile_lock = threading.Lock()
+
+    def profile(self) -> AnchorProfile:
+        """T2's tag groups, developers and IDF, loaded on first use."""
+        with self._profile_lock:
+            if "profile" not in self._profile_box:
+                self._profile_box["profile"] = anchor_profile(load_game_attributes(self.reader))
+            return self._profile_box["profile"]
 
     def _new_co_play_cache(self) -> None:
         self._co_play_cache: OrderedDict[tuple[str, ...], tuple[list[dict], int]] = OrderedDict()
@@ -304,4 +354,6 @@ class GraphRetriever:
             co_rows, all_players = self.co_play(state.anchors)
             return score_co_play_rows(rows, co_rows, self.max_players, all_players)[:k]
         rows = self.reader.query(T1_QUERY, **params)
+        if state.anchors:  # relation "similar"
+            return score_similar_rows(rows, self.profile(), state.anchors, self.max_players)[:k]
         return score_t1_rows(rows, self.max_players)[:k]

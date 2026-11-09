@@ -7,11 +7,15 @@ from eval.crs.baselines import PopularityRetriever
 from eval.crs.constraints import GameFacts, check, counted_keys
 from eval.crs.simulator import (
     MAX_TURNS,
+    Anchor,
     Target,
+    choose_anchor,
+    choose_co_play_anchor,
     choose_target,
     is_dev,
     make_target,
     opening_tags,
+    same_series,
     simulate,
 )
 from eval.metrics import hdcg, success_by_turn, turns_taken
@@ -242,3 +246,52 @@ def test_a_wrong_no_rules_the_target_out_for_a_filtering_retriever():
     assert records[0].true_answer == "yes" and records[0].answer == "no"
     assert "tag:rogue_like" in records[1].state.exclude
     assert all(record.hit_rank is None for record in records)  # the target never comes back
+
+
+# ---- anchors ----
+
+def test_anchor_shares_a_developer_or_two_ranked_user_tags_and_never_is_the_target():
+    games = {
+        "100": TARGET_FACTS,
+        # same developer, no shared tags
+        "1": facts(tags=[("usertag:racing", 1)], developers=["supergiant"]),
+        # two ranked user tags in common
+        "2": facts(tags=[("usertag:rogue_like", 1), ("usertag:pixel_graphics", 3)]),
+        # only one ranked tag; the shared genre and the rank-14 tag do not count
+        "3": facts(tags=[("genre:action", None), ("usertag:rogue_like", 1), ("usertag:horror", 2)]),
+        # empty studio ids are not a developer
+        "4": facts(tags=[("usertag:racing", 1)], developers=[""]),
+    }
+    titles = {"100": "Bastion", "1": "Transistor", "2": "Dead Cells"}
+    seen = set()
+    for player in (f"p{i}" for i in range(60)):
+        anchor = choose_anchor(player, "100", list(games), games, titles)
+        seen.add((anchor.appid, anchor.relation))
+    assert seen == {("1", "same_developer"), ("2", "similar")}
+    assert choose_anchor("p1", "100", ["100", "3", "4"], games, titles) is None
+
+
+def test_co_play_anchor_is_the_longest_played_other_game():
+    games = {"100": TARGET_FACTS, "7": facts(), "30": facts(), "200": facts()}
+    hours = {"100": 500.0, "7": 20.0, "30": 20.0, "200": 3.0}
+    assert choose_co_play_anchor("100", hours, games, {}) == Anchor("7", "co_played", False)
+    assert choose_co_play_anchor("100", {"100": 1.0}, games, {}) is None
+
+
+def test_series_needs_the_same_base_title():
+    assert same_series("Portal", "Portal 2")
+    assert same_series("Half-Life 2", "Half-Life 2: Episode One")
+    assert same_series("Borderlands 2", "Borderlands: The Pre-Sequel")
+    assert not same_series("Portal 2", "Portal Knights")
+    assert not same_series("Dark Souls", "Dark Messiah of Might & Magic")
+    assert not same_series("X", "X 2")  # too short to tell
+
+
+def test_the_anchor_and_its_relation_are_in_the_opening_state():
+    games = {str(i): facts(tags=[("genre:action", None)], price=1.0) for i in range(1, 5)}
+    games["100"] = TARGET_FACTS
+    records = simulate(TARGET, ["tag:action"], FilterRetriever(games), None, pool_size=1000,
+                       anchor=Anchor("3", "same_developer", False))
+    first = records[0].state
+    assert first.anchors == ["3"] and first.relation == "same_developer"
+    assert "3" not in [c.appid for record in records for c in record.shown]
