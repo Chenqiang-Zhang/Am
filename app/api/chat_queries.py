@@ -1,19 +1,25 @@
 """Read-only graph templates of the conversational recommender (retriever G).
 
-T1 (this file so far): hard conditions. A game passes only if it has every included attribute, none of the
-excluded ones, a known price within max_price and above min_price, and is not an anchor, a shown game or a
-rejected game.
-T2 (anchor similarity) and T3 (same developer, co-play) will rank inside the same T1 filter.
+T1: hard conditions. A game passes only if it has every included attribute, none of the excluded ones, a known
+price within max_price and above min_price, and is not an anchor, a shown game or a rejected game.
+T3: multi-hop relations to the anchors, inside the same T1 filter.
+  - same_developer: anchor -DEVELOPED_BY-> studio <-DEVELOPED_BY- game. Only games sharing a developer pass.
+  - co_played: players who played an anchor for at least CO_PLAY_MIN_HOURS, and the other games they played,
+    ranked by lift with a pseudo-count so that neither popular games nor tiny ones dominate.
+T2 (anchor similarity, relation "similar") is not written yet; until then a "similar" anchor only stays out of
+the results and T1 ranks the rest.
 
 Tags count only through HAS_TAG edges with no rank (genres and features) or a rank within TAG_MAX_RANK (user
 tags), the same edges GAME_COLUMNS shows, the simulator's target attributes use and the questioner asks about.
-Popularity leaves out one player's PLAYED edges when the retriever is built for an evaluated player
+Popularity and co-play leave out one player's PLAYED edges when the retriever is built for an evaluated player
 (`excluding_player`), so a hidden play never counts toward its own target.
 Dialogue queries live here, not in utils/graph_reader.py, which only gains appended functions.
 """
 
 import copy
 import math
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from utils.graph_reader import TAG_MAX_RANK, GraphReader
@@ -25,6 +31,17 @@ UNRANKED_TAG_STRENGTH = 0.5
 # Popularity only orders games that match the conditions equally well: log(1 + players) scaled to [0, 1)
 # and weighted below one rank step of one tag.
 POPULARITY_WEIGHT = 0.05
+# T3 same_developer: each developer shared with an anchor counts as much as one rank-1 tag.
+STUDIO_STRENGTH = 1.0
+# T3 co_played: an anchor's fans are players with at least this many hours on it.
+CO_PLAY_MIN_HOURS = 2.0
+# Lift = (co / fans) / ((players + CO_PLAY_PRIOR) / all players). The pseudo-count keeps games played by a few
+# fans only from topping the list. Chosen by reading the lists for Portal 2, Counter-Strike: GO and Terraria
+# (no evaluation targets): plain lift put games with 5 players first, co-play count put Garry's Mod first.
+CO_PLAY_PRIOR = 50
+# Co-play counts depend only on the anchors and the left-out player, not on the rest of the state, so a
+# retriever keeps the last few and later turns of a dialogue skip the aggregation.
+CO_PLAY_CACHE_SIZE = 16
 
 
 @dataclass(frozen=True)
@@ -59,7 +76,7 @@ def tag_strength(rank: int | None) -> float:
     return 1.0 - 0.9 * (min(max(rank, 1), TAG_MAX_RANK) - 1) / (TAG_MAX_RANK - 1)
 
 
-T1_QUERY = """
+T1_MATCH = """
 MATCH (g:Game)
 WHERE NOT g.appid IN $unavailable
   AND ($max_price IS NULL OR (g.price IS NOT NULL AND g.price <= $max_price))
@@ -70,11 +87,41 @@ WHERE NOT g.appid IN $unavailable
         MATCH (g)-[ht:HAS_TAG]->(t:Tag) WHERE t.tag_id IN ids AND (ht.rank IS NULL OR ht.rank <= $max_rank) })
   AND all(s IN $include_studios WHERE EXISTS { MATCH (g)-[:DEVELOPED_BY]->(:Studio {studio_id: s}) })
   AND none(s IN $exclude_studios WHERE EXISTS { MATCH (g)-[:DEVELOPED_BY]->(:Studio {studio_id: s}) })
+"""
+T1_RETURN = """
 WITH g, COUNT { (g)<-[:PLAYED]-(p:Player) WHERE $exclude_player IS NULL OR p.player_id <> $exclude_player } AS players
 RETURN g.appid AS appid, players,
        [(g)-[ht:HAS_TAG]->(t:Tag)
         WHERE t.tag_id IN $wanted_tag_ids AND (ht.rank IS NULL OR ht.rank <= $max_rank)
         | {tag_id: t.tag_id, rank: ht.rank}] AS matched
+"""
+T1_QUERY = T1_MATCH + T1_RETURN
+
+# T3 same_developer: T1 plus a developer shared with an anchor. Empty studio_ids are not a developer.
+T3_STUDIO_QUERY = T1_MATCH + """
+  AND EXISTS { MATCH (g)-[:DEVELOPED_BY]->(s:Studio)<-[:DEVELOPED_BY]-(a:Game)
+               WHERE a.appid IN $anchors AND s.studio_id <> '' }
+""" + T1_RETURN.rstrip() + """,
+       [(g)-[:DEVELOPED_BY]->(s:Studio)<-[:DEVELOPED_BY]-(a:Game)
+        WHERE a.appid IN $anchors AND s.studio_id <> '' | {studio_id: s.studio_id, anchor: a.appid}] AS studios
+"""
+
+# T3 co_played: for each anchor, its fans and how many of them played each other game. Run next to T1_QUERY,
+# which supplies the filter and each game's players; the evaluated player is never a fan.
+CO_PLAY_QUERY = """
+MATCH (a:Game)<-[e:PLAYED]-(p:Player)
+WHERE a.appid IN $anchors AND e.hours >= $min_hours
+  AND ($exclude_player IS NULL OR p.player_id <> $exclude_player)
+WITH a, collect(p) AS fans
+UNWIND fans AS p
+MATCH (p)-[:PLAYED]->(c:Game)
+WHERE NOT c.appid IN $anchors
+RETURN a.appid AS anchor, size(fans) AS fans, c.appid AS appid, count(p) AS co
+"""
+PLAYERS_QUERY = """
+MATCH (p:Player)
+WHERE EXISTS { (p)-[:PLAYED]->(:Game) } AND ($exclude_player IS NULL OR p.player_id <> $exclude_player)
+RETURN count(p) AS n
 """
 
 
@@ -100,22 +147,78 @@ def t1_parameters(state: ChatState, vocabulary: Vocabulary, exclude_player: str 
     }
 
 
-def score_t1_rows(rows: list[dict], max_players: int) -> list[Candidate]:
+def t1_score(row: dict, popularity_scale: float) -> tuple[float, list[ChatEvidence]]:
     """Each included tag adds its strongest edge on the game; popularity breaks near-ties."""
-    popularity_scale = math.log1p(max(max_players, 1))
+    best: dict[str, ChatEvidence] = {}
+    for match in row["matched"]:
+        key = tag_key(match["tag_id"])
+        strength = tag_strength(match["rank"])
+        if key not in best or strength > best[key].share:
+            best[key] = ChatEvidence(path="tag", bridge_id=match["tag_id"], share=strength)
+    evidence = sorted(best.values(), key=lambda item: (-item.share, item.bridge_id or ""))
+    popularity = POPULARITY_WEIGHT * math.log1p(row["players"]) / popularity_scale
+    return sum(item.share for item in evidence) + popularity, evidence
+
+
+def popularity_scale(max_players: int) -> float:
+    return math.log1p(max(max_players, 1))
+
+
+def score_t1_rows(rows: list[dict], max_players: int) -> list[Candidate]:
+    scale = popularity_scale(max_players)
     candidates = []
     for row in rows:
-        best: dict[str, ChatEvidence] = {}
-        for match in row["matched"]:
-            key = tag_key(match["tag_id"])
-            strength = tag_strength(match["rank"])
-            if key not in best or strength > best[key].share:
-                best[key] = ChatEvidence(path="tag", bridge_id=match["tag_id"], share=strength)
-        evidence = sorted(best.values(), key=lambda item: (-item.share, item.bridge_id or ""))
-        popularity = POPULARITY_WEIGHT * math.log1p(row["players"]) / popularity_scale
-        candidates.append(
-            Candidate(appid=row["appid"], score=sum(item.share for item in evidence) + popularity, evidence=evidence)
-        )
+        score, evidence = t1_score(row, scale)
+        candidates.append(Candidate(appid=row["appid"], score=score, evidence=evidence))
+    return rank_candidates(candidates)
+
+
+def score_studio_rows(rows: list[dict], max_players: int) -> list[Candidate]:
+    """T1's score plus STUDIO_STRENGTH for each developer the game shares with an anchor."""
+    scale = popularity_scale(max_players)
+    candidates = []
+    for row in rows:
+        score, evidence = t1_score(row, scale)
+        anchors_by_studio: dict[str, str] = {}
+        for link in sorted(row["studios"], key=lambda link: (link["studio_id"], link["anchor"])):
+            anchors_by_studio.setdefault(link["studio_id"], link["anchor"])
+        studios = [
+            ChatEvidence(path="studio", bridge_id=studio_id, anchor_appid=anchor, share=STUDIO_STRENGTH)
+            for studio_id, anchor in anchors_by_studio.items()
+        ]
+        candidates.append(Candidate(
+            appid=row["appid"], score=score + STUDIO_STRENGTH * len(studios), evidence=studios + evidence,
+        ))
+    return rank_candidates(candidates)
+
+
+def co_play_lift(co: int, fans: int, players: int, all_players: int) -> float:
+    return (co / fans) / ((players + CO_PLAY_PRIOR) / max(all_players, 1))
+
+
+def score_co_play_rows(rows: list[dict], co_rows: list[dict], max_players: int, all_players: int) -> list[Candidate]:
+    """Games that pass T1 and that an anchor's fans played: T1's score plus the log of the best anchor's lift.
+
+    A lift of e (about 2.7) adds as much as one rank-1 tag. Games no fan played do not pass.
+    """
+    scale = popularity_scale(max_players)
+    t1_rows = {row["appid"]: row for row in rows}
+    links: dict[str, list[ChatEvidence]] = {}
+    lifts: dict[str, float] = {}
+    for co_row in co_rows:
+        row = t1_rows.get(co_row["appid"])
+        if row is None or co_row["co"] <= 0:
+            continue
+        lift = co_play_lift(co_row["co"], co_row["fans"], row["players"], all_players)
+        links.setdefault(row["appid"], []).append(ChatEvidence(
+            path="co_play", anchor_appid=co_row["anchor"], count=co_row["co"], share=co_row["co"] / co_row["fans"],
+        ))
+        lifts[row["appid"]] = max(lift, lifts.get(row["appid"], 0.0))
+    candidates = []
+    for appid, evidence in links.items():
+        score, tags = t1_score(t1_rows[appid], scale)
+        evidence.sort(key=lambda item: (-(item.count or 0), item.anchor_appid or ""))
+        candidates.append(Candidate(appid=appid, score=score + math.log(lifts[appid]), evidence=evidence + tags))
     return rank_candidates(candidates)
 
 
@@ -150,7 +253,8 @@ def load_game_attributes(reader: GraphReader) -> dict[str, GameAttributes]:
 
 
 class GraphRetriever:
-    """Retriever G. Validates the state against the graph, then runs T1."""
+    """Retriever G. Validates the state against the graph, then runs T3 for a same_developer or co_played
+    anchor and T1 otherwise."""
 
     def __init__(self, reader: GraphReader, vocabulary: Vocabulary | None = None) -> None:
         self.reader = reader
@@ -159,14 +263,45 @@ class GraphRetriever:
         self.max_players = reader.query(
             "MATCH (g:Game) RETURN coalesce(max(COUNT { (g)<-[:PLAYED]-(:Player) }), 0) AS n"
         )[0]["n"]
+        self._new_co_play_cache()
+
+    def _new_co_play_cache(self) -> None:
+        self._co_play_cache: OrderedDict[tuple[str, ...], tuple[list[dict], int]] = OrderedDict()
+        self._co_play_lock = threading.Lock()
 
     def excluding_player(self, player_id: str) -> "GraphRetriever":
-        """The same retriever with `player_id`'s plays left out of popularity (evaluation only)."""
+        """The same retriever with `player_id`'s plays left out of popularity and co-play (evaluation only)."""
         retriever = copy.copy(self)
         retriever.exclude_player = player_id
+        retriever._new_co_play_cache()
         return retriever
+
+    def co_play(self, anchors: list[str]) -> tuple[list[dict], int]:
+        """CO_PLAY_QUERY's rows for these anchors and the number of players, both without exclude_player."""
+        key = tuple(sorted(anchors))
+        with self._co_play_lock:
+            if key in self._co_play_cache:
+                self._co_play_cache.move_to_end(key)
+                return self._co_play_cache[key]
+        co_rows = self.reader.query(
+            CO_PLAY_QUERY, anchors=list(key), min_hours=CO_PLAY_MIN_HOURS, exclude_player=self.exclude_player,
+        )
+        all_players = self.reader.query(PLAYERS_QUERY, exclude_player=self.exclude_player)[0]["n"]
+        with self._co_play_lock:
+            self._co_play_cache[key] = (co_rows, all_players)
+            while len(self._co_play_cache) > CO_PLAY_CACHE_SIZE:
+                self._co_play_cache.popitem(last=False)
+        return co_rows, all_players
 
     def retrieve(self, state: ChatState, k: int) -> list[Candidate]:
         state = state.restricted_to(self.vocabulary.attribute_keys, self.vocabulary.appids)
-        rows = self.reader.query(T1_QUERY, **t1_parameters(state, self.vocabulary, self.exclude_player))
+        params = t1_parameters(state, self.vocabulary, self.exclude_player)
+        if state.anchors and state.relation == "same_developer":
+            rows = self.reader.query(T3_STUDIO_QUERY, **params, anchors=state.anchors)
+            return score_studio_rows(rows, self.max_players)[:k]
+        if state.anchors and state.relation == "co_played":
+            rows = self.reader.query(T1_QUERY, **params)
+            co_rows, all_players = self.co_play(state.anchors)
+            return score_co_play_rows(rows, co_rows, self.max_players, all_players)[:k]
+        rows = self.reader.query(T1_QUERY, **params)
         return score_t1_rows(rows, self.max_players)[:k]

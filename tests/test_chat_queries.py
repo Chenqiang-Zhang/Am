@@ -1,10 +1,21 @@
 import pytest
 
+import math
+
 from app.api.chat_queries import (
+    CO_PLAY_MIN_HOURS,
+    CO_PLAY_QUERY,
+    PLAYERS_QUERY,
     POPULARITY_WEIGHT,
+    STUDIO_STRENGTH,
+    T1_QUERY,
+    T3_STUDIO_QUERY,
     UNRANKED_TAG_STRENGTH,
     GraphRetriever,
     Vocabulary,
+    co_play_lift,
+    score_co_play_rows,
+    score_studio_rows,
     score_t1_rows,
     t1_parameters,
     tag_strength,
@@ -114,3 +125,104 @@ def test_excluding_a_player_is_a_copy_that_passes_the_player_to_t1():
     retriever.retrieve(ChatState(), k=10)
     assert [params["exclude_player"] for _, params in reader.calls[-2:]] == ["76561", None]
     assert "p.player_id <> $exclude_player" in reader.calls[-1][0]
+
+
+def test_studio_rows_add_one_strength_per_shared_developer_and_cite_the_anchor():
+    rows = [
+        {"appid": "10", "players": 0, "matched": [], "studios": [{"studio_id": "valve", "anchor": "620"}]},
+        {"appid": "20", "players": 0, "matched": [],
+         "studios": [{"studio_id": "valve", "anchor": "620"}, {"studio_id": "hidden_path", "anchor": "620"}]},
+    ]
+    ranked = score_studio_rows(rows, max_players=0)
+    assert [candidate.appid for candidate in ranked] == ["20", "10"]
+    assert ranked[1].score == pytest.approx(STUDIO_STRENGTH)
+    assert [(item.path, item.bridge_id, item.anchor_appid) for item in ranked[1].evidence] == [
+        ("studio", "valve", "620")
+    ]
+
+
+def test_co_play_lift_favours_games_the_fans_play_more_than_everyone_does():
+    # Half of the fans play both games, but the second one is played by everyone.
+    assert co_play_lift(co=50, fans=100, players=100, all_players=1000) > co_play_lift(
+        co=50, fans=100, players=1000, all_players=1000)
+    # With few players the pseudo-count holds the lift down.
+    assert co_play_lift(co=5, fans=100, players=5, all_players=1000) < co_play_lift(
+        co=50, fans=100, players=100, all_players=1000)
+
+
+def test_co_play_rows_keep_only_games_that_pass_t1_and_that_a_fan_played():
+    rows = [{"appid": appid, "players": 100, "matched": []} for appid in ("10", "20", "30")]
+    co_rows = [
+        {"anchor": "620", "fans": 100, "appid": "10", "co": 20},
+        {"anchor": "620", "fans": 100, "appid": "20", "co": 60},
+        {"anchor": "620", "fans": 100, "appid": "40", "co": 90},  # fails T1
+    ]
+    ranked = score_co_play_rows(rows, co_rows, max_players=100, all_players=1000)
+    assert [candidate.appid for candidate in ranked] == ["20", "10"]
+    lift = co_play_lift(60, 100, 100, 1000)
+    assert ranked[0].score == pytest.approx(math.log(lift) + POPULARITY_WEIGHT)
+    evidence = ranked[0].evidence[0]
+    assert (evidence.path, evidence.anchor_appid, evidence.count, evidence.share) == ("co_play", "620", 60, 0.6)
+
+
+class RoutingReader:
+    """Answers each template with its own rows and records the calls."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.calls = []
+
+    def query(self, cypher, **params):
+        self.calls.append((cypher, params))
+        if "max(COUNT" in cypher:
+            return [{"n": 1000}]
+        return self.routes.get(cypher, [])
+
+
+def test_relation_picks_the_template():
+    reader = RoutingReader({
+        T3_STUDIO_QUERY: [{"appid": "10", "players": 0, "matched": [],
+                           "studios": [{"studio_id": "valve", "anchor": "105600"}]}],
+        T1_QUERY: [{"appid": "20", "players": 0, "matched": []}],
+        CO_PLAY_QUERY: [{"anchor": "105600", "fans": 10, "appid": "20", "co": 5}],
+        PLAYERS_QUERY: [{"n": 1000}],
+    })
+    retriever = GraphRetriever(reader, VOCABULARY).excluding_player("76561")
+
+    same = retriever.retrieve(ChatState(anchors=["105600"], relation="same_developer"), k=10)
+    assert [candidate.appid for candidate in same] == ["10"]
+    assert reader.calls[-1][0] == T3_STUDIO_QUERY and reader.calls[-1][1]["anchors"] == ["105600"]
+
+    co = retriever.retrieve(ChatState(anchors=["105600"], relation="co_played"), k=10)
+    assert [candidate.appid for candidate in co] == ["20"]
+    co_call = next(params for cypher, params in reader.calls if cypher == CO_PLAY_QUERY)
+    assert co_call == {"anchors": ["105600"], "min_hours": CO_PLAY_MIN_HOURS, "exclude_player": "76561"}
+    assert reader.calls[-1] == (PLAYERS_QUERY, {"exclude_player": "76561"})
+
+    similar = retriever.retrieve(ChatState(anchors=["105600"]), k=10)
+    assert [candidate.appid for candidate in similar] == ["20"]
+    assert reader.calls[-1][0] == T1_QUERY
+
+
+def test_co_play_and_studio_queries_leave_the_anchor_and_the_evaluated_player_out():
+    assert "NOT c.appid IN $anchors" in CO_PLAY_QUERY
+    assert "p.player_id <> $exclude_player" in CO_PLAY_QUERY
+    assert "p.player_id <> $exclude_player" in PLAYERS_QUERY
+    assert "NOT g.appid IN $unavailable" in T3_STUDIO_QUERY
+    assert "s.studio_id <> ''" in T3_STUDIO_QUERY
+
+
+def test_co_play_counts_are_cached_per_anchor_set_and_not_shared_across_players():
+    reader = RoutingReader({
+        T1_QUERY: [{"appid": "20", "players": 0, "matched": []}],
+        CO_PLAY_QUERY: [{"anchor": "105600", "fans": 10, "appid": "20", "co": 5}],
+        PLAYERS_QUERY: [{"n": 1000}],
+    })
+    base = GraphRetriever(reader, VOCABULARY)
+    mine = base.excluding_player("76561")
+    state = ChatState(anchors=["105600"], relation="co_played")
+    mine.retrieve(state, k=10)
+    mine.retrieve(state.model_copy(update={"include": ["tag:action"]}), k=10)
+    base.excluding_player("99999").retrieve(state, k=10)
+    co_calls = [params["exclude_player"] for cypher, params in reader.calls if cypher == CO_PLAY_QUERY]
+    assert co_calls == ["76561", "99999"]
