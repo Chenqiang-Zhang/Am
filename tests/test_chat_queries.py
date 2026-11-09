@@ -17,6 +17,7 @@ from app.api.chat_queries import (
     Vocabulary,
     anchor_profile,
     co_play_lift,
+    feature_only_keys,
     score_co_play_rows,
     score_similar_rows,
     score_studio_rows,
@@ -276,3 +277,23 @@ def test_the_profile_is_loaded_once_for_all_player_copies():
     first = base.excluding_player("1").profile()
     second = base.excluding_player("2").profile()
     assert first is second
+
+
+def test_feature_only_groups_do_not_count_toward_anchor_similarity():
+    vocabulary = Vocabulary(
+        tag_ids_by_key={
+            "tag:valve_anti_cheat_enabled": ["feature:valve_anti_cheat_enabled"],
+            "tag:co_op": ["feature:co_op", "usertag:co_op"],
+            "tag:action": ["genre:action", "usertag:action"],
+        },
+        studio_keys=set(),
+        appids=set(),
+    )
+    assert feature_only_keys(vocabulary) == {"tag:valve_anti_cheat_enabled"}
+    profile = anchor_profile({
+        "1": attributes({"tag:valve_anti_cheat_enabled", "tag:co_op"}),
+        "2": attributes({"tag:valve_anti_cheat_enabled", "tag:co_op"}),
+        "3": attributes({"tag:action"}),
+    }, feature_only_keys(vocabulary))
+    assert profile.keys_by_appid["1"] == {"tag:co_op"}
+    assert "tag:valve_anti_cheat_enabled" not in profile.idf

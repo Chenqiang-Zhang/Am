@@ -58,18 +58,23 @@ ALL = 100_000
 
 
 def raw_keys() -> dict[str, set[str]]:
-    """Each game's counted tag groups (no rank, or rank within TAG_MAX_RANK) and developers, as T2 compares."""
+    """Each game's counted tag groups (no rank, or rank within TAG_MAX_RANK) and developers, as T2 compares.
+    Groups whose tags are all Steam features (kind "feature" in every game) are left out."""
+    games = [json.loads(line) for line in (UCSD / "games.jsonl").open(encoding="utf-8")]
+    kinds: dict[str, set[str]] = {}
+    for game in games:
+        for tag in game.get("tags") or []:
+            kinds.setdefault(tag_key(tag["tag_id"]), set()).add(tag["tag_id"].split(":", 1)[0])
+    feature_only = {key for key, found in kinds.items() if found == {"feature"}}
     keys = {}
-    with (UCSD / "games.jsonl").open(encoding="utf-8") as file:
-        for line in file:
-            game = json.loads(line)
-            keys[game["appid"]] = {
-                tag_key(tag["tag_id"]) for tag in game.get("tags") or []
-                if tag.get("rank") is None or tag["rank"] <= TAG_MAX_RANK
-            } | {
-                "studio:" + studio["studio_id"] for studio in game.get("studios") or []
-                if studio.get("role") == "developer" and studio.get("studio_id")
-            }
+    for game in games:
+        keys[game["appid"]] = {
+            tag_key(tag["tag_id"]) for tag in game.get("tags") or []
+            if (tag.get("rank") is None or tag["rank"] <= TAG_MAX_RANK) and tag_key(tag["tag_id"]) not in feature_only
+        } | {
+            "studio:" + studio["studio_id"] for studio in game.get("studios") or []
+            if studio.get("role") == "developer" and studio.get("studio_id")
+        }
     return keys
 
 

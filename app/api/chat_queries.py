@@ -8,7 +8,9 @@ T3: multi-hop relations to the anchors, inside the same T1 filter.
     ranked by lift with a pseudo-count so that neither popular games nor tiny ones dominate.
 T2: anchor similarity (relation "similar"), inside the same T1 filter. Each tag group and developer a game
 shares with an anchor adds its IDF over all games, so a rare shared tag or a shared developer counts more
-than a common one.
+than a common one. Feature-only tag groups (Steam services such as anti-cheat, Workshop or achievements) do
+not count: they say nothing about what a game is like, rare ones would score high, and V's documents and
+the questions leave them out too.
 
 Tags count only through HAS_TAG edges with no rank (genres and features) or a rank within TAG_MAX_RANK (user
 tags), the same edges GAME_COLUMNS shows, the simulator's target attributes use and the questioner asks about.
@@ -261,8 +263,14 @@ class AnchorProfile:
     idf: dict[str, float]
 
 
-def anchor_profile(attributes: dict[str, GameAttributes]) -> AnchorProfile:
-    keys_by_appid = {appid: game.tag_keys | game.studio_keys for appid, game in attributes.items()}
+def feature_only_keys(vocabulary: Vocabulary) -> frozenset[str]:
+    """Tag groups that exist only as Steam features (no genre, no user tag), as V's documents leave out."""
+    return frozenset(key for key, tag_ids in vocabulary.tag_ids_by_key.items()
+                     if all(tag_id.startswith("feature:") for tag_id in tag_ids))
+
+
+def anchor_profile(attributes: dict[str, GameAttributes], left_out: frozenset[str] = frozenset()) -> AnchorProfile:
+    keys_by_appid = {appid: (game.tag_keys - left_out) | game.studio_keys for appid, game in attributes.items()}
     document_frequency: dict[str, int] = {}
     for keys in keys_by_appid.values():
         for key in keys:
@@ -309,10 +317,11 @@ class GraphRetriever:
         self._profile_lock = threading.Lock()
 
     def profile(self) -> AnchorProfile:
-        """T2's tag groups, developers and IDF, loaded on first use."""
+        """T2's tag groups (feature-only ones left out), developers and IDF, loaded on first use."""
         with self._profile_lock:
             if "profile" not in self._profile_box:
-                self._profile_box["profile"] = anchor_profile(load_game_attributes(self.reader))
+                self._profile_box["profile"] = anchor_profile(
+                    load_game_attributes(self.reader), feature_only_keys(self.vocabulary))
             return self._profile_box["profile"]
 
     def _new_co_play_cache(self) -> None:
