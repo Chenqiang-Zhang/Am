@@ -269,6 +269,10 @@ def test_anchor_shares_a_developer_or_two_ranked_user_tags_and_never_is_the_targ
         seen.add((anchor.appid, anchor.relation))
     assert seen == {("1", "same_developer"), ("2", "similar")}
     assert choose_anchor("p1", "100", ["100", "3", "4"], games, titles) is None
+    for player in (f"p{i}" for i in range(20)):
+        assert choose_anchor(player, "100", list(games), games, titles, "same_developer").appid == "1"
+        assert choose_anchor(player, "100", list(games), games, titles, "similar").appid == "2"
+    assert choose_anchor("p1", "100", ["100", "2"], games, titles, "same_developer") is None
 
 
 def test_co_play_anchor_is_the_longest_played_other_game():

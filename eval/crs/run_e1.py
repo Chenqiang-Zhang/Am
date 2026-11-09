@@ -3,12 +3,13 @@
 Groups: G (T1, T2 and T3) and G-static, V-entropy and V-static (vector search, vector.py), and P. V needs the
 embedding model on the Ollama server at EMBED_BASE_URL; its document vectors are cached under data/eval/vectors/.
 
-Layers (--layer): none states no anchor (every user). anchor names the plan's anchor (same developer or two
-shared ranked user tags) and runs only the users who have one. co_play names the user's longest-played other
-game as a co_played anchor (every user who has another game).
+Layers (--layer): none states no anchor and takes the first users in the sample order. same_developer, similar
+and co_play take the first users who have an anchor of that kind (co_play: their longest-played other game)
+and run every group twice for each of them, with the anchor and without it, so that the summary's anchor_gain
+compares the two on the same users. The plain metrics are those of the dialogues with the anchor.
 
     python -m eval.crs.run_e1 --users 300                  # inside the app container, GRAPH=ucsd
-    python -m eval.crs.run_e1 --users 300 --layer anchor
+    python -m eval.crs.run_e1 --users 300 --layer same_developer
     python -m eval.crs.run_e1 --users 20 --seeds 1         # a quick smoke run
 
 Only the dev split can be selected: there is no option for test, which the main E1 uses once after the plan
@@ -82,7 +83,10 @@ POPULAR_TOP = 50
 ENTROPY_LOG_TOP = 10
 BATCH = 200
 OUT_ROOT = Path("data/eval/e1_pre")
-LAYERS = ("none", "anchor", "co_play")
+LAYERS = ("none", "same_developer", "similar", "co_play")
+# anchor_gain: the graph effect is how much more G gains from the anchor than V-entropy does
+GAIN_METRICS = ("SR@1", "SR@3", "SR@5", "hDCG@(5,10)")
+GAIN_PAIR = ("G", "V-entropy")
 
 PLAYERS_QUERY = """
 MATCH (p:Player) WHERE COUNT { (p)-[:PLAYED]->(:Game) } >= $min_played
@@ -117,18 +121,20 @@ class User:
     player_id: str
     played: frozenset[str]
     target: Target
-    anchor: Anchor | None = None  # the anchor layer's anchor; None puts the user in the no-anchor layer
+    same_developer_anchor: Anchor | None = None
+    similar_anchor: Anchor | None = None
     co_play_anchor: Anchor | None = None
     co_play_anchor_hours: float = 0.0
 
 
 def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tuple[str, ...], count: int,
-                 titles: dict[str, str]):
+                 titles: dict[str, str], layer: str = "none"):
+    """The first `count` dev users in the sample order; in an anchor layer, the first who have its anchor."""
     players = [row["player_id"] for row in reader.query(PLAYERS_QUERY, min_played=MIN_PLAYED)]
     dev = sample_order([player_id for player_id in players if is_dev(player_id)])
     medians = {row["appid"]: row["median"] for row in reader.query(MEDIAN_QUERY)}
     users: list[User] = []
-    skipped = {"no_target": 0, "few_whitelisted_tags": 0}
+    skipped = {"no_target": 0, "few_whitelisted_tags": 0, "no_layer_anchor": 0}
     for start in range(0, len(dev), BATCH):
         batch = dev[start:start + BATCH]
         hours: dict[str, dict[str, float]] = {player_id: {} for player_id in batch}
@@ -144,12 +150,18 @@ def select_users(reader: GraphReader, facts: dict[str, GameFacts], whitelist: tu
                 skipped["few_whitelisted_tags"] += 1
                 continue
             co_play_anchor = choose_co_play_anchor(appid, hours[player_id], facts, titles)
-            users.append(User(
+            user = User(
                 player_id, frozenset(hours[player_id]), target,
-                anchor=choose_anchor(player_id, appid, hours[player_id], facts, titles),
+                same_developer_anchor=choose_anchor(player_id, appid, hours[player_id], facts, titles,
+                                                    "same_developer"),
+                similar_anchor=choose_anchor(player_id, appid, hours[player_id], facts, titles, "similar"),
                 co_play_anchor=co_play_anchor,
                 co_play_anchor_hours=hours[player_id][co_play_anchor.appid] if co_play_anchor else 0.0,
-            ))
+            )
+            if layer != "none" and layer_anchor(user, layer) is None:
+                skipped["no_layer_anchor"] += 1
+                continue
+            users.append(user)
             if len(users) == count:
                 return users, {"players_min_played": len(players), "dev_players": len(dev), "skipped": skipped}
     return users, {"players_min_played": len(players), "dev_players": len(dev), "skipped": skipped}
@@ -199,7 +211,8 @@ def check_co_play_leakage(reader, retriever: GraphRetriever, users: list[User], 
 
 
 def layer_anchor(user: User, layer: str) -> Anchor | None:
-    return {"none": None, "anchor": user.anchor, "co_play": user.co_play_anchor}[layer]
+    return {"none": None, "same_developer": user.same_developer_anchor, "similar": user.similar_anchor,
+            "co_play": user.co_play_anchor}[layer]
 
 
 def entropy_top(catalog: QuestionCatalog):
@@ -218,8 +231,9 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
         "P": (popularity.excluding_player(user.played), None, None),
     }
     dialogues, logs = [], []
-    anchor = layer_anchor(user, layer)
-    for seed in range(seeds):
+    stated = layer_anchor(user, layer)
+    conditions = [(stated, True), (None, False)] if stated is not None else [(None, False)]
+    for (anchor, anchored), seed in ((condition, seed) for condition in conditions for seed in range(seeds)):
         opening = opening_tags(user.target, catalog.keys, seed)
         for group, (system, questioner, explain) in systems.items():
             answer = error_answers(user.target, seed, error_rate) if error_rate else None
@@ -227,12 +241,13 @@ def run_user(user: User, seeds: int, retriever, vector, popularity, catalog, fac
             last = records[-1]
             success_turn = last.turn if last.hit_rank is not None else None
             checks = [check(facts[c.appid], record.state) for record in records for c in record.shown]
-            dialogue_id = f"{group}|{user.player_id}|{seed}"
+            dialogue_id = f"{group}|{user.player_id}|{seed}" + ("" if anchored or stated is None else "|no_anchor")
             dialogues.append({
                 "dialogue_id": dialogue_id, "group": group, "player_id": user.player_id, "seed": seed,
                 "target": user.target.appid, "popular": user.target.appid in popular, "opening": opening,
-                "anchor": anchor.appid if anchor else None, "relation": anchor.relation if anchor else None,
-                "same_series": anchor.same_series if anchor else None,
+                "anchored": anchored,
+                "anchor": stated.appid if stated else None, "relation": stated.relation if stated else None,
+                "same_series": stated.same_series if stated else None,
                 "success_turn": success_turn, "success_rank": last.hit_rank,
                 "hdcg": hdcg(success_turn, last.hit_rank),
                 "questions": sum(record.question is not None for record in records),
@@ -333,6 +348,41 @@ def summarize(dialogues: list[dict]) -> dict:
     return summary
 
 
+def anchor_gain(dialogues: list[dict]) -> dict:
+    """With the anchor minus without it, per user (mean over seeds), by group; and the graph effect, G's gain
+    minus V-entropy's, with a paired bootstrap interval and Wilcoxon's p. All strata of `summarize`."""
+    strata = {
+        "all": dialogues,
+        "popular": [d for d in dialogues if d["popular"]],
+        "long_tail": [d for d in dialogues if not d["popular"]],
+    }
+    result: dict = {}
+    for stratum, items in strata.items():
+        if not items:
+            continue
+        for name in GAIN_METRICS:
+            gains: dict[str, dict[str, float]] = {}
+            row: dict = {}
+            for group in GROUPS:
+                with_anchor = per_user([d for d in items if d["anchored"]], group, METRICS[name])
+                without = per_user([d for d in items if not d["anchored"]], group, METRICS[name])
+                gains[group] = {p: with_anchor[p] - without[p] for p in with_anchor if p in without}
+                if gains[group]:
+                    values = list(gains[group].values())
+                    row[group] = {"without": sum(without.values()) / len(without),
+                                  "with": sum(with_anchor.values()) / len(with_anchor),
+                                  "gain": sum(values) / len(values), "ci95": list(paired_bootstrap_ci(values))}
+            a, b = GAIN_PAIR
+            differences = [gains[a][p] - gains[b][p] for p in sorted(gains[a]) if p in gains[b]]
+            if differences:
+                _, p_value = wilcoxon_signed_rank(differences)
+                row[f"{a} gain - {b} gain"] = {"mean": sum(differences) / len(differences),
+                                               "ci95": list(paired_bootstrap_ci(differences)),
+                                               "wilcoxon_p": p_value}
+            result.setdefault(stratum, {})[name] = row
+    return result
+
+
 def jaccard_first_lists(dialogues: list[dict], a: str, b: str) -> float | None:
     """Overlap of the first lists of a and b in the same dialogue (user and seed), averaged per user."""
     lists = {(d["group"], d["player_id"], d["seed"]): set(d["first_list"]) for d in dialogues}
@@ -380,6 +430,22 @@ def git_commit() -> str | None:
         path = Path(".git") / ref[5:]
         return path.read_text().strip() if path.exists() else ref
     return ref
+
+
+def print_anchor_gain(gain: dict) -> None:
+    a, b = GAIN_PAIR
+    print(f"\nanchor gain (with minus without, per user) and graph effect ({a} gain - {b} gain)")
+    for stratum, metrics in gain.items():
+        print(f"[{stratum}]")
+        for name, row in metrics.items():
+            cells = "  ".join(f"{group} {row[group]['without']:.3f}->{row[group]['with']:.3f}"
+                              for group in (a, b) if group in row)
+            effect = row.get(f"{a} gain - {b} gain")
+            if effect:
+                low, high = effect["ci95"]
+                cells += (f"  effect {effect['mean']:+.3f} [{low:+.3f}, {high:+.3f}] "
+                          f"Wilcoxon p {effect['wilcoxon_p']:.4f}")
+            print(f"  {name:12s} {cells}")
 
 
 def print_summary(summary: dict) -> None:
@@ -432,21 +498,10 @@ def main() -> None:
           f"{' (cached)' if documents['cached'] else ''}, {time.time() - started:.0f} s")
 
     titles = {row["appid"]: row["name"] or "" for row in reader.query(TITLES_QUERY)}
-    users, selection = select_users(reader, facts, catalog.keys, args.users, titles)
-    selection["with_anchor"] = sum(user.anchor is not None for user in users)
-    selection["with_co_play_anchor"] = sum(user.co_play_anchor is not None for user in users)
-    print(f"users: {len(users)} (dev), selection {selection}")
+    users, selection = select_users(reader, facts, catalog.keys, args.users, titles, args.layer)
     if args.layer != "none":
-        users = [user for user in users if layer_anchor(user, args.layer) is not None]
-        relations = {}
-        for user in users:
-            anchor = layer_anchor(user, args.layer)
-            relations[anchor.relation] = relations.get(anchor.relation, 0) + 1
-        selection["layer_users"] = len(users)
-        selection["relations"] = relations
         selection["same_series"] = sum(layer_anchor(user, args.layer).same_series for user in users)
-        print(f"layer {args.layer}: {len(users)} users, relations {relations}, "
-              f"same series {selection['same_series']}")
+    print(f"users: {len(users)} (dev, layer {args.layer}), selection {selection}")
     leakage = check_leakage(reader, retriever, popularity, users, catalog.keys, args.workers)
     print(f"leakage check: {leakage['matched']}/{leakage['users']} match")
     if leakage["mismatches"]:
@@ -479,7 +534,9 @@ def main() -> None:
         for dialogue in dialogues:
             file.write(json.dumps(dialogue, ensure_ascii=False) + "\n")
 
-    summary = summarize(dialogues)
+    summary = summarize([d for d in dialogues if d["anchored"] or args.layer == "none"])
+    if args.layer != "none":
+        summary["anchor_gain"] = anchor_gain(dialogues)
     manifest = {
         "experiment": "E1-pre", "split": "dev", "users": len(users), "seeds": args.seeds, "groups": GROUPS,
         "selection": selection, "leakage_check": leakage, "graph": graph_identity(reader, facts),
@@ -493,6 +550,8 @@ def main() -> None:
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
     print_summary(summary)
+    if "anchor_gain" in summary:
+        print_anchor_gain(summary["anchor_gain"])
     print(f"\nwrote {out} in {time.time() - started:.0f} s")
     reader.close()
 

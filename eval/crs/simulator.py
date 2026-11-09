@@ -149,9 +149,10 @@ def same_series(a: str, b: str) -> bool:
 
 
 def choose_anchor(player_id: str, target_appid: str, played: Iterable[str], facts: dict[str, GameFacts],
-                  titles: dict[str, str]) -> Anchor | None:
-    """Another game the player played that shares a developer with the target (same_developer) or at least
-    ANCHOR_SHARED_TAGS ranked user tags (similar), picked by hash. None puts the player in the no-anchor layer."""
+                  titles: dict[str, str], relation: Relation | None = None) -> Anchor | None:
+    """Another game the player played that shares a developer with the target (same_developer) or, with no
+    shared developer, at least ANCHOR_SHARED_TAGS ranked user tags (similar), picked by hash. `relation` keeps
+    only anchors of that kind: each relation has its own layer of users. None: the player has no such anchor."""
     target = facts[target_appid]
     target_developers, target_tags = developers(target), ranked_tags(target)
     eligible: dict[str, Relation] = {}
@@ -163,6 +164,8 @@ def choose_anchor(player_id: str, target_appid: str, played: Iterable[str], fact
             eligible[appid] = "same_developer"
         elif len(ranked_tags(game) & target_tags) >= ANCHOR_SHARED_TAGS:
             eligible[appid] = "similar"
+    if relation is not None:
+        eligible = {appid: kind for appid, kind in eligible.items() if kind == relation}
     if not eligible:
         return None
     appid = min(eligible, key=lambda appid: hash_value("e1-anchor:" + player_id + appid))
