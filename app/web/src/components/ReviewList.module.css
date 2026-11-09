@@ -179,3 +179,18 @@
   opacity: 0.75;
   font-style: italic;
 }
+
+/* inside the game panel: the panel scrolls, so the list takes its full height */
+.panelList {
+  composes: list;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.panelCount {
+  align-self: flex-start;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}

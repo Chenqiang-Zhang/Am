@@ -4,7 +4,10 @@ import HelpModal from "./HelpModal";
 import TestUserSelect from "./TestUserSelect";
 import styles from "./PageHeader.module.css";
 
-export type Tab = "chat" | "recommend";
+export type Tab = "chat" | "dialogue" | "recommend";
+
+const TAB_ORDER: Tab[] = ["chat", "dialogue", "recommend"];
+const TAB_ICON: Record<Tab, string> = { chat: "💬", dialogue: "🧭", recommend: "★" };
 
 export interface PageControls {
   tab: Tab;
@@ -58,24 +61,24 @@ export default function PageHeader({
       <div className={styles.headerText}>
         <h1 className={styles.title}>{t.appTitle}</h1>
       </div>
-      <div className={styles.tabs}>
-        <div className={styles.segmented}>
-          <button
-            type="button"
-            className={tab === "chat" ? styles.segmentActive : styles.segment}
-            onClick={() => onTabChange("chat")}
-          >
-            {t.tabChat}
-          </button>
-          <button
-            type="button"
-            className={tab === "recommend" ? styles.segmentActive : styles.segment}
-            onClick={() => onTabChange("recommend")}
-          >
-            {t.tabRecommend}
-          </button>
+      <nav className={styles.tabs}>
+        <div className={styles.tabBar} role="tablist">
+          {TAB_ORDER.map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              aria-selected={tab === name}
+              className={tab === name ? styles.tabActive : styles.tab}
+              onClick={() => onTabChange(name)}
+            >
+              <span className={styles.tabIcon} aria-hidden="true">{TAB_ICON[name]}</span>
+              {name === "chat" ? t.tabChat : name === "dialogue" ? t.tabDialogue : t.tabRecommend}
+              {name === "dialogue" && <span className={styles.badge}>{t.tabPreview}</span>}
+            </button>
+          ))}
         </div>
-      </div>
+      </nav>
     </header>
   );
 }

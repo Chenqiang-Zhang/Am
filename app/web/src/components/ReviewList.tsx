@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReviewItem } from "../types/recommend";
 import { useI18n } from "../i18n";
 import { fetchReviews } from "../api/client";
@@ -7,11 +7,15 @@ import styles from "./ReviewList.module.css";
 interface Props {
   appid: string;
   reviewCount: number;
+  autoLoad?: boolean; // load at once and show only the list (inside the game panel, which has its own heading)
 }
 
 type Status = "idle" | "loading" | "done" | "error";
 
-export default function ReviewList({ appid, reviewCount }: Props) {
+// The game panel shows the most helpful ones first and at most this many.
+const PANEL_LIMIT = 20;
+
+export default function ReviewList({ appid, reviewCount, autoLoad = false }: Props) {
   const { t } = useI18n();
   const [status, setStatus] = useState<Status>("idle");
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -21,12 +25,33 @@ export default function ReviewList({ appid, reviewCount }: Props) {
     if (status !== "idle") return;
     setStatus("loading");
     try {
-      const data = await fetchReviews(appid, reviewCount);
+      const data = await fetchReviews(appid, autoLoad ? Math.min(reviewCount, PANEL_LIMIT) : reviewCount);
       setReviews(data.reviews);
       setStatus("done");
     } catch {
       setStatus("error");
     }
+  }
+
+  useEffect(() => {
+    if (autoLoad) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoad, appid]);
+
+  if (autoLoad) {
+    if (status === "idle" || status === "loading") return <p className={styles.loading}>{t.loading}</p>;
+    if (status === "error") return <p className={styles.error}>{t.reviewsError}</p>;
+    if (reviews.length === 0) return <p className={styles.empty}>{t.noReviews}</p>;
+    return (
+      <>
+        <p className={styles.panelCount}>{t.reviewsShown(reviews.length, reviewCount)}</p>
+        <ul className={styles.panelList} aria-label={t.reviews}>
+          {reviews.map((r, i) => (
+            <ReviewRow key={i} review={r} />
+          ))}
+        </ul>
+      </>
+    );
   }
 
   if (status === "idle" || (status === "done" && !open)) {

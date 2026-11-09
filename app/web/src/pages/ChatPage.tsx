@@ -6,7 +6,7 @@ import ChatBubble from "../components/ChatBubble";
 import HeroIllustration from "../components/HeroIllustration";
 import QuickReplies from "../components/QuickReplies";
 import RecommendationList from "../components/RecommendationList";
-import PageHeader, { type PageControls } from "../components/PageHeader";
+import type { PageControls } from "../components/PageHeader";
 import styles from "./ChatPage.module.css";
 
 const LIMIT = 8;
@@ -69,7 +69,6 @@ export default function ChatPage({ heroEntrance = false, ...controls }: Props) {
 
   return (
     <div className={styles.page}>
-      <PageHeader {...controls} />
 
       <section className={styles.conversation}>
         {conversation.length === 0 && <HeroIllustration entering={heroEntrance} />}

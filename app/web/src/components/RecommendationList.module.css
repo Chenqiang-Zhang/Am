@@ -20,10 +20,17 @@
   letter-spacing: 0.01em;
 }
 
+/* the same tiles as the dialogue tab: two a row, one on a phone */
 .list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--space-3);
+}
+
+@media (max-width: 420px) {
+  .list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .empty {

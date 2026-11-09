@@ -7,7 +7,7 @@ interface Props {
   onStart?: () => void;
   minDurationMs?: number;
 }
-export default function SplashScreen({ onDone, onStart, minDurationMs = 3200 }: Props) {
+export default function SplashScreen({ onDone, onStart, minDurationMs = 1750 }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
 

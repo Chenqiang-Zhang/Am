@@ -44,6 +44,11 @@ body {
   padding: 0;
 }
 
+/* keep room for the scrollbar on short pages too, so centred content does not move between tabs */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);

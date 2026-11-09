@@ -1,6 +1,7 @@
 import type { Recommendation } from "../types/recommend";
 import { useI18n } from "../i18n";
-import RecommendationCard from "./RecommendationCard";
+import { cardFromRecommendation } from "./cardData";
+import GameCard from "./GameCard";
 import styles from "./RecommendationList.module.css";
 
 interface Props {
@@ -28,7 +29,7 @@ export default function RecommendationList({ items, devMode }: Props) {
       </div>
       <div className={styles.list}>
         {items.map((rec, i) => (
-          <RecommendationCard key={rec.appid} rec={rec} rank={i + 1} devMode={devMode} />
+          <GameCard key={rec.appid} data={cardFromRecommendation(rec, t)} rank={i + 1} devMode={devMode} />
         ))}
       </div>
     </section>

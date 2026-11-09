@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { recommend, ApiError } from "../api/client";
 import type { Recommendation } from "../types/recommend";
 import { useI18n } from "../i18n";
-import PageHeader, { type PageControls } from "../components/PageHeader";
+import type { PageControls } from "../components/PageHeader";
 import RecommendationList from "../components/RecommendationList";
 import styles from "./RecommendPage.module.css";
 
@@ -36,7 +36,6 @@ export default function RecommendPage(controls: PageControls) {
 
   return (
     <div className={styles.page}>
-      <PageHeader {...controls} />
       <p className={styles.intro}>{playerId ? t.recommendForPlayer : t.recommendAnonymous}</p>
       {loading && <p className={styles.intro}>{t.loading}</p>}
       {error && (
